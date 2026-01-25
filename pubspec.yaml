@@ -1,0 +1,56 @@
+name: chatme
+description: "Chat App dengan Nostr Valid"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.4 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  firebase_core: ^3.10.1
+  firebase_messaging: ^15.2.1
+  flutter_local_notifications: ^18.0.1
+  cupertino_icons: ^1.0.8
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  hive_generator: ^2.0.0
+  build_runner: ^2.4.0
+  intl: ^0.19.0
+  crypto: ^3.0.3
+  web_socket_channel: ^3.0.3
+  hex: ^0.2.0
+  bip340: ^0.3.0
+  encrypt: ^5.0.3
+  pointycastle: ^3.7.3
+  convert: ^3.1.1
+  synchronized: ^3.1.0+1
+  permission_handler: ^11.3.1
+  flutter_webrtc: ^0.12.0
+  proximity_sensor: ^1.2.5
+  wakelock_plus: ^1.2.8
+  emoji_picker_flutter: ^4.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mockito: ^5.4.0
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+  build_runner: ^2.4.11
+  hive_generator: ^2.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
+  adaptive_icon_background: "#2196F3"
+  adaptive_icon_foreground: "assets/icon.png"
