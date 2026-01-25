@@ -26,9 +26,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
       }
     };
 
-    widget.relayManager.setMessageDeliveredHandler((eventId) {
-      _updateMessageStatus(eventId, 'delivered');
-    });
+    widget.relayManager.onMessageDelivered = (eventId) {
+      if (mounted) {
+        _updateMessageStatus(eventId, 'delivered');
+        setState(() {}); // Centang langsung berubah di layar
+      }
+    };
   }
 
   // Generate warna avatar berdasarkan pubkey

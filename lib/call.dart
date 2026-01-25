@@ -108,7 +108,6 @@ class CallManager {
   dynamic _currentRelay;
   String? _currentTargetPubkey;
   bool _isMakingOffer = false;
-  DateTime? _lastSignalSent;
 
   // Connection State
   CallState _callState = CallState.idle;
@@ -352,6 +351,7 @@ class CallManager {
       _logCallEvent('ice_connection_state', {'state': state.toString()});
       if (state == rtc.RTCIceConnectionState.RTCIceConnectionStateConnected ||
           state == rtc.RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _startQualityMonitoring();
         _reconnectAttempts = 0;
         _setCallState(CallState.active);
         _connectionTimeoutTimer?.cancel();
@@ -1044,7 +1044,7 @@ class _CallScreenState extends State<CallScreen> {
       );
       // Beri sedikit delay sebelum setOverlayStyle agar tidak 'kaget'
       Future.delayed(const Duration(milliseconds: 300), () {
-        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+        SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.light,
         ));

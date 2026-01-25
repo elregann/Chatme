@@ -36,8 +36,8 @@ class RelayManager {
   bool _isInitialized = false;
   bool _isConnecting = false;
 
-  Function(Map<String, dynamic>)? _onMessageReceived;
-  Function(String)? _onMessageDelivered;
+  Function(Map<String, dynamic>)? onMessageReceivedWithData;
+  Function(String)? onMessageDelivered;
 
   // --- KONEKSI & DISKONEKSI ---
 
@@ -299,7 +299,7 @@ class RelayManager {
         peerPubkey,
       );
 
-      if (decrypted == null) {
+      if (decrypted.isEmpty) {
         if (event['kind'] == 1) {
           decrypted = content;
         } else {
@@ -420,6 +420,7 @@ class RelayManager {
         ChatManager.instance.updateMessageStatus(messageId, 'sent');
 
         if (onMessageReceived != null) onMessageReceived!();
+        if (onMessageDelivered != null) onMessageDelivered!(messageId);
       }
     } catch (e) {
       DebugLogger.log('❌ Error in _handleOk: $e');
@@ -449,7 +450,7 @@ class RelayManager {
         receiverPubkey,
       );
 
-      if (encryptedContent == null) {
+      if (encryptedContent.isEmpty) {
         throw Exception('Encryption failed');
       }
 
@@ -470,13 +471,13 @@ class RelayManager {
 
       final eventId = NostrHelpers.generateEventId(unsignedEvent);
 
-      if (eventId == null || eventId.isEmpty) {
+      if (eventId.isEmpty) {
         throw Exception('Event ID generation failed');
       }
 
       final signature = EncryptionManager.sign(eventId, myPrivkey);
 
-      if (signature == null || signature.isEmpty) {
+      if (signature.isEmpty) {
         throw Exception('Signature generation failed');
       }
 
@@ -554,7 +555,7 @@ class RelayManager {
         myPubkey,
         receiverPubkey,
       );
-      if (encryptedContent == null) return;
+      if (encryptedContent.isEmpty) return;
 
       final unsignedEvent = {
         'pubkey': myPubkey,
@@ -746,9 +747,6 @@ class RelayManager {
   void connectIfNeeded() {
     if (_connections.isEmpty || !_isConnected.value) connect();
   }
-
-  void setMessageDeliveredHandler(Function(String) h) => _onMessageDelivered = h;
-  void setMessageHandler(Function(Map<String, dynamic>) h) => _onMessageReceived = h;
 
   ValueListenable<bool> get isConnected => _isConnected;
   ValueListenable<int> get connectedCount => _connectedCount;

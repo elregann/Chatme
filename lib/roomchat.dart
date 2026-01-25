@@ -10,8 +10,6 @@ import 'call.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
 
-///sudah banyak perbaikan... alhamdulillah
-
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
   final RelayManager relayManager;
