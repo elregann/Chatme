@@ -626,36 +626,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.phone_outlined, color: isDark ? Colors.white : Colors.black),
-            onPressed: () async {
-              // 1. Turunkan keyboard dulu agar tidak mengganggu layout transisi
-              FocusScope.of(context).unfocus();
+            onPressed: () {
+              final manager = CallManager.instance;
+              final Color warnaKontak = Color(int.parse(widget.contact.pubkey.substring(0, 8), radix: 16) | 0xFF000000);
 
-              // 2. Beri jeda sangat singkat (100ms) agar animasi keyboard menutup selesai
-              await Future.delayed(const Duration(milliseconds: 100));
-
-              final Color warnaUntukTelfon = Color(
-                  int.parse(widget.contact.pubkey.substring(0, 8), radix: 16) | 0xFF000000
+              manager.startCallFlow(
+                context: context,
+                peerName: displayName,
+                peerPubkey: widget.contact.pubkey,
+                relay: widget.relayManager,
+                peerColor: warnaKontak,
               );
-
-              // 3. Jalankan logika panggilan
-              CallManager.instance.makeOffer(widget.contact.pubkey, widget.relayManager, () => debugPrint("✅ Panggilan tersambung!"));
-
-              if (mounted) {
-                // 4. Gunakan transisi yang lebih stabil (tanpa bayangan berat)
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        fullscreenDialog: true, // Membuat transisi slide dari bawah yang lebih smooth untuk Call
-                        builder: (context) => CallScreen(
-                            peerName: displayName,
-                            peerPubkey: widget.contact.pubkey,
-                            relay: widget.relayManager,
-                            isIncoming: false,
-                            peerColor: warnaUntukTelfon
-                        )
-                    )
-                );
-              }
             },
           ),
           IconButton(

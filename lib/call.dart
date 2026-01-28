@@ -104,15 +104,28 @@ class CallManager {
   rtc.MediaStream? _localStream;
   rtc.RTCVideoRenderer? _remoteRenderer;
 
+  String? activePeerName;
+  String? activePeerPubkey;
+  Color? activePeerColor;
+
   // Signaling State
   dynamic _currentRelay;
   String? _currentTargetPubkey;
   bool _isMakingOffer = false;
 
   // Connection State
-  CallState _callState = CallState.idle;
+  static CallState _sharedCallState = CallState.idle;
+  int _lastProcessedTimestamp = DateTime.now().millisecondsSinceEpoch;
+  static final ValueNotifier<CallState> _sharedNotifier = ValueNotifier(CallState.idle);
+  int _actualSeconds = 0;
+  Timer? _durationTimer;
+  DateTime? callStartTime;
   int _reconnectAttempts = 0;
   bool _isDisposing = false;
+
+  // Getter merujuk ke static variable
+  CallState get callState => _sharedCallState;
+  ValueNotifier<CallState> get callStateNotifier => _sharedNotifier;
 
   // Audio Control State
   bool _isMuted = false;
@@ -135,7 +148,6 @@ class CallManager {
   // ========== PUBLIC GETTERS ==========
   bool get isMuted => _isMuted;
   bool get isSpeakerOn => _isSpeakerOn;
-  CallState get callState => _callState;
   rtc.RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
   List<CallEvent> get callLog => List.unmodifiable(_callLog);
 
@@ -180,19 +192,42 @@ class CallManager {
     _stateChangeCallbacks.remove(id);
   }
 
+  void setSessionInfo(String name, String pubkey, Color color) {
+    activePeerName = name;
+    activePeerPubkey = pubkey;
+    activePeerColor = color;
+  }
+
   // ========== STATE MANAGEMENT ==========
   void _setCallState(CallState newState) {
-    if (_callState == newState) return;
+    if (_sharedCallState == newState) return;
+    _sharedCallState = newState;
 
-    final oldState = _callState;
-    _callState = newState;
+    if (newState == CallState.active) {
+      callStartTime ??= DateTime.now();
 
-    _logCallEvent('state_change', {
-      'from': oldState.toString(),
-      'to': newState.toString()
-    });
+      _durationTimer?.cancel();
+      _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        _actualSeconds++;
+      });
+
+    } else if (newState == CallState.idle) {
+      _durationTimer?.cancel();
+      _durationTimer = null;
+      _actualSeconds = 0;
+
+      callStartTime = null;
+      activePeerName = null;
+      activePeerPubkey = null;
+      activePeerColor = null;
+    }
+
+    _sharedNotifier.value = newState;
+    _logCallEvent('state_change', {'to': newState.toString()});
     _notifyCallbacks(_stateChangeCallbacks, newState);
   }
+
+  int get currentDuration => _actualSeconds;
 
   // ========== EVENT LOGGING & NOTIFICATION ==========
   void _logCallEvent(String event, [Map<String, dynamic>? data]) {
@@ -304,9 +339,12 @@ class CallManager {
   Future<void> setupPeerConnection(String targetPubkey, dynamic relay, Function onConnected) async {
     if (_peerConnection != null) return;
     try {
-      _logCallEvent('peerconnection_setup_started');
+      _lastProcessedTimestamp = DateTime.now().millisecondsSinceEpoch;
 
-      // Konfigurasi dengan dukungan IPv6 untuk jaringan seluler
+      _logCallEvent('peerconnection_setup_started');
+      _currentRelay = relay;
+      _currentTargetPubkey = targetPubkey;
+
       _peerConnection = await rtc.createPeerConnection(CallConstants.getIceConfig(), {
         'mandatory': {},
         'optional': [
@@ -316,6 +354,10 @@ class CallManager {
       });
 
       _setupConnectionEvents(targetPubkey, relay, onConnected);
+
+      relay.onSignalReceived = (Map<String, dynamic> event) {
+        _handleGlobalIncomingSignal(event);
+      };
 
       if (_localStream != null) {
         for (final track in _localStream!.getTracks()) {
@@ -327,6 +369,67 @@ class CallManager {
       _peerConnection = null;
       _notifyError('Gagal menyiapkan koneksi.');
       rethrow;
+    }
+  }
+
+  void startCallFlow({
+    required BuildContext context,
+    required String peerName,
+    required String peerPubkey,
+    required dynamic relay,
+    required Color peerColor,
+  }) {
+
+    if (_sharedCallState != CallState.idle) {
+      debugPrint("⚠️ PANGGILAN AKTIF: Melewatkan makeOffer, hanya buka UI.");
+    } else {
+      debugPrint("📞 PANGGILAN BARU: Menyiapkan sesi dan makeOffer.");
+      setSessionInfo(peerName, peerPubkey, peerColor);
+      makeOffer(peerPubkey, relay, () => debugPrint("✅ Connected"));
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        settings: const RouteSettings(name: '/call'),
+        builder: (context) => CallScreen(
+          peerName: activePeerName ?? peerName,
+          peerPubkey: activePeerPubkey ?? peerPubkey,
+          relay: relay,
+          isIncoming: false,
+          peerColor: activePeerColor ?? peerColor,
+        ),
+      ),
+    );
+  }
+
+  void _handleGlobalIncomingSignal(Map<String, dynamic> event) {
+    try {
+      final int? msgTimestamp = event['created_at'];
+
+      if (msgTimestamp != null && (msgTimestamp * 1000) < _lastProcessedTimestamp) {
+        debugPrint("⚠️ Sinyal basi diabaikan: Ghost Call dari masa lalu terdeteksi.");
+        return;
+      }
+
+      final data = jsonDecode(event['content']);
+      if (data is! Map) return;
+
+      switch (data['type']) {
+        case CallConstants.signalHangup:
+          _logCallEvent('remote_hangup_received_by_manager');
+          stopCall();
+          break;
+        case CallConstants.signalCandidate:
+          addCandidate(data['data']);
+          break;
+        case CallConstants.signalAnswer:
+          handleAnswer(data['data'], () {});
+          break;
+      }
+    } catch (e) {
+      debugPrint('Manager signal error: $e');
     }
   }
 
@@ -376,7 +479,11 @@ class CallManager {
 
   // ========== SIGNALING HANDLERS ==========
   Future<void> makeOffer(String targetPubkey, dynamic relay, Function onConnected) async {
-    if (_isMakingOffer || _callState != CallState.idle) return;
+    if (_sharedCallState != CallState.idle || _isMakingOffer) {
+      debugPrint("❌ makeOffer ditolak: Manager sedang sibuk atau tidak dalam status Idle.");
+      return;
+    }
+
     _isMakingOffer = true;
     try {
       _logCallEvent('make_offer_started');
@@ -438,14 +545,20 @@ class CallManager {
   }
 
   Future<void> handleAnswer(String sdp, Function onConnected) async {
-    if (_peerConnection == null) return;
-    if (_peerConnection!.signalingState == rtc.RTCSignalingState.RTCSignalingStateStable) return;
+    if (_peerConnection == null || _isDisposing) return;
+
+    if (_peerConnection!.signalingState == rtc.RTCSignalingState.RTCSignalingStateStable) {
+      debugPrint('ℹ️ Connection already stable, skipping duplicate answer');
+      return;
+    }
 
     try {
-      await _peerConnection!.setRemoteDescription(rtc.RTCSessionDescription(sdp, 'answer'));
-      _setCallState(CallState.connecting);
+      _logCallEvent('setting_remote_description_answer');
+      await _peerConnection!.setRemoteDescription(
+          rtc.RTCSessionDescription(sdp, 'answer')
+      );
     } catch (e) {
-      debugPrint('Error handling answer: $e');
+      _logCallEvent('handle_answer_error', {'error': e.toString()});
     }
   }
 
@@ -490,7 +603,7 @@ class CallManager {
   void _startConnectionTimeout() {
     _connectionTimeoutTimer?.cancel();
     _connectionTimeoutTimer = Timer(const Duration(seconds: 30), () async {
-      if (_callState != CallState.active) {
+      if (_sharedCallState != CallState.active) {
         if (_currentRelay != null && _currentTargetPubkey != null) {
           _currentRelay.sendCallSignal(_currentTargetPubkey!, {'type': 'hangup'});
         }
@@ -521,7 +634,7 @@ class CallManager {
   void _startQualityMonitoring() {
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (_peerConnection == null || _callState != CallState.active) {
+      if (_peerConnection == null || _sharedCallState != CallState.active) {
         timer.cancel();
         return;
       }
@@ -610,7 +723,6 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   // ========== DEPENDENCIES ==========
   final CallManager _callManager = CallManager.instance;
-  Function(dynamic)? _originalRelayCallback;
 
   // ========== UI STATE ==========
   late bool _isCallActive;
@@ -624,12 +736,10 @@ class _CallScreenState extends State<CallScreen> {
   Timer? _callTimer;
   Timer? _errorAutoCloseTimer;
   StreamSubscription<int>? _proximitySubscription;
-  int _seconds = 0;
 
   // ========== FLAGS & IDS ==========
   final List<String> _callbackIds = [];
   bool _isInitializing = false;
-  bool _isHandlingHangup = false;
   bool _isEndingCall = false;
 
   // ========== LIFECYCLE ==========
@@ -637,6 +747,7 @@ class _CallScreenState extends State<CallScreen> {
   void initState() {
     super.initState();
     _isCallActive = false;
+    _setupCallbacks();
 
     _logCallEvent('call_screen_init', {
       'isIncoming': widget.isIncoming,
@@ -644,16 +755,23 @@ class _CallScreenState extends State<CallScreen> {
       'hasRemoteSdp': widget.remoteSdp != null && widget.remoteSdp!.isNotEmpty
     });
 
-    _setupCallbacks();
     _initProximitySensor();
-    _setupRemoteHangupDetection();
 
-    if (!widget.isIncoming) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _startOutgoingCall();
-      });
+    if (_callManager.callState != CallState.idle) {
+      if (_callManager.callState == CallState.active) {
+        _isCallActive = true;
+        _startTimer();
+      }
+
+      debugPrint("Layar dibuka kembali: Melewatkan inisialisasi telfon baru.");
     } else {
-      _startMissedCallTimeout();
+      if (!widget.isIncoming) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _startOutgoingCall();
+        });
+      } else {
+        _startMissedCallTimeout();
+      }
     }
   }
 
@@ -665,6 +783,7 @@ class _CallScreenState extends State<CallScreen> {
 
   // ========== INITIALIZATION ==========
   void _setupCallbacks() {
+    _callbackIds.clear();
     _callbackIds.add(_callManager.addConnectionCallback(_onCallConnected));
     _callbackIds.add(_callManager.addErrorCallback(_onCallError));
     _callbackIds.add(_callManager.addCallEndedCallback(_onCallEnded));
@@ -687,34 +806,9 @@ class _CallScreenState extends State<CallScreen> {
 
   void _updateSystemUIMode() {
     if (!kIsWeb) {
-      // Gunakan leanBack agar status bar hanya tersembunyi tanpa mengubah layout dasar (no deg!)
       SystemChrome.setEnabledSystemUIMode(
         _isNearProximity ? SystemUiMode.leanBack : SystemUiMode.edgeToEdge,
       );
-    }
-  }
-
-  void _setupRemoteHangupDetection() {
-    try {
-      _originalRelayCallback ??= widget.relay.onSignalReceived;
-      widget.relay.onSignalReceived = (Map<String, dynamic> event) {
-        _originalRelayCallback?.call(event);
-        if (!mounted) return;
-        _handleIncomingSignal(event);
-      };
-    } catch (e) {
-      debugPrint('Remote hangup setup failed: $e');
-    }
-  }
-
-  void _handleIncomingSignal(Map<String, dynamic> event) {
-    try {
-      final data = jsonDecode(event['content']);
-      if (data is Map && data['type'] == CallConstants.signalHangup) {
-        _onRemoteHangup();
-      }
-    } catch (_) {
-      // Ignore parsing errors
     }
   }
 
@@ -742,10 +836,9 @@ class _CallScreenState extends State<CallScreen> {
 
   void _startTimer() {
     _cancelTimer(_callTimer);
-    _seconds = 0;
     _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
-        setState(() => _seconds++);
+        setState(() {});
       } else {
         timer.cancel();
       }
@@ -766,6 +859,13 @@ class _CallScreenState extends State<CallScreen> {
 
   // ========== CALL CONTROL ==========
   Future<void> _startOutgoingCall() async {
+    if (_callManager.callState == CallState.active ||
+        _callManager.callState == CallState.connecting) {
+      _logCallEvent('already_in_call_skipping_offer');
+      _onCallConnected();
+      return;
+    }
+
     if (_isInitializing || _isCallActive || _isEndingCall || _hasError) {
       _logCallEvent('call_start_skipped', {
         'initializing': _isInitializing,
@@ -842,10 +942,6 @@ class _CallScreenState extends State<CallScreen> {
     _isEndingCall = true;
     _logCallEvent('call_ending_started', {'isTimeout': isTimeout});
 
-    if (_isHandlingHangup) {
-      _isHandlingHangup = false;
-    }
-
     try {
       if (!isTimeout && widget.relay != null) {
         widget.relay.sendCallSignal(
@@ -855,6 +951,7 @@ class _CallScreenState extends State<CallScreen> {
       }
 
       _cancelAllTimers();
+
       _callManager.stopCall(sendHangupSignal: false);
 
       if (mounted) {
@@ -866,6 +963,10 @@ class _CallScreenState extends State<CallScreen> {
             _errorMessage = 'Panggilan berakhir';
           }
         });
+
+        if (Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
       }
     } catch (e) {
       _logCallEvent('call_ending_error', {'error': e.toString()});
@@ -875,18 +976,8 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   // ========== EVENT HANDLERS ==========
-  void _onRemoteHangup() {
-    if (!mounted || _isHandlingHangup || _isEndingCall || _hasError) return;
-
-    _isHandlingHangup = true;
-    _logCallEvent('remote_hangup_received');
-
-    // Langsung end call (tanpa pesan error)
-    _endCall(isTimeout: false);
-  }
-
   void _onCallConnected() {
-    if (!mounted || _isCallActive) return;
+    if (!mounted) return;
 
     setState(() {
       _isCallActive = true;
@@ -919,66 +1010,38 @@ class _CallScreenState extends State<CallScreen> {
   void _onCallStateChanged(CallState state) {
     if (!mounted) return;
 
-    _logCallEvent('call_state_changed_ui', {
-      'from': _callManager.callState.toString(),
-      'to': state.toString(),
-      'currentUI': {
-        'isCallActive': _isCallActive,
-        'isConnecting': _isConnecting,
-        'hasError': _hasError
+    _logCallEvent('ui_state_sync', {'state': state.toString()});
+
+    setState(() {
+      switch (state) {
+        case CallState.active:
+          _isCallActive = true;
+          _isConnecting = false;
+          _hasError = false;
+          _startTimer();
+          break;
+        case CallState.connecting:
+        case CallState.reconnecting:
+        case CallState.ringing:
+        case CallState.initializing:
+          _isConnecting = true;
+          _hasError = false;
+          break;
+        case CallState.error:
+          _isCallActive = false;
+          _isConnecting = false;
+          _hasError = true;
+          break;
+        case CallState.idle:
+        case CallState.ending:
+          _isCallActive = false;
+          _isConnecting = false;
+          if (ModalRoute.of(context)?.isCurrent == true) {
+            Navigator.of(context).pop();
+          }
+          break;
       }
     });
-
-    if (_shouldUpdateUI(state)) {
-      setState(() {
-        switch (state) {
-          case CallState.active:
-            _isCallActive = true;
-            _isConnecting = false;
-            _hasError = false;
-            break;
-
-          case CallState.connecting:
-          case CallState.reconnecting:
-          case CallState.initializing:
-          case CallState.ringing:
-            _isCallActive = false;
-            _isConnecting = true;
-            _hasError = false;
-            break;
-
-          case CallState.error:
-            _isCallActive = false;
-            _isConnecting = false;
-            _hasError = true;
-            _errorMessage ??= 'Kesalahan koneksi';
-            break;
-
-          case CallState.ending:
-          case CallState.idle:
-            _isCallActive = false;
-            _isConnecting = false;
-            break;
-        }
-      });
-    }
-  }
-
-  bool _shouldUpdateUI(CallState state) {
-    switch (state) {
-      case CallState.active:
-        return !_isCallActive || _isConnecting || _hasError;
-      case CallState.connecting:
-      case CallState.reconnecting:
-      case CallState.initializing:
-      case CallState.ringing:
-        return _isCallActive || !_isConnecting || _hasError;
-      case CallState.error:
-        return !_hasError;
-      case CallState.ending:
-      case CallState.idle:
-        return _isCallActive || _isConnecting;
-    }
   }
 
   void _handleError(String error) {
@@ -1011,12 +1074,6 @@ class _CallScreenState extends State<CallScreen> {
     }
   }
 
-  String _formatDuration(int seconds) {
-    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
-    final secs = (seconds % 60).toString().padLeft(2, '0');
-    return "$minutes:$secs";
-  }
-
   void _cancelTimer(Timer? timer) {
     timer?.cancel();
   }
@@ -1034,15 +1091,13 @@ class _CallScreenState extends State<CallScreen> {
     _proximitySubscription = null;
 
     _isInitializing = false;
-    _isHandlingHangup = false;
     _isEndingCall = false;
 
-    // Perbaikan: Kembalikan System UI dengan cara yang lebih lembut
     if (!kIsWeb) {
       SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.edgeToEdge, // Pastikan kembali ke standar aplikasi
+        SystemUiMode.edgeToEdge,
       );
-      // Beri sedikit delay sebelum setOverlayStyle agar tidak 'kaget'
+
       Future.delayed(const Duration(milliseconds: 300), () {
         SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
@@ -1052,8 +1107,6 @@ class _CallScreenState extends State<CallScreen> {
     }
 
     _removeAllCallbacks();
-    _restoreRelayCallback();
-
     widget.onClose?.call();
   }
 
@@ -1070,14 +1123,6 @@ class _CallScreenState extends State<CallScreen> {
     }
   }
 
-  void _restoreRelayCallback() {
-    try {
-      widget.relay.onSignalReceived = _originalRelayCallback;
-    } catch (e) {
-      debugPrint('Error restoring relay callback: $e');
-    }
-  }
-
 // ========== UI BUILDING ==========
   @override
   Widget build(BuildContext context) {
@@ -1085,43 +1130,31 @@ class _CallScreenState extends State<CallScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return PopScope(
-      canPop: !(_isCallActive || _isConnecting),
-      onPopInvokedWithResult: (bool didPop, Object? result) async {
-        if (didPop) return;
-
-        if (_isCallActive || _isConnecting) {
-          final shouldEnd = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('End Call?'),
-              content: const Text('Are you sure you want to end the call?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('End', style: TextStyle(color: Colors.red)),
-                ),
-              ],
-            ),
-          );
-
-          if (shouldEnd == true) {
-            _endCall();
-          }
+      canPop: true,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) {
+          _logCallEvent('navigating_to_background');
         }
       },
       child: Scaffold(
         backgroundColor: isDark ? const Color(0xFF0B0E14) : Colors.white,
         body: Stack(
           children: [
-            // 1. Tampilan Utama (Hanya muncul/interaktif jika HP tidak di telinga)
             SafeArea(
               child: Column(
                 children: [
-                  const SizedBox(height: 80),
+                  Align(
+                    alignment: Alignment.topLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 10, top: 10),
+                      child: IconButton(
+                        icon: const Icon(Icons.keyboard_arrow_down, size: 35),
+                        color: isDark ? Colors.white70 : Colors.black54,
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   _buildHeaderSection(isDark),
                   const Spacer(),
                   if (_hasError) _buildErrorDisplay(isDark),
@@ -1136,12 +1169,11 @@ class _CallScreenState extends State<CallScreen> {
               ),
             ),
 
-            // 2. Proximity Black Overlay (Layar mati total ala WhatsApp/AMOLED)
             if (_isNearProximity && !kIsWeb)
               Container(
                 width: double.infinity,
                 height: double.infinity,
-                color: Colors.black, // Layar menjadi hitam pekat
+                color: Colors.black,
               ),
           ],
         ),
@@ -1205,29 +1237,23 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  // Fungsi _buildProximityIndicator lama telah dihapus
-
   String _getStatusText() {
     if (_hasError) return _errorMessage ?? "Error";
 
-    final isIncoming = widget.isIncoming;
+    if (_callManager.callState == CallState.active) {
+      final totalSecs = _callManager.currentDuration;
+      final minutes = (totalSecs ~/ 60).toString().padLeft(2, '0');
+      final secs = (totalSecs % 60).toString().padLeft(2, '0');
+      return "$minutes:$secs";
+    }
 
+    final isIncoming = widget.isIncoming;
     switch (_callManager.callState) {
+      case CallState.connecting: return "Connecting...";
       case CallState.initializing:
-        return isIncoming ? "Incoming Call" : "Preparing...";
       case CallState.ringing:
-      case CallState.idle:
-        return isIncoming ? "Incoming Call" : "Calling...";
-      case CallState.connecting:
-        return "Connecting...";
-      case CallState.reconnecting:
-        return "Reconnecting...";
-      case CallState.active:
-        return _formatDuration(_seconds);
-      case CallState.ending:
-        return "Ending...";
-      case CallState.error:
-        return "Error";
+      case CallState.idle: return isIncoming ? "Incoming Call" : "Calling...";
+      default: return isIncoming ? "Incoming Call" : "Calling...";
     }
   }
 

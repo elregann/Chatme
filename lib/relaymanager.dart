@@ -186,14 +186,18 @@ class RelayManager {
     if (eventId.isEmpty || _processedEventIds.contains(eventId)) return;
 
     if (kind == 1000) {
-      if (onSignalReceived != null) onSignalReceived!(event);
+      try {
+        if (onSignalReceived != null) {
+          onSignalReceived!(event);
+        }
+      } catch (e) {}
 
       final myPubkey = AppSettings.instance.myPubkey;
       final senderPubkey = event['pubkey'];
       if (senderPubkey == myPubkey) return;
 
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      if (now - createdAt > 120) return;
+      if (now - createdAt > 30) return;
 
       _processedEventIds.add(eventId);
       _processCallSignal(event);
@@ -202,7 +206,6 @@ class RelayManager {
 
     if (kind == 1 || kind == 4 || kind == 7) {
       _processedEventIds.add(eventId);
-      // Kind 1 dan 4 sama-sama diproses sebagai pesan masuk
       if (kind == 1 || kind == 4) _processIncomingEvent(event);
       if (kind == 7) _handleReceiptEvent(event);
     }
