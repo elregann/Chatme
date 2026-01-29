@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,14 +43,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   String? _draggingId;
 
   int _newMessagesCount = 0;
+  double _lastKeyboardHeight = 300;
 
   String _floatingDate = "";
   bool _showFloatingDate = false;
 
   Timer? _floatingDateTimer;
   Timer? _scrollIdleTimer;
-
-  bool _readMarked = false;
 
   OverlayEntry? _reactionOverlayEntry;
   ChatMessage? _messageForReaction;
@@ -77,14 +77,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void initState() {
     super.initState();
     widget.relayManager.currentlyChattingWith = widget.contact.pubkey;
-    widget.relayManager.onMessageReceived = () {
+    widget.relayManager.onMessageReceived = () async {
       if (!mounted) return;
+
+      await _markAllAsRead(); // 🔥 KUNCI UTAMA
+
       if (!_userIsNearBottom) {
         setState(() => _newMessagesCount++);
       }
+
       _maybeAutoScroll();
       setState(() {});
     };
+
     _scrollController.addListener(_handleScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
@@ -215,27 +220,29 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   // =============================
 
   Future<void> _markAllAsRead() async {
-    if (_readMarked) return;
-    _readMarked = true;
+    if (!mounted) return;
 
-    try {
-      final myPubkey = AppSettings.instance.myPubkey;
-      final messages = await ChatManager.instance.getMessages(widget.contact.pubkey);
+    final peerPubkey = widget.contact.pubkey;
 
-      bool updated = false;
+    final messages = await ChatManager.instance.getMessages(peerPubkey);
 
-      for (final m in messages) {
-        if (m.senderPubkey != myPubkey && m.status != 'read') {
-          await widget.relayManager.sendReceipt(m.id, m.senderPubkey, 'read');
-          await ChatManager.instance.updateMessageStatus(m.id, 'read');
-          updated = true;
-        }
+    bool updated = false;
+
+    for (final m in messages) {
+      if (m.senderPubkey == peerPubkey && m.status != 'read') {
+        await widget.relayManager.sendReceipt(
+          m.id,
+          peerPubkey,
+          'read',
+        );
+        await ChatManager.instance.updateMessageStatus(m.id, 'read');
+        updated = true;
       }
+    }
 
-      if (updated && mounted) setState(() {});
-      await ChatManager.instance.clearUnreadCount(widget.contact.pubkey);
-    } catch (e) {
-      debugPrint('markAllAsRead error: $e');
+    if (updated && mounted) {
+      await ChatManager.instance.clearUnreadCount(peerPubkey);
+      setState(() {});
     }
   }
 
@@ -284,7 +291,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final realMessage = tempMessage.copyWith(
         id: event['id'].toString(),
         content: event['content'].toString(),
-        status: 'sent',
+        status: 'sending',
       );
 
       await ChatManager.instance.saveMessage(realMessage);
@@ -589,17 +596,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0B141A) : const Color(0xFFE5DDD5),
+      backgroundColor: isDark
+          ? Theme.of(context).scaffoldBackgroundColor
+          : const Color(0xFFE5DDD5),
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: headerColor,
-        scrolledUnderElevation: 0, // Kunci agar warna tidak berubah saat scroll
+        scrolledUnderElevation: 0,
         elevation: 0,
         title: InkWell(
           onTap: () {
             Clipboard.setData(ClipboardData(text: widget.contact.pubkey));
             HapticFeedback.lightImpact();
-            // SnackBar dihapus sesuai permintaan
           },
           child: Row(
             children: [
@@ -627,13 +635,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           IconButton(
             icon: Icon(Icons.phone_outlined, color: isDark ? Colors.white : Colors.black),
             onPressed: () {
-              final manager = CallManager.instance;
-              final Color warnaKontak = Color(int.parse(widget.contact.pubkey.substring(0, 8), radix: 16) | 0xFF000000);
+              final String pubkey = widget.contact.pubkey;
+              final Color warnaKontak = Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
 
-              manager.startCallFlow(
+              CallManager.instance.startCallFlow(
                 context: context,
                 peerName: displayName,
-                peerPubkey: widget.contact.pubkey,
+                peerPubkey: pubkey,
                 relay: widget.relayManager,
                 peerColor: warnaKontak,
               );
@@ -797,186 +805,187 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Tombol tetap 38 agar nyaman ditekan jempol
     const double actionButtonSize = 38.0;
-    // containerHeight kita turunkan jadi 38 agar mepet dengan tombol
     const double containerHeight = 38.0;
-    const double containerBorderRadius = 20.0;
-
-    final double currentKeyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    const double emojiHeight = 300.0;
-
     final accentColor = const Color(0xFF1976D2);
     final inputBgColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SafeArea(
-          top: false,
-          child: Padding(
-            // Padding atas dikurangi jadi 4 agar tidak terlalu berjarak dengan chat
-            padding: EdgeInsets.fromLTRB(12, 4, 12, kIsWeb ? 12 : 4),
-            child: Container(
-              // minHeight diturunkan jadi 38 agar border belakang ikut mengecil
-              // Jika sedang reply, tambahkan ruang ekstra (misal jadi 230)
-              constraints: BoxConstraints(
-                minHeight: 38,
-                maxHeight: _replyingTo != null ? 230 : 180,
-              ),
-              decoration: BoxDecoration(
-                color: inputBgColor,
-                borderRadius: BorderRadius.circular(containerBorderRadius),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(isDark ? 30 : 15),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
+    // Bungkus dengan VisibilityBuilder agar kita tahu status keyboard secara real-time
+    return KeyboardVisibilityBuilder(
+      builder: (context, isKeyboardVisible) {
+        // Ambil tinggi keyboard saat ini
+        double currentHeight = MediaQuery.of(context).viewInsets.bottom;
+
+        // Jika keyboard sedang muncul, simpan tingginya ke memori kita
+        if (currentHeight > 0) {
+          _lastKeyboardHeight = currentHeight;
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                    10,                // Kiri
+                    kIsWeb ? 20 : 6,   // Atas
+                    10,                // Kanan
+                    kIsWeb ? 20 : 6    // Bawah
+                ),
+                child: Container(
+                  constraints: BoxConstraints(
+                    minHeight: 38,
+                    maxHeight: _replyingTo != null ? 230 : 180,
                   ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_replyingTo != null) _buildReplyPreviewInside(),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          // Padding vertical dikecilkan agar teks tidak mendorong border
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: TextField(
-                            controller: _messageController,
-                            focusNode: _focusNode,
-                            onTap: () {
-                              if (_isEmojiVisible) setState(() => _isEmojiVisible = false);
-                            },
-                            textCapitalization: TextCapitalization.sentences,
-                            maxLines: 5,
-                            minLines: 1,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: isDark ? Colors.white : Colors.black,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'Message',
-                              hintStyle: TextStyle(
-                                color: isDark ? Colors.white38 : Colors.black38,
-                              ),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 20,
-                                // Vertical 8 sudah cukup ramping untuk HP
-                                vertical: kIsWeb ? 10 : 8,
-                              ),
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Tombol Emoji
-                      Container(
-                        height: containerHeight, // Sekarang 38.0
-                        alignment: Alignment.center,
-                        child: GestureDetector(
-                          onTap: () {
-                            if (kIsWeb) {
-                              setState(() => _isEmojiVisible = !_isEmojiVisible);
-                            } else {
-                              if (_isEmojiVisible) {
-                                _focusNode.requestFocus();
-                                Future.delayed(const Duration(milliseconds: 100), () {
-                                  if (mounted) setState(() => _isEmojiVisible = false);
-                                });
-                              } else {
-                                _focusNode.unfocus();
-                                Future.delayed(const Duration(milliseconds: 150), () {
-                                  if (mounted) setState(() => _isEmojiVisible = true);
-                                });
-                              }
-                            }
-                          },
-                          child: Transform.translate(
-                            offset: const Offset(0, -4),
-                            child: Container(
-                              height: actionButtonSize,
-                              width: actionButtonSize,
-                              color: Colors.transparent,
-                              child: Icon(
-                                _isEmojiVisible ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined,
-                                color: isDark ? Colors.white54 : Colors.black45,
-                                size: 26,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Tombol Send
-                      Container(
-                        height: containerHeight,
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.only(right: 4, left: 10),
-                        child: GestureDetector(
-                          onTap: _isSending ? null : _sendMessage,
-                          child: Transform.translate(
-                            offset: const Offset(0, -4), // Samakan dengan emoji biar sejajar
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              height: actionButtonSize,
-                              width: actionButtonSize,
-                              decoration: BoxDecoration(
-                                color: accentColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: _isSending
-                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                    : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                              ),
-                            ),
-                          ),
-                        ),
+                  decoration: BoxDecoration(
+                    color: inputBgColor,
+                    borderRadius: BorderRadius.circular(22), // Sudut lingkaran
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(isDark ? 30 : 15),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                ],
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_replyingTo != null) _buildReplyPreviewInside(),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: TextField(
+                                controller: _messageController,
+                                focusNode: _focusNode,
+                                onTap: () {
+                                  if (_isEmojiVisible) setState(() => _isEmojiVisible = false);
+                                },
+                                textCapitalization: TextCapitalization.sentences,
+                                maxLines: 5,
+                                minLines: 1,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: isDark ? Colors.white : Colors.black,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: 'Message',
+                                  hintStyle: TextStyle(
+                                    color: isDark ? Colors.white38 : Colors.black38,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: kIsWeb ? 10 : 8,
+                                  ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Tombol Emoji
+                          Container(
+                            height: containerHeight,
+                            alignment: Alignment.center,
+                            child: GestureDetector(
+                              onTap: () {
+                                if (kIsWeb) {
+                                  setState(() => _isEmojiVisible = !_isEmojiVisible);
+                                } else {
+                                  if (_isEmojiVisible) {
+                                    _focusNode.requestFocus();
+                                    Future.delayed(const Duration(milliseconds: 100), () {
+                                      if (mounted) setState(() => _isEmojiVisible = false);
+                                    });
+                                  } else {
+                                    _focusNode.unfocus();
+                                    Future.delayed(const Duration(milliseconds: 150), () {
+                                      if (mounted) setState(() => _isEmojiVisible = true);
+                                    });
+                                  }
+                                }
+                              },
+                              child: Transform.translate(
+                                offset: const Offset(0, -4),
+                                child: Container(
+                                  height: actionButtonSize,
+                                  width: actionButtonSize,
+                                  color: Colors.transparent,
+                                  child: Icon(
+                                    _isEmojiVisible ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined,
+                                    color: isDark ? Colors.white54 : Colors.black45,
+                                    size: 26,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Tombol Send
+                          Container(
+                            height: containerHeight,
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.only(right: 4, left: 10),
+                            child: GestureDetector(
+                              onTap: _isSending ? null : _sendMessage,
+                              child: Transform.translate(
+                                offset: const Offset(0, -4),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  height: actionButtonSize,
+                                  width: actionButtonSize,
+                                  decoration: BoxDecoration(
+                                    color: accentColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: _isSending
+                                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
 
-        if (_isEmojiVisible && currentKeyboardHeight <= 0)
-          SizedBox(
-            height: emojiHeight,
-            child: EmojiPicker(
-              onEmojiSelected: (category, emoji) {
-                _messageController.text = _messageController.text + emoji.emoji;
-              },
-              config: Config(
-                height: emojiHeight,
-                checkPlatformCompatibility: true,
-                emojiViewConfig: EmojiViewConfig(
-                  backgroundColor: isDark ? const Color(0xFF0B0E14) : Colors.white,
-                  columns: 7,
-                  emojiSizeMax: 28,
-                  gridPadding: EdgeInsets.zero,
-                  horizontalSpacing: 0,
-                  verticalSpacing: 0,
+            // Bagian Emoji: Muncul hanya jika emoji aktif DAN keyboard sudah tertutup
+            if (_isEmojiVisible && !isKeyboardVisible)
+              SizedBox(
+                height: _lastKeyboardHeight, // Pakai angka terakhir yang ditangkap
+                child: EmojiPicker(
+                  onEmojiSelected: (category, emoji) {
+                    _messageController.text = _messageController.text + emoji.emoji;
+                  },
+                  config: Config(
+                    height: _lastKeyboardHeight,
+                    checkPlatformCompatibility: true,
+                    emojiViewConfig: EmojiViewConfig(
+                      backgroundColor: isDark ? const Color(0xFF0B0E14) : Colors.white,
+                      columns: 7,
+                      emojiSizeMax: 28,
+                    ),
+                    categoryViewConfig: CategoryViewConfig(
+                      backgroundColor: isDark ? const Color(0xFF1A1D21) : Colors.grey[100]!,
+                      indicatorColor: accentColor,
+                      iconColorSelected: accentColor,
+                    ),
+                    bottomActionBarConfig: const BottomActionBarConfig(enabled: false),
+                  ),
                 ),
-                categoryViewConfig: CategoryViewConfig(
-                  backgroundColor: isDark ? const Color(0xFF1A1D21) : Colors.grey[100]!,
-                  indicatorColor: accentColor,
-                  iconColorSelected: accentColor,
-                  backspaceColor: accentColor,
-                ),
-                bottomActionBarConfig: const BottomActionBarConfig(enabled: false),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -1000,8 +1009,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(16),
-            bottom: Radius.circular(12)
+            top: Radius.circular(18), // Kiri kanan atas bagian reply dalam
+            bottom: Radius.circular(8)
         ),
       ),
       child: Row(
@@ -1135,11 +1144,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         DateTime.fromMillisecondsSinceEpoch(message.timestamp)
     );
 
-    // Bubble Saya: Terang (Hijau), Gelap (Biru #2196F3)
-    // Bubble Lawan: Terang (Putih), Gelap (Hitam AMOLED)
+    // Tema Bubble
     final bubbleColor = isMe
-        ? (isDark ? const Color(0xFF1976D2) : const Color(0xFFE3F2FD))
-        : (isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF));
+        ? (isDark ? const Color(0xFF2F5B80) : const Color(0xFFE3F2FD))
+        : (isDark ? const Color(0xFF1E272E) : const Color(0xFFFFFFFF));
 
     // Teks: Terang (Hitam), Gelap (Putih)
     final textColor = isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
@@ -1169,7 +1177,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     bottomLeft: Radius.circular(isMe ? 16 : 4),
                     bottomRight: Radius.circular(isMe ? 4 : 16),
                   ),
-                  // Tambahkan border tipis saat mode gelap agar bubble hitam tidak hilang di bg hitam
                   border: isDark && !isMe
                       ? Border.all(color: Colors.white10, width: 0.5)
                       : null,
@@ -1269,12 +1276,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Widget _buildStatusIcon(String status, Color color) {
     switch (status) {
-      case 'sending': return Icon(Icons.access_time, size: 13, color: color.withAlpha(153));
-      case 'sent': return Icon(Icons.done, size: 13, color: color.withAlpha(153));
-      case 'delivered': return Icon(Icons.done_all, size: 13, color: color.withAlpha(153));
-      case 'read': return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
-      case 'error': return const Icon(Icons.error_outline, size: 13, color: Colors.redAccent);
-      default: return Icon(Icons.done, size: 13, color: color.withAlpha(153));
+      case 'sending':
+        return Icon(Icons.access_time, size: 13, color: color.withAlpha(153));
+      case 'sent':
+        return Icon(Icons.done, size: 13, color: color.withAlpha(153));
+      case 'read':
+        return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
+      case 'error':
+        return const Icon(Icons.error_outline, size: 13, color: Colors.redAccent);
+      default:
+        return Icon(Icons.done, size: 13, color: color.withAlpha(153));
     }
   }
 

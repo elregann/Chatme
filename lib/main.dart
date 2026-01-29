@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -10,13 +9,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
-
-// Library Kriptografi & Nostr
 import 'package:crypto/crypto.dart';
 import 'package:hex/hex.dart';
 import 'package:bip340/bip340.dart' as bip340;
-
-// File internal proyek
 import 'notification_handler.dart';
 import 'call.dart';
 import 'roomchat.dart';
@@ -28,10 +23,8 @@ import 'tabchat.dart';
 
 part 'main.g.dart';
 
-// Global key untuk navigasi di luar widget tree
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-// Logger untuk debugging
 class DebugLogger {
   static final Map<String, List<String>> _logs = {};
   static bool _enabled = true;
@@ -68,7 +61,6 @@ class DebugLogger {
   }
 }
 
-// Adapter Hive untuk model ChatMessage
 class MessageAdapter extends TypeAdapter<ChatMessage> {
   @override final int typeId = 1;
 
@@ -105,7 +97,6 @@ class MessageAdapter extends TypeAdapter<ChatMessage> {
   }
 }
 
-// Model data untuk kontak
 @HiveType(typeId: 0)
 class Contact {
   @HiveField(0) final String pubkey;
@@ -135,7 +126,6 @@ class Contact {
   }
 }
 
-// Model data untuk pesan chat
 @HiveType(typeId: 1)
 class ChatMessage {
   @HiveField(0) final String id;
@@ -158,14 +148,13 @@ class ChatMessage {
     required this.content,
     required this.plaintext,
     required this.timestamp,
-    this.status = 'delivered',
+    this.status = 'sent',
     required this.chatKey,
     this.replyToId,
     this.replyToContent,
     this.reactions = const {},
   });
 
-  // Copy method untuk update status
   ChatMessage copyWithStatus(String newStatus) {
     return ChatMessage(
       id: id,
@@ -182,7 +171,6 @@ class ChatMessage {
     );
   }
 
-  // Copy method untuk update semua field
   ChatMessage copyWith({
     String? id,
     String? senderPubkey,
@@ -226,10 +214,8 @@ class ChatMessage {
     return reactions[senderPubkey];
   }
 
-  // Helper untuk cek apakah ada reactions
   bool get hasReactions => reactions.isNotEmpty;
 
-  // Get total reactions count
   int get reactionCount => reactions.length;
 
   bool get isMe => senderPubkey == AppSettings.instance.myPubkey;
@@ -250,7 +236,6 @@ class ChatMessage {
     };
   }
 
-  // Tambahkan juga Factory FromMap agar saat RESTORE, data bisa dibaca kembali
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
       id: map['id'],
@@ -259,7 +244,7 @@ class ChatMessage {
       content: map['content'],
       plaintext: map['plaintext'],
       timestamp: map['timestamp'],
-      status: map['status'] ?? 'delivered',
+      status: map['status'] ?? 'sent',
       chatKey: map['chatKey'],
       replyToId: map['replyToId'],
       replyToContent: map['replyToContent'],
@@ -268,7 +253,6 @@ class ChatMessage {
   }
 }
 
-// Singleton untuk pengaturan aplikasi
 class AppSettings {
   static final AppSettings _instance = AppSettings._internal();
   factory AppSettings() => _instance;
@@ -315,7 +299,6 @@ class AppSettings {
     }
   }
 
-  // Import/restore account dari private key
   Future<void> importAccount(String privkey) async {
     try {
       if (privkey.length != 64) throw 'Private key must be 64 characters';
@@ -440,7 +423,6 @@ class NostrHelpers {
   }
 }
 
-// Utility untuk format waktu
 class TimeUtils {
   static String formatTimeHumanized(int timestamp) {
     if (timestamp == 0) return '';
@@ -466,7 +448,6 @@ class TimeUtils {
   }
 }
 
-// Manager untuk status koneksi jaringan
 class NetworkManager {
   static final NetworkManager _instance = NetworkManager._internal();
   factory NetworkManager() => _instance;
@@ -491,7 +472,6 @@ class NetworkManager {
   void dispose() {}
 }
 
-// Lock untuk thread safety
 class Lock {
   bool _locked = false;
   final List<Completer<void>> _waiting = [];
@@ -515,45 +495,51 @@ class Lock {
   }
 }
 
-// Inisialisasi aplikasi utama
+class UIUtils {
+  static Color getAvatarColor(String pubkey) {
+    if (pubkey.isEmpty) return Colors.grey;
+    try {
+      return Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
+    } catch (e) {
+      return Colors.blueGrey;
+    }
+  }
+
+  static String getInitials(String name) {
+    if (name.trim().isEmpty) return "?";
+    return name.trim().substring(0, 1).toUpperCase();
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // 1. Inisialisasi Database (Hive)
     await Hive.initFlutter();
 
-    // Registrasi Adapter secara aman (mencegah error jika sudah terdaftar)
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
     if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ChatMessageAdapter());
 
-    // Membuka box database yang diperlukan
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
 
-    // 2. Inisialisasi Notifikasi (Dijalankan di background agar tidak memblokir Startup)
     NotificationHandler.init().then((_) {
-      // Notifikasi akan siap setelah proses internal Firebase selesai
     });
 
-    // Handler untuk pesan Firebase saat aplikasi di background
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // 3. Memuat Pengaturan Aplikasi & Pembersihan Pesan Sementara
     await AppSettings.instance.load();
     await ChatManager.instance.cleanupTempMessages();
 
-    // 4. Request Izin Notifikasi khusus Android (Tidak memblokir jalannya UI)
     FlutterLocalNotificationsPlugin()
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
 
-    // 5. Menjalankan Aplikasi Utama
     runApp(const ChatMeApp());
 
   } catch (e) {
-    // Penanganan error fatal: tampilkan pesan error ke layar alih-alih stuck di logo
+
     runApp(MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
@@ -568,7 +554,6 @@ void main() async {
   }
 }
 
-// Widget utama aplikasi
 class ChatMeApp extends StatefulWidget {
   const ChatMeApp({super.key});
 
@@ -585,15 +570,11 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Menangani klik notifikasi
     NotificationHandler.onNotificationClick.stream.listen((String? payload) {
       if (payload != null && payload.isNotEmpty) {
-        // Jika payload adalah instruksi panggilan masuk
         if (payload == 'incoming_call') {
-          // Navigasi ke alamat /call yang sudah didaftarkan di routes
           navigatorKey.currentState?.pushNamed('/call');
         } else {
-          // Jika payload berisi pubkey, buka chat seperti biasa
           _navigateToChat(payload);
         }
       }
@@ -607,15 +588,12 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     });
   }
 
-  // Request ignore battery optimization (Android)
   Future<void> _requestIgnoreBatteryOptimization() async {
-    // 1. Cek apakah ini Web. Jika iya, langsung keluar agar tidak crash.
     if (kIsWeb) {
       print("🌐 Berjalan di Web: Skip permintaan izin baterai.");
       return;
     }
 
-    // 2. Jika bukan Web, baru aman mengecek Platform.isAndroid
     try {
       if (Platform.isAndroid) {
         const channel = MethodChannel('com.chatme.app/battery');
@@ -626,7 +604,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     }
   }
 
-  // Navigasi ke chat dari notifikasi
   void _navigateToChat(String pubkey) {
     if (mounted) {
       final contactsBox = Hive.box<Contact>('contacts');
@@ -668,7 +645,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
   void _toggleTheme(ThemeMode mode) async {
     await AppSettings.instance.saveTheme(mode);
-    // Kita panggil setState agar build dijalankan ulang dengan tema baru
     setState(() {});
   }
 
@@ -682,7 +658,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
         return MaterialApp(
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
-          // TEMA TERANG
           theme: ThemeData(
             brightness: Brightness.light,
             useMaterial3: true,
@@ -692,7 +667,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               centerTitle: true,
               surfaceTintColor: Colors.transparent,
               backgroundColor: Colors.transparent,
-              // KUNCI DI SINI: Paksa ikon jadi gelap (hitam) saat tema terang
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.dark,
@@ -700,7 +674,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               ),
             ),
           ),
-          // TEMA GELAP
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             useMaterial3: true,
@@ -710,7 +683,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               centerTitle: true,
               surfaceTintColor: Colors.transparent,
               backgroundColor: Colors.transparent,
-              // KUNCI DI SINI: Paksa ikon jadi terang (putih) saat tema gelap
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.light,
@@ -740,7 +712,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   }
 }
 
-// Screen utama dengan bottom navigation
 class MainScreen extends StatefulWidget {
   final RelayManager relayManager;
   final NetworkManager networkManager;
@@ -759,7 +730,6 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  // Tambahkan Controller untuk mengontrol geseran halaman
   late PageController _pageController;
 
   @override
@@ -771,7 +741,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _pageController.dispose(); // Dispose controller agar bersih
+    _pageController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -787,11 +757,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Menggunakan PageView agar bisa di-swipe kanan kiri
       body: PageView(
         controller: _pageController,
         onPageChanged: (index) {
-          // Update index saat user melakukan swipe manual
           setState(() => _selectedIndex = index);
         },
         children: [
@@ -815,21 +783,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             valueListenable: Hive.box<Contact>('contacts').listenable(),
             builder: (context, Box<Contact> box, _) {
               final totalUnread = box.values.fold<int>(0, (sum, contact) => sum + contact.unreadCount);
-
-              // Kita ambil status tema untuk warna ikon
               final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
               return NavigationBarTheme(
                 data: NavigationBarThemeData(
-                  // Satu warna biru transparan yang adaptif untuk kapsul
                   indicatorColor: Colors.blue.withAlpha(40),
 
                   iconTheme: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.selected)) {
-                      // Ikon saat aktif: Biru cerah agar kontras di dalam kapsul
                       return const IconThemeData(color: Colors.blue, size: 24);
                     }
-                    // Ikon saat tidak aktif: Putih redup (Dark) atau Hitam redup (Light)
                     return IconThemeData(
                         color: isDarkMode ? Colors.white70 : Colors.black54,
                         size: 24
@@ -837,14 +800,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   }),
                 ),
                 child: NavigationBar(
-                  // Hilangkan warna background agar menyatu dengan scaffold
                   backgroundColor: Colors.transparent,
                   selectedIndex: _selectedIndex,
                   onDestinationSelected: (index) {
                     setState(() => _selectedIndex = index);
                     _pageController.jumpToPage(index);
                   },
-                  // Menghilangkan label teks sepenuhnya
                   labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
                   height: 65,
                   destinations: [
@@ -877,8 +838,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       label: 'Contacts',
                     ),
                     const NavigationDestination(
-                      icon: Icon(Icons.person_outline),
-                      selectedIcon: Icon(Icons.person),
+                      icon: Icon(Icons.manage_accounts_outlined),
+                      selectedIcon: Icon(Icons.manage_accounts),
                       label: 'Profile',
                     ),
                   ],
@@ -889,22 +850,5 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-  }
-}
-
-// Utility untuk UI
-class UIUtils {
-  static Color getAvatarColor(String pubkey) {
-    if (pubkey.isEmpty) return Colors.grey;
-    try {
-      return Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
-    } catch (e) {
-      return Colors.blueGrey;
-    }
-  }
-
-  static String getInitials(String name) {
-    if (name.trim().isEmpty) return "?";
-    return name.trim().substring(0, 1).toUpperCase();
   }
 }

@@ -22,14 +22,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
     widget.relayManager.onMessageReceived = () {
       if (mounted) {
         setState(() {});
-        DebugLogger.log('🔔 ChatsScreen: Database updated, UI refreshing via Hive');
+        DebugLogger.log('🔔 ChatsScreen: UI Refreshing (Pesan baru/Read)');
       }
     };
 
     widget.relayManager.onMessageDelivered = (eventId) {
       if (mounted) {
-        _updateMessageStatus(eventId, 'delivered');
-        setState(() {}); // Centang langsung berubah di layar
+        setState(() {});
+        DebugLogger.log('🔔 ChatsScreen: UI Refreshing (Status OK: $eventId)');
       }
     };
   }
@@ -45,23 +45,19 @@ class _ChatsScreenState extends State<ChatsScreen> {
     return name.trim().substring(0, 1).toUpperCase();
   }
 
-  // Update status pesan
-  void _updateMessageStatus(String eventId, String status) async {
-    try {
-      await ChatManager.instance.updateMessageStatus(eventId, status);
-    } catch (e) {
-      DebugLogger.log('❌ Error updating status: $e', type: 'ERROR');
-    }
-  }
-
   // Widget icon status pesan
   Widget _buildStatusIcon(String status, Color color) {
     switch (status) {
-      case 'sending': return Icon(Icons.access_time, size: 13, color: color.withAlpha(153));
-      case 'sent': return Icon(Icons.done, size: 13, color: color.withAlpha(153));
-      case 'delivered': return Icon(Icons.done_all, size: 13, color: color.withAlpha(153));
-      case 'read': return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
-      default: return Icon(Icons.done, size: 13, color: color.withAlpha(153));
+      case 'sending':
+        return Icon(Icons.access_time, size: 13, color: color.withAlpha(153));
+      case 'sent':
+        return Icon(Icons.done, size: 13, color: color.withAlpha(153));
+      case 'read':
+        return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
+      case 'error':
+        return const Icon(Icons.error_outline, size: 13, color: Colors.redAccent);
+      default:
+        return Icon(Icons.done, size: 13, color: color.withAlpha(153));
     }
   }
 
@@ -136,6 +132,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         : 'User ${contact.pubkey.substring(0, 8)}';
 
     final isMe = lastMsg?.senderPubkey == myPubkey;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListTile(
       leading: CircleAvatar(
@@ -152,7 +149,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       subtitle: Row(
         children: [
           if (lastMsg != null && isMe) ...[
-            _buildStatusIcon(lastMsg.status, Colors.grey),
+            _buildStatusIcon(lastMsg.status, isDark ? Colors.white70 : Colors.black54),
             const SizedBox(width: 4),
           ],
           Expanded(

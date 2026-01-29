@@ -379,14 +379,7 @@ class CallManager {
     required dynamic relay,
     required Color peerColor,
   }) {
-
-    if (_sharedCallState != CallState.idle) {
-      debugPrint("⚠️ PANGGILAN AKTIF: Melewatkan makeOffer, hanya buka UI.");
-    } else {
-      debugPrint("📞 PANGGILAN BARU: Menyiapkan sesi dan makeOffer.");
-      setSessionInfo(peerName, peerPubkey, peerColor);
-      makeOffer(peerPubkey, relay, () => debugPrint("✅ Connected"));
-    }
+    setSessionInfo(peerName, peerPubkey, peerColor);
 
     Navigator.push(
       context,
@@ -402,6 +395,12 @@ class CallManager {
         ),
       ),
     );
+
+    if (_sharedCallState == CallState.idle) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        makeOffer(peerPubkey, relay, () => debugPrint("✅ Connected"));
+      });
+    }
   }
 
   void _handleGlobalIncomingSignal(Map<String, dynamic> event) {
@@ -480,7 +479,6 @@ class CallManager {
   // ========== SIGNALING HANDLERS ==========
   Future<void> makeOffer(String targetPubkey, dynamic relay, Function onConnected) async {
     if (_sharedCallState != CallState.idle || _isMakingOffer) {
-      debugPrint("❌ makeOffer ditolak: Manager sedang sibuk atau tidak dalam status Idle.");
       return;
     }
 
@@ -951,7 +949,6 @@ class _CallScreenState extends State<CallScreen> {
       }
 
       _cancelAllTimers();
-
       _callManager.stopCall(sendHangupSignal: false);
 
       if (mounted) {
@@ -959,12 +956,9 @@ class _CallScreenState extends State<CallScreen> {
           _isCallActive = false;
           _isConnecting = false;
           _hasError = isTimeout;
-          if (isTimeout) {
-            _errorMessage = 'Panggilan berakhir';
-          }
         });
 
-        if (Navigator.canPop(context)) {
+        if (ModalRoute.of(context)?.isCurrent == true) {
           Navigator.of(context).pop();
         }
       }
@@ -1002,7 +996,7 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _onCallEnded() {
-    if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+    if (mounted && ModalRoute.of(context)?.settings.name == '/call' && ModalRoute.of(context)?.isCurrent == true) {
       Navigator.of(context).pop();
     }
   }
@@ -1036,7 +1030,8 @@ class _CallScreenState extends State<CallScreen> {
         case CallState.ending:
           _isCallActive = false;
           _isConnecting = false;
-          if (ModalRoute.of(context)?.isCurrent == true) {
+          // Kunci: Tambahkan pengecekan nama rute agar tidak salah tutup
+          if (mounted && ModalRoute.of(context)?.settings.name == '/call' && ModalRoute.of(context)?.isCurrent == true) {
             Navigator.of(context).pop();
           }
           break;

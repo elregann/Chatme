@@ -10,7 +10,6 @@ import 'main.dart';
 import 'chatmanager.dart';
 import 'encryption.dart';
 
-//update kode reaction
 class RelayManager {
   Function? onMessageReceived;
   String? currentlyChattingWith;
@@ -38,8 +37,6 @@ class RelayManager {
 
   Function(Map<String, dynamic>)? onMessageReceivedWithData;
   Function(String)? onMessageDelivered;
-
-  // --- KONEKSI & DISKONEKSI ---
 
   void connect() {
     if (_isConnecting || _isInitialized) return;
@@ -94,8 +91,6 @@ class RelayManager {
 
       final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-      // PERBAIKAN 1: Default history lebih lama (30 hari) jika database kosong
-      // 30 hari = 30 * 24 * 60 * 60 = 2,592,000 detik
       int syncSince = nowTimestamp - 2592000;
 
       try {
@@ -109,7 +104,6 @@ class RelayManager {
           }
 
           if (latestTime > 0) {
-            // PERBAIKAN 2: Beri buffer 1 jam (3600 detik) untuk mengantisipasi delay relay
             syncSince = (latestTime ~/ 1000) - 3600;
             DebugLogger.log('🔄 Sync dinamis aktif: Menarik sejak ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}');
           }
@@ -118,7 +112,6 @@ class RelayManager {
         DebugLogger.log('⚠️ Gagal hitung syncSince, gunakan default 30 hari.');
       }
 
-      // PERBAIKAN 3: Menambahkan Kind 1 untuk kompatibilitas balasan/pesan dari klien lain
       final List<int> neededKinds = [1, 4, 7, 1000];
 
       final subToMe = jsonEncode(["REQ", _subscriptionId! + "_incoming", {
@@ -162,8 +155,6 @@ class RelayManager {
     } catch (e) {}
   }
 
-  // --- PENANGANAN DATA MASUK ---
-
   void _handleData(dynamic data, String url) {
     try {
       final message = data.toString();
@@ -185,18 +176,13 @@ class RelayManager {
 
     if (eventId.isEmpty || _processedEventIds.contains(eventId)) return;
 
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final myPubkey = AppSettings.instance.myPubkey;
+    final senderPubkey = event['pubkey']?.toString() ?? '';
+
     if (kind == 1000) {
-      try {
-        if (onSignalReceived != null) {
-          onSignalReceived!(event);
-        }
-      } catch (e) {}
-
-      final myPubkey = AppSettings.instance.myPubkey;
-      final senderPubkey = event['pubkey'];
+      try { if (onSignalReceived != null) onSignalReceived!(event); } catch (e) {}
       if (senderPubkey == myPubkey) return;
-
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       if (now - createdAt > 30) return;
 
       _processedEventIds.add(eventId);
@@ -205,8 +191,18 @@ class RelayManager {
     }
 
     if (kind == 1 || kind == 4 || kind == 7) {
+
+      if (kind == 7) {
+        if (senderPubkey == myPubkey) return;
+        if (now - createdAt > 60) return;
+      }
+
       _processedEventIds.add(eventId);
-      if (kind == 1 || kind == 4) _processIncomingEvent(event);
+
+      if (kind == 1 || kind == 4) {
+        _processIncomingEvent(event);
+      }
+
       if (kind == 7) _handleReceiptEvent(event);
     }
   }
@@ -254,9 +250,6 @@ class RelayManager {
       } else if (signalData['type'] == 'candidate') {
         CallManager.instance.addCandidate(signalData['data']);
       } else if (signalData['type'] == 'hangup') {
-        // PERBAIKAN: Kita hanya menghentikan durasi/engine panggilannya saja.
-        // Navigasi (pop) biarkan diurus oleh CallScreen melalui onSignalReceived
-        // agar tidak terjadi double pop yang melempar user ke halaman Chats.
         _isInCallScreen = false;
         CallManager.instance.stopCall();
       }
@@ -277,14 +270,11 @@ class RelayManager {
 
       if (peerPubkey.isEmpty || peerPubkey == myPubkey) return;
 
-      // 1. Tentukan chatKey DULU
       final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
 
-      // 2. Cek apakah sudah ada di database
       final bool alreadyExists = await ChatManager.instance.isMessageExists(eventId, chatKey);
       if (alreadyExists) return;
 
-      // 3. Logika Filter CutOff
       final settingsBox = Hive.box('settings');
       final int cutOffTime = settingsBox.get('cut_off_$peerPubkey', defaultValue: 0);
       final int timestamp = (event['created_at'] as int? ?? 0) * 1000;
@@ -310,8 +300,6 @@ class RelayManager {
         }
       }
 
-      // --- LOGIKA DETEKSI REAKSI (EMOT) ---
-      // A. Reaksi internal ChatMe (Kind 4 terenkripsi)
       if (decrypted.startsWith('REACTION:')) {
         final parts = decrypted.split(':');
         if (parts.length >= 3) {
@@ -324,7 +312,7 @@ class RelayManager {
           }
         }
       }
-      // B. Reaksi Standar Nostr (Kind 7)
+
       else if (event['kind'] == 7) {
         String? targetId;
         for (var t in tags) {
@@ -341,7 +329,6 @@ class RelayManager {
         }
       }
 
-      // --- LOGIKA PESAN BIASA ---
       String? replyToId;
       for (var t in tags) {
         if (t is List && t.length > 1 && t[0] == 'e') {
@@ -356,7 +343,12 @@ class RelayManager {
         replyToContent = originalMsg?.plaintext;
       }
 
-      String initialStatus = isFromMe ? 'sent' : (currentlyChattingWith == senderPubkey ? 'read' : 'delivered');
+      String initialStatus;
+      if (isFromMe) {
+        initialStatus = 'sending';
+      } else {
+        initialStatus = 'sent';
+      }
 
       final chatMessage = ChatMessage(
         id: eventId,
@@ -375,10 +367,6 @@ class RelayManager {
       await ChatManager.instance.repairReplyContent(eventId, decrypted, chatKey);
       await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExists);
 
-      if (!isFromMe && !alreadyExists) {
-        sendReceipt(eventId, senderPubkey, initialStatus);
-      }
-
       if (onMessageReceived != null) onMessageReceived!();
     } catch (e) {
       DebugLogger.log('❌ Error processing incoming event: $e');
@@ -395,9 +383,9 @@ class RelayManager {
 
       String? originalMessageId;
       String? targetP;
-      String newStatus = 'delivered';
+      String? newStatus;
 
-      for (var t in tags) {
+      for (final t in tags) {
         if (t is List && t.length > 1) {
           if (t[0] == 'e') originalMessageId = t[1].toString();
           if (t[0] == 'p') targetP = t[1].toString();
@@ -405,15 +393,31 @@ class RelayManager {
         }
       }
 
-      // Pastikan target tanda terima ini adalah saya
-      if (originalMessageId != null && targetP == myPubkey) {
-        // Gunting jalur pencarian dengan chatKey (TURBO MODE)
-        final chatKey = ChatManager.instance.getChatKey(myPubkey, senderPubkey);
-        await ChatManager.instance.updateMessageStatus(originalMessageId, newStatus, chatKey: chatKey);
-
-        if (onMessageReceived != null) onMessageReceived!();
+      if (originalMessageId == null || targetP != myPubkey || newStatus != 'read') {
+        return;
       }
-    } catch (e) {}
+
+      final chatKey = ChatManager.instance.getChatKey(myPubkey, senderPubkey);
+
+      final message = await ChatManager.instance.getMessageById(
+        originalMessageId,
+        chatKey,
+      );
+
+      if (message == null) return;
+      if (message.receiverPubkey != myPubkey) return;
+      if (message.senderPubkey != senderPubkey) return;
+
+      await ChatManager.instance.updateMessageStatus(
+        originalMessageId,
+        'read',
+        chatKey: chatKey,
+      );
+
+      onMessageReceived?.call();
+    } catch (e) {
+      DebugLogger.log('❌ Error in _handleReceiptEvent: $e');
+    }
   }
 
   void _handleOk(List<dynamic> decoded, String url) {
@@ -430,7 +434,6 @@ class RelayManager {
     }
   }
 
-  // --- PENGIRIMAN DATA ---
   Future<Map<String, dynamic>> sendMessage({
     required String receiverPubkey,
     required String plaintext,
@@ -486,11 +489,9 @@ class RelayManager {
 
       final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
 
-      int sentCount = 0;
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
           entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
-          sentCount++;
         }
       }
 
@@ -501,7 +502,7 @@ class RelayManager {
         content: encryptedContent,
         plaintext: plaintext,
         timestamp: DateTime.now().millisecondsSinceEpoch,
-        status: sentCount > 0 ? 'sent' : 'failed',
+        status: 'sending',
         chatKey: ChatManager.instance.getChatKey(myPubkey, receiverPubkey),
         replyToId: replyToId,
         replyToContent: replyToContent,
@@ -551,7 +552,6 @@ class RelayManager {
 
       final reactionPlaintext = 'REACTION:$emoji:$messageId';
 
-      // Enkripsi isinya agar aman seperti pesan biasa
       final encryptedContent = EncryptionManager.encrypt(
         reactionPlaintext,
         myPrivkey,
@@ -575,7 +575,6 @@ class RelayManager {
       final signature = EncryptionManager.sign(eventId, myPrivkey);
       final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
 
-      // Kirim ke semua relay
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
           entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
@@ -614,8 +613,6 @@ class RelayManager {
       }
     } catch (e) {}
   }
-
-  // --- HELPERS & STATUS ---
 
   Future<void> _updateContactWithMessage(String peerPubkey, String message, int timestamp, bool isFromMe, bool alreadyExists) async {
     try {
