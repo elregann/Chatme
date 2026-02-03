@@ -48,8 +48,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
   // Widget icon status pesan
   Widget _buildStatusIcon(String status, Color color) {
     switch (status) {
+      case 'pending':
       case 'sending':
-        return Icon(Icons.access_time, size: 13, color: color.withAlpha(153));
+        return Icon(Icons.access_time_rounded, size: 13, color: color.withAlpha(120));
       case 'sent':
         return Icon(Icons.done, size: 13, color: color.withAlpha(153));
       case 'read':

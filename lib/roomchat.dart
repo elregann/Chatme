@@ -10,6 +10,7 @@ import 'main.dart';
 import 'call.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
+import 'encryption.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -298,8 +299,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       await ChatManager.instance.deleteMessage(tempId, chatKey);
       _maybeAutoScroll(force: true);
     } catch (e) {
-      await ChatManager.instance.saveMessage(tempMessage.copyWith(status: 'error'));
-      debugPrint('sendMessage error: $e');
+      final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+
+      final myPrivkey = AppSettings.instance.myPrivkey;
+      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver);
+
+      final pendingMessage = tempMessage.copyWith(
+        id: offlineId,
+        content: encrypted,
+        status: 'pending',
+      );
+
+      await ChatManager.instance.saveMessage(pendingMessage);
+      await ChatManager.instance.deleteMessage(tempId, chatKey);
+
+      debugPrint('Pesan disimpan ke antrean pending karena offline.');
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -1276,8 +1290,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Widget _buildStatusIcon(String status, Color color) {
     switch (status) {
+      case 'pending':
       case 'sending':
-        return Icon(Icons.access_time, size: 13, color: color.withAlpha(153));
+        return Icon(Icons.access_time_rounded, size: 13, color: color.withAlpha(120));
       case 'sent':
         return Icon(Icons.done, size: 13, color: color.withAlpha(153));
       case 'read':

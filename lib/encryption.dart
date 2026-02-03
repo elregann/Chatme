@@ -239,4 +239,21 @@ class EncryptionManager {
       return false;
     }
   }
+
+  static String calculateEventId(Map<String, dynamic> event) {
+    // Standar Nostr: ID adalah SHA256 hash dari [0, pubkey, created_at, kind, tags, content]
+    final List data = [
+      0,
+      event['pubkey'],
+      event['created_at'],
+      event['kind'],
+      event['tags'],
+      event['content'],
+    ];
+
+    final serialized = jsonEncode(data);
+    final bytes = utf8.encode(serialized);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
 }

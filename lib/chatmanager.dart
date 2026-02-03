@@ -65,6 +65,7 @@ class ChatManager {
         final existingIndex = messages.indexWhere((m) => m.id == message.id);
 
         const Map<String, int> statusWeight = {
+          'pending': -2,
           'error': -1,
           'sending': 0,
           'sent': 1,
@@ -158,6 +159,7 @@ class ChatManager {
       bool updated = false;
 
       const Map<String, int> statusWeight = {
+        'pending': -2,
         'error': -1,
         'sending': 0,
         'sent': 1,
@@ -183,6 +185,57 @@ class ChatManager {
         await box.put(key, messages);
       }
     }
+  }
+
+  Future<List<ChatMessage>> getPendingMessages() async {
+    List<ChatMessage> pendingQueue = [];
+    try {
+      final chatsBox = Hive.box('chats');
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      for (var key in chatsBox.keys) {
+        final dynamic rawData = chatsBox.get(key);
+        if (rawData is List) {
+          final messages = rawData.cast<ChatMessage>().toList();
+          for (var m in messages) {
+            bool isPending = m.status == 'pending';
+            bool isStuck = m.status == 'sending' && (now - m.timestamp) > 10000;
+
+            if (isPending || isStuck) {
+              pendingQueue.add(m);
+            }
+          }
+        }
+      }
+      pendingQueue.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    } catch (e) {
+      DebugLogger.log('❌ Error getPendingMessages: $e');
+    }
+    return pendingQueue;
+  }
+
+  Future<void> updateMessageIdAndStatus(String oldId, String newId, String status, String chatKey) async {
+    await _lock.synchronized(() async {
+      try {
+        final chatsBox = Hive.box('chats');
+        final dynamic rawData = chatsBox.get(chatKey);
+        if (rawData is List) {
+          List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
+          final index = messages.indexWhere((m) => m.id == oldId);
+
+          if (index != -1) {
+            messages[index] = messages[index].copyWith(
+                id: newId,
+                status: status
+            );
+            await chatsBox.put(chatKey, messages);
+            DebugLogger.log('🆔 ID Updated: $oldId -> $newId ($status)');
+          }
+        }
+      } catch (e) {
+        DebugLogger.log('❌ Error updateMessageIdAndStatus: $e');
+      }
+    });
   }
 
   Future<void> _updateContactPreview(ChatMessage message) async {

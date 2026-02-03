@@ -29,11 +29,13 @@ class RelayManager {
   final Map<String, int> _reconnectAttempts = {};
   final Set<String> _processedEventIds = {};
   Timer? _cleanupTimer;
+  Timer? _queueTimer;
   String? _subscriptionId;
   final ValueNotifier<bool> _isConnected = ValueNotifier(false);
   final ValueNotifier<int> _connectedCount = ValueNotifier(0);
   bool _isInitialized = false;
   bool _isConnecting = false;
+  bool _isProcessingQueue = false;
 
   Function(Map<String, dynamic>)? onMessageReceivedWithData;
   Function(String)? onMessageDelivered;
@@ -50,6 +52,14 @@ class RelayManager {
       _subscriptionId = 'chatme_${DateTime.now().millisecondsSinceEpoch}';
       _startCleanupTimer();
 
+      if (_queueTimer == null || !_queueTimer!.isActive) {
+        _queueTimer = Timer.periodic(const Duration(seconds: 60), (t) {
+          if (_isConnected.value) {
+            _processOfflineQueue();
+          }
+        });
+      }
+
       for (var i = 0; i < relays.length; i++) {
         Future.delayed(Duration(milliseconds: i * 300), () {
           _connectToRelay(relays[i], myPubkey);
@@ -64,6 +74,8 @@ class RelayManager {
 
   void disconnect() {
     _cleanupTimer?.cancel();
+    _queueTimer?.cancel();
+    _isProcessingQueue = false;
     for (var timer in _pingTimers.values) timer.cancel();
     _pingTimers.clear();
 
@@ -383,30 +395,24 @@ class RelayManager {
 
       String? originalMessageId;
       String? targetP;
-      String? newStatus;
+      bool isReadStatus = false;
 
       for (final t in tags) {
         if (t is List && t.length > 1) {
           if (t[0] == 'e') originalMessageId = t[1].toString();
           if (t[0] == 'p') targetP = t[1].toString();
-          if (t[0] == 'status' && t[1] == 'read') newStatus = 'read';
+          if (t[0] == 'status' && t[1] == 'read') isReadStatus = true;
         }
       }
 
-      if (originalMessageId == null || targetP != myPubkey || newStatus != 'read') {
-        return;
-      }
+      if (originalMessageId == null || targetP != myPubkey || !isReadStatus) return;
 
       final chatKey = ChatManager.instance.getChatKey(myPubkey, senderPubkey);
-
-      final message = await ChatManager.instance.getMessageById(
-        originalMessageId,
-        chatKey,
-      );
+      final message = await ChatManager.instance.getMessageById(originalMessageId, chatKey);
 
       if (message == null) return;
-      if (message.receiverPubkey != myPubkey) return;
-      if (message.senderPubkey != senderPubkey) return;
+
+      if (message.senderPubkey != myPubkey) return;
 
       await ChatManager.instance.updateMessageStatus(
         originalMessageId,
@@ -426,7 +432,7 @@ class RelayManager {
         final messageId = decoded[1].toString();
         ChatManager.instance.updateMessageStatus(messageId, 'sent');
 
-        if (onMessageReceived != null) onMessageReceived!();
+        onMessageReceived?.call();
         if (onMessageDelivered != null) onMessageDelivered!(messageId);
       }
     } catch (e) {
@@ -753,5 +759,62 @@ class RelayManager {
 
   Future<void> dispose() async {
     disconnect();
+  }
+
+  Future<void> _processOfflineQueue() async {
+    if (_isProcessingQueue) return;
+
+    final pendingMessages = await ChatManager.instance.getPendingMessages();
+    if (pendingMessages.isEmpty) return;
+
+    _isProcessingQueue = true;
+    DebugLogger.log('🚀 Memproses ${pendingMessages.length} pesan antrean...');
+
+    try {
+      for (var msg in pendingMessages) {
+        final List<List<String>> tags = [['p', msg.receiverPubkey]];
+        if (msg.replyToId != null) {
+          tags.add(['e', msg.replyToId!]);
+        }
+
+        final int createdAt = msg.timestamp ~/ 1000;
+
+        final event = {
+          'pubkey': msg.senderPubkey,
+          'created_at': createdAt,
+          'kind': 4,
+          'tags': tags,
+          'content': msg.content,
+        };
+
+        final String finalId = EncryptionManager.calculateEventId(event);
+        event['id'] = finalId;
+        event['sig'] = EncryptionManager.sign(finalId, AppSettings.instance.myPrivkey);
+
+        bool sentToAtLeastOne = false;
+        for (final entry in _connections.entries) {
+          if (_connectionStatus[entry.key] == true) {
+            entry.value.sink.add(jsonEncode(["EVENT", event]));
+            sentToAtLeastOne = true;
+          }
+        }
+
+        if (sentToAtLeastOne) {
+          await ChatManager.instance.updateMessageIdAndStatus(
+              msg.id,
+              finalId,
+              'sent',
+              msg.chatKey
+          );
+          DebugLogger.log('✅ Berhasil kirim antrean & Update ID: $finalId');
+        }
+
+        await Future.delayed(const Duration(milliseconds: 800));
+      }
+    } catch (e) {
+      DebugLogger.log('❌ Gagal di antrean: $e');
+    } finally {
+      _isProcessingQueue = false;
+    }
   }
 }

@@ -726,7 +726,6 @@ class _CallScreenState extends State<CallScreen> {
   late bool _isCallActive;
   bool _isAcceptedByMe = false;
   bool _hasError = false;
-  bool _isConnecting = false;
   String? _errorMessage;
   bool _isNearProximity = false;
 
@@ -826,7 +825,6 @@ class _CallScreenState extends State<CallScreen> {
         _hasError = true;
         _errorMessage = 'Panggilan tidak diangkat';
         _isCallActive = false;
-        _isConnecting = false;
       });
       _scheduleAutoClose();
     }
@@ -876,7 +874,6 @@ class _CallScreenState extends State<CallScreen> {
 
     setState(() {
       _isInitializing = true;
-      _isConnecting = true;
       _hasError = false;
       _errorMessage = null;
     });
@@ -908,7 +905,6 @@ class _CallScreenState extends State<CallScreen> {
     setState(() {
       _isInitializing = true;
       _isAcceptedByMe = true;
-      _isConnecting = true;
       _hasError = false;
     });
 
@@ -954,7 +950,6 @@ class _CallScreenState extends State<CallScreen> {
       if (mounted) {
         setState(() {
           _isCallActive = false;
-          _isConnecting = false;
           _hasError = isTimeout;
         });
 
@@ -975,7 +970,6 @@ class _CallScreenState extends State<CallScreen> {
 
     setState(() {
       _isCallActive = true;
-      _isConnecting = false;
       _hasError = false;
       _errorMessage = null;
       _startTimer();
@@ -988,7 +982,6 @@ class _CallScreenState extends State<CallScreen> {
     setState(() {
       _hasError = true;
       _errorMessage = error;
-      _isConnecting = false;
       _isCallActive = false;
     });
 
@@ -1010,7 +1003,6 @@ class _CallScreenState extends State<CallScreen> {
       switch (state) {
         case CallState.active:
           _isCallActive = true;
-          _isConnecting = false;
           _hasError = false;
           _startTimer();
           break;
@@ -1018,19 +1010,15 @@ class _CallScreenState extends State<CallScreen> {
         case CallState.reconnecting:
         case CallState.ringing:
         case CallState.initializing:
-          _isConnecting = true;
           _hasError = false;
           break;
         case CallState.error:
           _isCallActive = false;
-          _isConnecting = false;
           _hasError = true;
           break;
         case CallState.idle:
         case CallState.ending:
           _isCallActive = false;
-          _isConnecting = false;
-          // Kunci: Tambahkan pengecekan nama rute agar tidak salah tutup
           if (mounted && ModalRoute.of(context)?.settings.name == '/call' && ModalRoute.of(context)?.isCurrent == true) {
             Navigator.of(context).pop();
           }
@@ -1047,7 +1035,6 @@ class _CallScreenState extends State<CallScreen> {
     setState(() {
       _hasError = true;
       _errorMessage = error;
-      _isConnecting = false;
       _isCallActive = false;
     });
 
