@@ -192,6 +192,13 @@ class CallManager {
     _stateChangeCallbacks.remove(id);
   }
 
+  void cleanupAllCallbacks() {
+    _connectionCallbacks.clear();
+    _errorCallbacks.clear();
+    _callEndedCallbacks.clear();
+    _stateChangeCallbacks.clear();
+  }
+
   void setSessionInfo(String name, String pubkey, Color color) {
     activePeerName = name;
     activePeerPubkey = pubkey;
@@ -652,6 +659,8 @@ class CallManager {
 
     try {
       _cancelAllTimers();
+      _currentRelay?.onSignalReceived = null;
+      _currentRelay = null;
 
       if (sendHangupSignal && targetPubkey != null && relay != null) {
         relay.sendCallSignal(targetPubkey, {'type': 'hangup'});
@@ -774,6 +783,7 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   void dispose() {
+    _cancelAllTimers();
     _cleanupResources();
     super.dispose();
   }
@@ -1019,7 +1029,9 @@ class _CallScreenState extends State<CallScreen> {
         case CallState.idle:
         case CallState.ending:
           _isCallActive = false;
-          if (mounted && ModalRoute.of(context)?.settings.name == '/call' && ModalRoute.of(context)?.isCurrent == true) {
+          _hasError = false;
+          if (mounted && ModalRoute.of(context)?.settings.name == '/call' &&
+              ModalRoute.of(context)?.isCurrent == true) {
             Navigator.of(context).pop();
           }
           break;

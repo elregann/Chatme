@@ -13,7 +13,7 @@ import 'encryption.dart';
 class RelayManager {
   Function? onMessageReceived;
   String? currentlyChattingWith;
-  bool _isInCallScreen = false;
+  // bool _isInCallScreen = false;
 
   Function(Map<String, dynamic>)? onSignalReceived;
 
@@ -225,9 +225,6 @@ class RelayManager {
       final callerPubkey = event['pubkey'];
 
       if (signalData['type'] == 'offer') {
-        if (_isInCallScreen) return;
-        _isInCallScreen = true;
-
         String finalDisplayName = "User ${callerPubkey.substring(0, 8)}";
         try {
           final contactBox = Hive.box<Contact>('contacts');
@@ -252,17 +249,16 @@ class RelayManager {
                 relay: this,
                 peerColor: incomingPeerColor,
                 remoteSdp: signalData['data'],
-                onClose: () => _isInCallScreen = false,
+                onClose: () {},
               ),
             ),
-          ).then((_) => _isInCallScreen = false);
+          );
         }
       } else if (signalData['type'] == 'answer') {
         CallManager.instance.handleAnswer(signalData['data'], () {});
       } else if (signalData['type'] == 'candidate') {
         CallManager.instance.addCandidate(signalData['data']);
       } else if (signalData['type'] == 'hangup') {
-        _isInCallScreen = false;
         CallManager.instance.stopCall();
       }
     } catch (e) {
