@@ -704,6 +704,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               isIncoming: true,
               relay: _relayManager,
               peerColor: Colors.blue,
+              onClose: () {},
             ),
           },
         );

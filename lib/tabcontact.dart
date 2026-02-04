@@ -197,7 +197,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.contacts_outlined, size: 80, color: Theme.of(context).disabledColor),
+          Icon(Icons.people, size: 80, color: Theme.of(context).disabledColor),
           const SizedBox(height: 20),
           const Text('No saved contacts yet'),
           const SizedBox(height: 20),

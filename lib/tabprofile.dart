@@ -216,38 +216,70 @@ class ProfileScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        title: const Text('Choose Theme', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _themeOption(context, 'System default', ThemeMode.system, currentMode),
-            _themeOption(context, 'Light', ThemeMode.light, currentMode),
-            _themeOption(context, 'Dark', ThemeMode.dark, currentMode),
-          ],
+        title: const Text(
+          'Choose Theme',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: RadioGroup<ThemeMode>(
+          groupValue: currentMode,
+          onChanged: (ThemeMode? value) {
+            if (value != null) {
+              onThemeToggle(value);
+              Navigator.pop(context);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _themeOption(context, 'System default', ThemeMode.system),
+              _themeOption(context, 'Light', ThemeMode.light),
+              _themeOption(context, 'Dark', ThemeMode.dark),
+            ],
+          ),
         ),
       ),
     );
   }
 
+
   // Helper untuk baris pilihan tema
-  Widget _themeOption(BuildContext context, String title, ThemeMode mode, ThemeMode current) {
+  Widget _themeOption(BuildContext context, String title, ThemeMode mode) {
     return Theme(
       data: Theme.of(context).copyWith(
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
       ),
       child: RadioListTile<ThemeMode>(
         title: Text(title, style: const TextStyle(fontSize: 14)),
         value: mode,
-        groupValue: current,
-        activeColor: Theme.of(context).colorScheme.onSurface,
-        onChanged: (ThemeMode? value) {
-          if (value != null) {
-            onThemeToggle(value);
-            Navigator.pop(context);
-          }
-        },
+        selectedTileColor: Colors.transparent,
         contentPadding: EdgeInsets.zero,
+        activeColor: Theme.of(context).colorScheme.onSurface,
+      ),
+    );
+  }
+
+  // Dialog Privacy Policy
+  void _showPrivacyDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Privacy Policy', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const SingleChildScrollView(
+          child: Text(
+            'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data; however, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.',
+            style: TextStyle(fontSize: 13, height: 1.6),
+            textAlign: TextAlign.justify,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('I Understand'),
+          ),
+        ],
       ),
     );
   }
@@ -265,22 +297,19 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        // Menggunakan InkWell di dalam Material agar ada efek sentuhan "Nich" saat diklik
         Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: () {
               Clipboard.setData(ClipboardData(text: key));
-              HapticFeedback.lightImpact(); // Tambah getaran halus
-              // SnackBar opsional, tapi karena kamu suka simpel, kita biarkan silent atau getar saja
+              HapticFeedback.lightImpact();
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16), // Padding sedikit lebih luas agar lega
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                // Mengikuti warna surface tema, bukan transparan hitam/putih manual lagi
-                color: Theme.of(context).colorScheme.surfaceVariant.withAlpha(80),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(80),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Theme.of(context).dividerColor.withAlpha(30)),
               ),
@@ -291,8 +320,7 @@ class ProfileScreen extends StatelessWidget {
                       key,
                       style: TextStyle(
                         fontFamily: 'monospace',
-                        fontSize: 12, // Sedikit lebih besar agar mudah dibaca
-                        // Jika sensitif (Privkey), warnanya tetap oranye agar waspada
+                        fontSize: 12,
                         color: isSensitive ? Colors.orange : Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
@@ -348,8 +376,12 @@ class ProfileScreen extends StatelessWidget {
                   side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
               ),
               child: ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: settings.myPubkey));
+                  HapticFeedback.lightImpact();
                 },
                 title: SelectableText(
                   settings.myPubkey,
@@ -370,6 +402,12 @@ class ProfileScreen extends StatelessWidget {
               child: Column(
                 children: [
                   ListTile(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                      ),
+                    ),
                     leading: const Icon(Icons.vpn_key_outlined, color: Colors.blue),
                     title: const Text('Backup Your Keys', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     subtitle: const Text('Save your private identity', style: TextStyle(fontSize: 12)),
@@ -378,6 +416,12 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                    ),
                     leading: const Icon(Icons.history_rounded, color: Colors.red),
                     title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     subtitle: const Text('Use private key to login', style: TextStyle(fontSize: 12)),
@@ -396,10 +440,11 @@ class ProfileScreen extends StatelessWidget {
                   side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
               ),
               child: ListTile(
-                // Menggunakan logo Brightness sesuai permintaanmu
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 leading: const Icon(Icons.brightness_6_outlined, color: Colors.purple),
                 title: const Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                // Menampilkan teks tema yang sedang aktif di bawahnya
                 subtitle: Text(
                   AppSettings.instance.themeMode == ThemeMode.system
                       ? 'System default'
@@ -408,6 +453,43 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showThemeDialog(context),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildSectionTitle('Information'),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))),
+              child: Column(
+                children: [
+                  ListTile(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                      ),
+                    ),
+                    leading: const Icon(Icons.privacy_tip_outlined, color: Colors.teal),
+                    title: const Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _showPrivacyDialog(context),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                    ),
+                    leading: const Icon(Icons.article_outlined, color: Colors.blueGrey),
+                    title: const Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => showLicensePage(
+                      context: context,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -429,10 +511,18 @@ class ProfileScreen extends StatelessWidget {
             ),
             const SizedBox(height: 40),
             Center(
-              child: Opacity(
-                opacity: 0.5,
-                child: Text('Chatme Decentralized Messenger\n Owned by You, Not by Cloud',
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+              child: Column(
+                children: [
+                  const Opacity(
+                    opacity: 0.5,
+                    child: Text('ChatMe Decentralized Messenger\nOwned by You, Not by Cloud',
+                        textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Version 1.0.0-Alpha',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
           ],

@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'main.dart';
-import 'call.dart';
+import 'callmanager.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
 import 'encryption.dart';
@@ -650,15 +650,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             icon: Icon(Icons.phone_outlined, color: isDark ? Colors.white : Colors.black),
             onPressed: () {
               final String pubkey = widget.contact.pubkey;
-              final Color warnaKontak = Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
+              final int colorValue = int.tryParse(pubkey.substring(0, 8), radix: 16) ?? 0xFF000000;
+              final Color warnaKontak = Color(colorValue | 0xFF000000);
 
-              CallManager.instance.startCallFlow(
-                context: context,
-                peerName: displayName,
-                peerPubkey: pubkey,
-                relay: widget.relayManager,
-                peerColor: warnaKontak,
-              );
+              Future.delayed(Duration.zero, () {
+                if (!mounted) return;
+
+                CallManager.instance.startCallFlow(
+                  context: context,
+                  peerName: displayName,
+                  peerPubkey: pubkey,
+                  relay: widget.relayManager,
+                  peerColor: warnaKontak,
+                );
+              });
             },
           ),
           IconButton(

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'callmanager.dart';
 import 'call.dart';
 import 'main.dart';
 import 'chatmanager.dart';
@@ -13,7 +14,6 @@ import 'encryption.dart';
 class RelayManager {
   Function? onMessageReceived;
   String? currentlyChattingWith;
-  // bool _isInCallScreen = false;
 
   Function(Map<String, dynamic>)? onSignalReceived;
 
