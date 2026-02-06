@@ -10,7 +10,7 @@ import 'main.dart';
 import 'callmanager.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
-import 'encryption_ed25519.dart';
+import 'encryption_secp256k1.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -81,7 +81,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     widget.relayManager.onMessageReceived = () async {
       if (!mounted) return;
 
-      await _markAllAsRead(); // 🔥 KUNCI UTAMA
+      _markAllAsRead();
 
       if (!_userIsNearBottom) {
         setState(() => _newMessagesCount++);
@@ -302,7 +302,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
 
       final myPrivkey = AppSettings.instance.myPrivkey;
-      final encrypted = await EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver); //ED25519-X25519
+      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver); //ED25519-X25519
 //      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver); (Secp256k1)
       final pendingMessage = tempMessage.copyWith(
         id: offlineId,
@@ -826,7 +826,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     const double actionButtonSize = 38.0;
     const double containerHeight = 38.0;
-    final accentColor = const Color(0xFF1976D2);
+    const accentColor = Color(0xFF1976D2);
     final inputBgColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
 
     // Bungkus dengan VisibilityBuilder agar kita tahu status keyboard secara real-time
@@ -846,7 +846,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.fromLTRB(
+                padding: const EdgeInsets.fromLTRB(
                     10,                // Kiri
                     kIsWeb ? 20 : 6,   // Atas
                     10,                // Kanan
@@ -956,7 +956,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                   duration: const Duration(milliseconds: 200),
                                   height: actionButtonSize,
                                   width: actionButtonSize,
-                                  decoration: BoxDecoration(
+                                  decoration: const BoxDecoration(
                                     color: accentColor,
                                     shape: BoxShape.circle,
                                   ),

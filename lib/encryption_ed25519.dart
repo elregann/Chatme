@@ -9,7 +9,7 @@ import 'package:encrypt/encrypt.dart' as encrypt_lib;
 // =======================
 // ED25519 & X25519 ECDH
 // =======================
-class Ed25519ECDH {
+class Curve25519ECDH {
   static Future<Uint8List> computeSharedSecret(String privateKeyHex, String publicKeyHex) async {
     try {
       if (!_isValidHex(privateKeyHex) || !_isValidHex(publicKeyHex)) {
@@ -94,7 +94,7 @@ class EncryptionManager {
     try {
       if (plaintext.isEmpty) return '';
 
-      final sharedSecret = await Ed25519ECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
+      final sharedSecret = await Curve25519ECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
       final randomSalt = _generateSecureRandomBytes(16);
       final staticSalt = _deriveStaticSalt(myPublicKey, peerPublicKey);
       final combinedSalt = Uint8List.fromList([...staticSalt, ...randomSalt]);
@@ -111,8 +111,17 @@ class EncryptionManager {
       final iv = encrypt_lib.IV(ivBytes);
 
       final payload = jsonEncode({'v': 2, 'msg': plaintext});
+
+      final keys = [myPublicKey, peerPublicKey]..sort();
+      final aadString = keys.join(':');
+      final aadBytes = Uint8List.fromList(utf8.encode(aadString));
+
       final encrypter = encrypt_lib.Encrypter(encrypt_lib.AES(key, mode: encrypt_lib.AESMode.gcm));
-      final encrypted = encrypter.encrypt(payload, iv: iv);
+      final encrypted = encrypter.encrypt(
+          payload,
+          iv: iv,
+          associatedData: aadBytes
+      );
 
       return '${encrypted.base64}?iv=${base64.encode(ivBytes)}?salt=${base64.encode(randomSalt)}';
     } catch (e) {
@@ -136,7 +145,7 @@ class EncryptionManager {
       final ivBase64 = parts[1].replaceFirst('iv=', '');
       final saltBase64 = parts[2].replaceFirst('salt=', '');
 
-      final sharedSecret = await Ed25519ECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
+      final sharedSecret = await Curve25519ECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
       final randomSalt = base64.decode(saltBase64);
       final staticSalt = _deriveStaticSalt(myPublicKey, peerPublicKey);
       final combinedSalt = Uint8List.fromList([...staticSalt, ...randomSalt]);
@@ -150,9 +159,18 @@ class EncryptionManager {
 
       final key = encrypt_lib.Key(keyBytes);
       final iv = encrypt_lib.IV.fromBase64(ivBase64);
-      final encrypter = encrypt_lib.Encrypter(encrypt_lib.AES(key, mode: encrypt_lib.AESMode.gcm));
 
-      final decrypted = encrypter.decrypt64(ciphertext, iv: iv);
+      final keys = [myPublicKey, peerPublicKey]..sort();
+      final aadString = keys.join(':');
+      final aadBytes = Uint8List.fromList(utf8.encode(aadString));
+
+      final encrypter = encrypt_lib.Encrypter(encrypt_lib.AES(key, mode: encrypt_lib.AESMode.gcm));
+      final decrypted = encrypter.decrypt64(
+          ciphertext,
+          iv: iv,
+          associatedData: aadBytes
+      );
+
       final decoded = jsonDecode(decrypted);
 
       return decoded['msg'];

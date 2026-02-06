@@ -10,7 +10,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import 'package:crypto/crypto.dart';
-import 'package:hex/hex.dart';
 import 'package:bip340/bip340.dart' as bip340;
 import 'notification_handler.dart';
 import 'call.dart';
@@ -20,6 +19,7 @@ import 'chatmanager.dart';
 import 'tabcontact.dart';
 import 'tabprofile.dart';
 import 'tabchat.dart';
+import 'keymanager.dart';
 
 part 'main.g.dart';
 
@@ -263,6 +263,7 @@ class AppSettings {
   String myPubkey = '';
   String myPrivkey = '';
   String myName = '';
+  String myMnemonic = '';
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> load() async {
@@ -270,6 +271,8 @@ class AppSettings {
       final settingsBox = Hive.box('settings');
       myPubkey = settingsBox.get('my_pubkey', defaultValue: '');
       myPrivkey = settingsBox.get('my_privkey', defaultValue: '');
+      myMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
+
       myName = settingsBox.get('my_name', defaultValue: 'User${Random().nextInt(9999)}');
 
       final savedTheme = settingsBox.get('theme_mode', defaultValue: 'system');
@@ -299,16 +302,29 @@ class AppSettings {
     }
   }
 
-  Future<void> importAccount(String privkey) async {
+  Future<void> importAccount(String input) async {
     try {
-      if (privkey.length != 64) throw 'Private key must be 64 characters';
-      final newPubkey = bip340.getPublicKey(privkey);
-      myPrivkey = privkey;
-      myPubkey = newPubkey;
-
       final settingsBox = Hive.box('settings');
-      await settingsBox.put('my_pubkey', myPubkey);
-      await settingsBox.put('my_privkey', myPrivkey);
+      final cleaned = input.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+      if (cleaned.split(' ').length >= 12) {
+        myPrivkey = await ChatMeVault.deriveNostrPrivateKey(cleaned);
+        myMnemonic = cleaned;
+      } else if (cleaned.length == 64) {
+        myPrivkey = cleaned;
+        myMnemonic = '';
+      } else {
+        throw 'Invalid input format. Use 64-char hex or 12 words.';
+      }
+
+      myPubkey = bip340.getPublicKey(myPrivkey);
+
+      // Simpan secara batch ke Hive
+      await settingsBox.putAll({
+        'my_pubkey': myPubkey,
+        'my_privkey': myPrivkey,
+        'my_mnemonic': myMnemonic,
+      });
 
       DebugLogger.log('✅ Account restored: $myPubkey', type: 'SETUP');
     } catch (e) {
@@ -377,10 +393,18 @@ Instructions:
 
   Map<String, String> _generateNostrKeypair() {
     try {
-      final random = Random.secure();
-      final bytes = List<int>.generate(32, (_) => random.nextInt(256));
-      final privateKey = HEX.encode(bytes);
+      final mnemonic = ChatMeVault.generateNewMnemonic();
+      myMnemonic = mnemonic;
+
+      final bytes = utf8.encode(mnemonic);
+      final privateKey = sha256.convert(bytes).toString();
       final publicKey = bip340.getPublicKey(privateKey);
+
+      final settingsBox = Hive.box('settings');
+      settingsBox.put('my_mnemonic', mnemonic);
+      settingsBox.put('my_pubkey', publicKey);
+      settingsBox.put('my_privkey', privateKey);
+
       return {'private': privateKey, 'public': publicKey};
     } catch (e) {
       DebugLogger.log('Error generating keypair: $e', type: 'ERROR');
@@ -773,7 +797,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         ],
       ),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
         ),
         child: Theme(
           data: Theme.of(context).copyWith(
@@ -839,8 +863,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       label: 'Contacts',
                     ),
                     const NavigationDestination(
-                      icon: Icon(Icons.manage_accounts_outlined),
-                      selectedIcon: Icon(Icons.manage_accounts),
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings),
                       label: 'Profile',
                     ),
                   ],

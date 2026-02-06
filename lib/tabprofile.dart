@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:hive/hive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'main.dart';
@@ -76,21 +77,270 @@ class ProfileScreen extends StatelessWidget {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Column(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        // Kita hapus custom contentPadding agar kembali ke default yang lega seperti Mnemonic
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // Header
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.orange.withAlpha(25),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.security_rounded, color: Colors.orange, size: 32),
+              child: const Icon(Icons.security_rounded, color: Colors.orange, size: 28),
             ),
             const SizedBox(height: 12),
-            const Text('Backup Keys', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Security Vault', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 6),
+            Text(
+              'Keep these keys safe and private.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Peringatan
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.red.withAlpha(15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.gpp_maybe_rounded, color: Colors.red, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Never share your Private Key with anyone.',
+                      style: TextStyle(color: isDark ? Colors.red[200] : Colors.red[800], fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Kartu Kunci
+            _buildKeyTile(context, 'Public Key', settings.myPubkey, Colors.blue),
+            const SizedBox(height: 10),
+            _buildKeyTile(context, 'Private Key', settings.myPrivkey, Colors.orange),
+
+            const SizedBox(height: 20),
+
+            // Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Close', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: settings.exportKeys()));
+                    HapticFeedback.lightImpact();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('Copy All', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+// Widget pendukung untuk kartu kunci yang lebih rapi
+  Widget _buildKeyTile(BuildContext context, String label, String key, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor.withAlpha(20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 1)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  key,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: key));
+                  HapticFeedback.lightImpact();
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withAlpha(30),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.copy_rounded, color: color, size: 14),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Dialog Tampilan 12 Kata (Mnemonic)
+  Future<void> _showMnemonicDialog(BuildContext context) async {
+    final settingsBox = Hive.box('settings');
+    String displayMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
+
+    if (displayMnemonic.isEmpty) {
+      displayMnemonic = "Mnemonic not found. Please restore your account.";
+    }
+
+    final words = displayMnemonic.split(' ');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        content: SizedBox(
+          width: 320,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withAlpha(25),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.purple, size: 28),
+                ),
+                const SizedBox(height: 12),
+                const Text('Recovery Phrase', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(height: 6),
+                Text(
+                  'Keep these 12 words safe and private.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
+                ),
+                const SizedBox(height: 16),
+
+                // CONTAINER UTAMA MNEMONIC
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.purple.withAlpha(12) : Colors.purple.withAlpha(8),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.purple.withAlpha(25)),
+                  ),
+                  child: Center(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.center,
+                      children: List.generate(words.length, (index) {
+                        return Container(
+                          width: 90,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.black38 : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.purple.withAlpha(15)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('${index + 1}',
+                                  style: const TextStyle(fontSize: 9, color: Colors.purple, fontWeight: FontWeight.bold)
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(words[index],
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Close', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: displayMnemonic));
+                        HapticFeedback.lightImpact();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('Copy Words', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Dialog restore account (Versi Upgrade: Bisa Hex & Mnemonic)
+  Future<void> _showRestoreDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -98,112 +348,95 @@ class ProfileScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.withAlpha(13),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.withAlpha(51)),
+                  color: Colors.red.withAlpha(25),
+                  shape: BoxShape.circle,
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'NEVER share your Private Key. It grants full access to your account.',
-                        style: TextStyle(color: isDark ? Colors.red[200] : Colors.red[800], fontSize: 11, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
+                child: const Icon(Icons.settings_backup_restore_rounded, color: Colors.red, size: 32),
+              ),
+              const SizedBox(height: 12),
+              const Text('Restore Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 8),
+              Text(
+                'Enter your Hex key or 12-word phrase.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Paste here...',
+                  hintStyle: TextStyle(fontSize: 12, color: Colors.grey.withAlpha(150)),
+                  filled: true,
+                  fillColor: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(10),
+                  contentPadding: const EdgeInsets.all(16),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Theme.of(context).dividerColor.withAlpha(30)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Theme.of(context).dividerColor.withAlpha(30)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor.withAlpha(100), width: 1.5),
+                  ),
                 ),
               ),
+
               const SizedBox(height: 20),
-              _keyCard(context, 'PUBLIC KEY', settings.myPubkey, Icons.visibility_outlined, Colors.blue),
-              const SizedBox(height: 16),
-              _keyCard(context, 'PRIVATE KEY', settings.myPrivkey, Icons.vpn_key_outlined, Colors.orange, isSensitive: true),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final input = controller.text.trim();
+                        if (input.isEmpty) return;
+                        try {
+                          await AppSettings.instance.importAccount(input);
+                          relayManager.disconnect();
+                          relayManager.connect();
+                          if (context.mounted) Navigator.pop(context);
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text('Error: $e'),
+                              backgroundColor: Colors.red,
+                              behavior: SnackBarBehavior.floating,
+                            ));
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Restore', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Close', style: TextStyle(color: Colors.grey[600])),
-          ),
-          TextButton.icon(
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              foregroundColor: Colors.grey[600],
-            ),
-            icon: const Icon(Icons.copy_rounded, size: 18),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: settings.exportKeys()));
-              HapticFeedback.lightImpact();
-              Navigator.pop(context);
-            },
-            label: const Text('Copy All'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Dialog restore account
-  Future<void> _showRestoreDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Restore Account', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Enter your 64-character Private Key to recover your identity.', style: TextStyle(fontSize: 13, color: Colors.grey)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              maxLines: 2,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Paste Hex Private Key...',
-                filled: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                prefixIcon: const Icon(Icons.vpn_key_outlined),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () async {
-              final privkey = controller.text.trim();
-              if (privkey.length == 64) {
-                try {
-                  await AppSettings.instance.importAccount(privkey);
-                  relayManager.disconnect();
-                  relayManager.connect();
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Account successfully restored!'),
-                        backgroundColor: Colors.green
-                    ));
-                  }
-                } catch (e) {
-                  DebugLogger.log('Restore error: $e', type: 'ERROR');
-                }
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Invalid key length!')
-                ));
-              }
-            },
-            child: const Text('Restore Now', style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
     );
   }
@@ -215,124 +448,144 @@ class ProfileScreen extends StatelessWidget {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        title: const Text(
-          'Choose Theme',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: RadioGroup<ThemeMode>(
-          groupValue: currentMode,
-          onChanged: (ThemeMode? value) {
-            if (value != null) {
-              onThemeToggle(value);
-              Navigator.pop(context);
-            }
-          },
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _themeOption(context, 'System default', ThemeMode.system),
-              _themeOption(context, 'Light', ThemeMode.light),
-              _themeOption(context, 'Dark', ThemeMode.dark),
-            ],
-          ),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        contentPadding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withAlpha(25),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.palette_rounded, color: Colors.blue, size: 28),
+            ),
+            const SizedBox(height: 12),
+            const Text('Appearance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 4),
+            Text(
+              'Choose your interface style.',
+              style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Pilihan Tema
+            _buildThemeCard(context, 'System Default', Icons.brightness_auto_rounded, ThemeMode.system, currentMode),
+            const SizedBox(height: 8),
+            _buildThemeCard(context, 'Light Mode', Icons.light_mode_rounded, ThemeMode.light, currentMode),
+            const SizedBox(height: 8),
+            _buildThemeCard(context, 'Dark Mode', Icons.dark_mode_rounded, ThemeMode.dark, currentMode),
+
+            const SizedBox(height: 12),
+
+            // Tombol Close
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text('Close', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  Widget _buildThemeCard(BuildContext context, String label, IconData icon, ThemeMode mode, ThemeMode currentMode) {
+    final isSelected = currentMode == mode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-  // Helper untuk baris pilihan tema
-  Widget _themeOption(BuildContext context, String title, ThemeMode mode) {
-    return Theme(
-      data: Theme.of(context).copyWith(
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-      ),
-      child: RadioListTile<ThemeMode>(
-        title: Text(title, style: const TextStyle(fontSize: 14)),
-        value: mode,
-        selectedTileColor: Colors.transparent,
-        contentPadding: EdgeInsets.zero,
-        activeColor: Theme.of(context).colorScheme.onSurface,
+    return InkWell(
+      onTap: () {
+        onThemeToggle(mode);
+        Navigator.pop(context);
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? Colors.blue.withAlpha(100) : Theme.of(context).dividerColor.withAlpha(30),
+            width: isSelected ? 1.5 : 1,
+          ),
+          color: isSelected
+              ? Colors.blue.withAlpha(isDark ? 30 : 15)
+              : Theme.of(context).cardColor.withAlpha(100),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: isSelected ? Colors.blue : Colors.grey, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? Colors.blue : Theme.of(context).textTheme.bodyMedium?.color,
+              ),
+            ),
+            const Spacer(),
+            if (isSelected)
+              const Icon(Icons.check_circle_rounded, color: Colors.blue, size: 18),
+          ],
+        ),
       ),
     );
   }
 
   // Dialog Privacy Policy
   void _showPrivacyDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Privacy Policy', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const SingleChildScrollView(
-          child: Text(
-            'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data; however, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.',
-            style: TextStyle(fontSize: 13, height: 1.6),
-            textAlign: TextAlign.justify,
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Privacy Policy', style: TextStyle(fontSize: 22)),
+            elevation: 0,
+            centerTitle: true,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('I Understand'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget card untuk menampilkan key
-  Widget _keyCard(BuildContext context, String title, String key, IconData icon, Color color, {bool isSensitive = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 1)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: key));
-              HapticFeedback.lightImpact();
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(80),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Theme.of(context).dividerColor.withAlpha(30)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      key,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        color: isSensitive ? Colors.orange : Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+                Text(
+                  'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data. however, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.\n\n'
+                      'As a user, you are responsible for the safety of your Private Key. We do not store, collect, or have any access to your personal data, messages, or keys. By using Chatme, you acknowledge that your data security rests entirely in your hands through the cryptographic power of the Nostr network.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.6,
+                    color: Theme.of(context).textTheme.bodyMedium?.color?.withAlpha(200),
                   ),
-                  const SizedBox(width: 10),
-                  Icon(Icons.copy_rounded, size: 16, color: Theme.of(context).colorScheme.primary.withAlpha(150)),
-                ],
-              ),
+                  textAlign: TextAlign.left,
+                ),
+                const SizedBox(height: 32),
+                Divider(color: Theme.of(context).dividerColor.withAlpha(51)),
+                const SizedBox(height: 16),
+                Text(
+                  'End of Privacy Policy',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w300,
+                    color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(150),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -368,29 +621,45 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 32),
-            _buildSectionTitle('Your Public Key'),
+            _buildSectionTitle('Your Private Number'),
             Card(
               elevation: 0,
+              // Border sekarang pasif (tidak ada onTap di ListTile)
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
               ),
               child: ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: settings.myPubkey));
-                  HapticFeedback.lightImpact();
-                },
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 title: SelectableText(
                   settings.myPubkey,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    color: Theme.of(context).textTheme.bodyMedium?.color?.withAlpha(200),
+                  ),
                 ),
-                trailing: Icon(
-                    Icons.copy_rounded,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 20
+                trailing: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: settings.myPubkey));
+                      HapticFeedback.lightImpact();
+                    },
+                    borderRadius: BorderRadius.circular(50),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withAlpha(20),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                          Icons.copy_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 18
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -398,7 +667,12 @@ class ProfileScreen extends StatelessWidget {
             _buildSectionTitle('Security & Account'),
             Card(
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))),
+              shadowColor: Colors.black.withAlpha(51),
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
+              ),
               child: Column(
                 children: [
                   ListTile(
@@ -408,7 +682,15 @@ class ProfileScreen extends StatelessWidget {
                         topRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.vpn_key_outlined, color: Colors.blue),
+                    leading: const Icon(Icons.auto_awesome_rounded, color: Colors.purple),
+                    title: const Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    subtitle: const Text('12 words backup', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _showMnemonicDialog(context),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.security_rounded, color: Colors.orange),
                     title: const Text('Backup Your Keys', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     subtitle: const Text('Save your private identity', style: TextStyle(fontSize: 12)),
                     trailing: const Icon(Icons.chevron_right_rounded),
@@ -422,7 +704,7 @@ class ProfileScreen extends StatelessWidget {
                         bottomRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.history_rounded, color: Colors.red),
+                    leading: const Icon(Icons.settings_backup_restore_rounded, color: Colors.red),
                     title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     subtitle: const Text('Use private key to login', style: TextStyle(fontSize: 12)),
                     trailing: const Icon(Icons.chevron_right_rounded),
@@ -443,7 +725,7 @@ class ProfileScreen extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                leading: const Icon(Icons.brightness_6_outlined, color: Colors.purple),
+                leading: const Icon(Icons.palette_rounded, color: Colors.blue),
                 title: const Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 subtitle: Text(
                   AppSettings.instance.themeMode == ThemeMode.system
