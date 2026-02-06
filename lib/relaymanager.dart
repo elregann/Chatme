@@ -9,7 +9,7 @@ import 'callmanager.dart';
 import 'call.dart';
 import 'main.dart';
 import 'chatmanager.dart';
-import 'encryption.dart';
+import 'encryption_secp256k1.dart';
 
 class RelayManager {
   Function? onMessageReceived;

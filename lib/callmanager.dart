@@ -261,7 +261,7 @@ class CallManager {
     );
 
     if (_sharedCallState == CallState.idle) {
-      Future.delayed(const Duration(milliseconds: 800), () {
+      Future.delayed(const Duration(milliseconds: 500), () {
         makeOffer(peerPubkey, relay, () => debugPrint("✅ Connected"));
       });
     }
@@ -275,6 +275,7 @@ class CallManager {
       if (_remoteRenderer == null) {
         _remoteRenderer = rtc.RTCVideoRenderer();
         await _remoteRenderer!.initialize();
+        await Future.delayed(const Duration(milliseconds: 50));
       }
 
       final constraints = kIsWeb
@@ -289,6 +290,9 @@ class CallManager {
           : CallConstants.audioConstraints;
 
       _localStream = await rtc.navigator.mediaDevices.getUserMedia(constraints);
+
+      await Future.delayed(const Duration(milliseconds: 50));
+
       _isMuted = false;
       _isSpeakerOn = false;
 
@@ -490,7 +494,12 @@ class CallManager {
       _currentTargetPubkey = targetPubkey;
       _startConnectionTimeout();
 
+      await Future.delayed(const Duration(milliseconds: 200));
+
       await initAudio();
+
+      await Future.delayed(const Duration(milliseconds: 200));
+
       await setupPeerConnection(targetPubkey, relay, onConnected);
 
       final offer = await _peerConnection!.createOffer({
@@ -664,12 +673,12 @@ class CallManager {
 
     try {
       _cancelAllTimers();
-      _currentRelay?.onSignalReceived = null;
-      _currentRelay = null;
 
       if (sendHangupSignal && targetPubkey != null && relay != null) {
         relay.sendCallSignal(targetPubkey, {'type': 'hangup'});
       }
+
+      await Future.delayed(const Duration(milliseconds: 300));
 
       if (_localStream != null) {
         _localStream!.getTracks().forEach((t) => t.stop());
@@ -681,6 +690,9 @@ class CallManager {
         await _peerConnection!.close();
         _peerConnection = null;
       }
+
+      _currentRelay?.onSignalReceived = null;
+      _currentRelay = null;
 
       _setCallState(CallState.idle);
 

@@ -10,7 +10,7 @@ import 'main.dart';
 import 'callmanager.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
-import 'encryption.dart';
+import 'encryption_ed25519.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -302,8 +302,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
 
       final myPrivkey = AppSettings.instance.myPrivkey;
-      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver);
-
+      final encrypted = await EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver); //ED25519-X25519
+//      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver); (Secp256k1)
       final pendingMessage = tempMessage.copyWith(
         id: offlineId,
         content: encrypted,

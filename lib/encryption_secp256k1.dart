@@ -77,12 +77,17 @@ class SimpleECDH {
   static bool _isValidPoint(ecc.ECPoint point) {
     final x = point.x!.toBigInteger()!;
     final y = point.y!.toBigInteger()!;
+
+    // Validasi titik berada di kurva
     final left = (y * y) % Secp256k1Constants.p;
-    final right =
-        (x.modPow(BigInt.from(3), Secp256k1Constants.p) +
-            Secp256k1Constants.b) %
-            Secp256k1Constants.p;
-    return left == right;
+    final right = (x.modPow(BigInt.from(3), Secp256k1Constants.p) +
+        Secp256k1Constants.b) %
+        Secp256k1Constants.p;
+    if (left != right) return false;
+
+    // Validasi titik berada di subgroup yang benar
+    final nQ = point * Secp256k1Constants.n;
+    return nQ!.isInfinity;
   }
 
   static void _wipeUint8List(Uint8List data) {
@@ -92,8 +97,7 @@ class SimpleECDH {
   }
 
   static bool _isValidHex(String hex) {
-    return hex.isNotEmpty &&
-        RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex);
+    return hex.isNotEmpty && RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex);
   }
 }
 
@@ -124,13 +128,23 @@ Uint8List _hkdfSha256(
 }
 
 // =======================
-// SYMMETRIC SALT DERIVATION (FIX)
+// SYMMETRIC SALT DERIVATION (WITH RANDOM SALT)
 // =======================
-Uint8List _deriveSalt(String pubA, String pubB) {
+Uint8List _deriveStaticSalt(String pubA, String pubB) {
   final keys = [pubA, pubB]..sort();
   return Uint8List.fromList(
     sha256.convert(utf8.encode(keys.join(':'))).bytes,
   );
+}
+
+// Helper untuk menghasilkan byte acak dengan aman
+Uint8List _generateSecureRandomBytes(int length) {
+  final random = Random.secure();
+  final bytes = Uint8List(length);
+  for (int i = 0; i < length; i++) {
+    bytes[i] = random.nextInt(256);
+  }
+  return bytes;
 }
 
 // =======================
@@ -149,19 +163,33 @@ class EncryptionManager {
       final sharedSecret =
       SimpleECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
 
-      final salt = _deriveSalt(myPublicKey, peerPublicKey);
+      // Generate random salt untuk sesi ini (16 bytes)
+      final randomSalt = _generateSecureRandomBytes(16);
+
+      // Gabungkan static salt dengan random salt
+      final staticSalt = _deriveStaticSalt(myPublicKey, peerPublicKey);
+      final combinedSalt = Uint8List.fromList([...staticSalt, ...randomSalt]);
+
       final keyBytes = _hkdfSha256(
         sharedSecret,
-        salt,
-        utf8.encode('aes-gcm-chat-v1'),
+        combinedSalt,
+        utf8.encode('aes-gcm-chat-v2'), // Versi ditingkatkan
         32,
       );
 
       final key = encrypt_lib.Key(keyBytes);
-      final iv = encrypt_lib.IV.fromSecureRandom(12);
+
+      // Generate IV dengan validasi (12 bytes untuk AES-GCM)
+      final ivBytes = _generateSecureRandomBytes(12);
+      final iv = encrypt_lib.IV(ivBytes);
+
+      // Pastikan IV benar-benar 12 bytes
+      if (ivBytes.length != 12) {
+        throw Exception('Invalid IV length');
+      }
 
       final payload = jsonEncode({
-        'v': 1,
+        'v': 2, // Versi protokol ditingkatkan
         'msg': plaintext,
       });
 
@@ -170,9 +198,15 @@ class EncryptionManager {
       );
 
       final encrypted = encrypter.encrypt(payload, iv: iv);
-      return '${encrypted.base64}?iv=${iv.base64}';
+
+      // Format baru: ciphertext?iv=...?salt=...
+      final saltBase64 = base64.encode(randomSalt);
+      final ivBase64 = base64.encode(ivBytes);
+      final ciphertext = encrypted.base64;
+
+      return '$ciphertext?iv=$ivBase64?salt=$saltBase64';
     } catch (e) {
-      return base64.encode(utf8.encode(plaintext));
+      throw Exception('Encryption failed: $e');
     }
   }
 
@@ -185,34 +219,86 @@ class EncryptionManager {
     try {
       if (encrypted.isEmpty) return '[Empty message]';
 
-      final parts = encrypted.split('?iv=');
-      if (parts.length != 2) {
-        return utf8.decode(base64.decode(encrypted));
+      // Parsing format baru (v2)
+      final parts = encrypted.split('?');
+      String ciphertext;
+      String ivBase64;
+      String saltBase64;
+
+      if (parts.length == 3) {
+        // Format baru: ciphertext?iv=...?salt=...
+        ciphertext = parts[0];
+        ivBase64 = parts[1].replaceFirst('iv=', '');
+        saltBase64 = parts[2].replaceFirst('salt=', '');
+      } else if (encrypted.contains('?iv=') && parts.length == 2) {
+        // Format lama (v1) untuk backward compatibility
+        final oldParts = encrypted.split('?iv=');
+        ciphertext = oldParts[0];
+        ivBase64 = oldParts[1];
+        saltBase64 = ''; // Tidak ada salt di v1
+      } else {
+        try {
+          return utf8.decode(base64.decode(encrypted));
+        } catch (e) {
+          return '[⚠️ Format pesan tidak valid]';
+        }
       }
 
       final sharedSecret =
       SimpleECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
 
-      final salt = _deriveSalt(myPublicKey, peerPublicKey);
+      Uint8List combinedSalt;
+      Uint8List info;
+      int version;
+
+      if (saltBase64.isNotEmpty) {
+        // Format v2 dengan random salt
+        try {
+          final randomSalt = base64.decode(saltBase64);
+          final staticSalt = _deriveStaticSalt(myPublicKey, peerPublicKey);
+          combinedSalt = Uint8List.fromList([...staticSalt, ...randomSalt]);
+          info = utf8.encode('aes-gcm-chat-v2');
+          version = 2;
+        } catch (e) {
+          return '[⚠️ Salt tidak valid]';
+        }
+      } else {
+        // Format v1 tanpa random salt
+        combinedSalt = _deriveStaticSalt(myPublicKey, peerPublicKey);
+        info = utf8.encode('aes-gcm-chat-v1');
+        version = 1;
+      }
+
       final keyBytes = _hkdfSha256(
         sharedSecret,
-        salt,
-        utf8.encode('aes-gcm-chat-v1'),
+        combinedSalt,
+        info,
         32,
       );
 
       final key = encrypt_lib.Key(keyBytes);
-      final iv = encrypt_lib.IV.fromBase64(parts[1]);
+      final iv = encrypt_lib.IV.fromBase64(ivBase64);
+
+      // Validasi IV
+      if (iv.bytes.length != 12) {
+        return '[⚠️ Panjang IV tidak valid]';
+      }
 
       final encrypter = encrypt_lib.Encrypter(
         encrypt_lib.AES(key, mode: encrypt_lib.AESMode.gcm),
       );
 
-      final decrypted = encrypter.decrypt64(parts[0], iv: iv);
+      final decrypted = encrypter.decrypt64(ciphertext, iv: iv);
       final decoded = jsonDecode(decrypted);
+
+      // Validasi versi
+      if (decoded['v'] != version) {
+        return '[⚠️ Versi protokol tidak cocok]';
+      }
+
       return decoded['msg'];
     } catch (e) {
-      return '[⚠️ Damaged or tampered message]';
+      return '[⚠️ Pesan rusak atau telah diubah]';
     }
   }
 
@@ -221,21 +307,36 @@ class EncryptionManager {
   // =======================
   static String sign(String eventId, String privateKey) {
     try {
-      final random = Random.secure();
-      final aux = HEX.encode(
-        Uint8List.fromList(List.generate(32, (_) => random.nextInt(256))),
-      );
-      return bip340.sign(privateKey, eventId, aux);
-    } catch (_) {
-      return '';
+      // Generate aux dengan CSPRNG
+      final auxBytes = _generateSecureRandomBytes(32);
+      final auxHex = HEX.encode(auxBytes);
+
+      final signature = bip340.sign(privateKey, eventId, auxHex);
+
+      // Validasi signature tidak kosong
+      if (signature.isEmpty) {
+        throw Exception('Signature generation failed');
+      }
+
+      return signature;
+    } catch (e) {
+      throw Exception('Signing failed: $e');
     }
   }
 
   static bool verify(
-      String eventId, String signature, String pubkey) {
+      String eventId,
+      String signature,
+      String pubkey,
+      ) {
     try {
+      // Validasi input
+      if (signature.isEmpty || pubkey.isEmpty || eventId.isEmpty) {
+        return false;
+      }
+
       return bip340.verify(pubkey, eventId, signature);
-    } catch (_) {
+    } catch (e) {
       return false;
     }
   }
