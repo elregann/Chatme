@@ -31,7 +31,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
 
-  bool _isEmojiVisible = false; // Untuk kontrol tampilan emoji
+  bool _isEmojiVisible = false;
 
   bool _isSending = false;
   bool _showScrollButton = false;
@@ -69,10 +69,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     // Baris 6: Lucu & Santai
     '🤪', '🙈', '👻', '🍻', '🌈', '💤'
   ];
-
-  // =============================
-  // LIFECYCLE
-  // =============================
 
   @override
   void initState() {
@@ -114,9 +110,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.dispose();
   }
 
-  // =============================
-  // SCROLL LOGIC (STABILIZED)
-  // =============================
   void _handleScroll() {
     if (!_scrollController.hasClients) return;
 
@@ -127,13 +120,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _isUserScrolling = false;
     });
 
-    // Karena REVERSE, offset 0.0 adalah posisi paling bawah (pesan terbaru)
     final offset = _scrollController.offset;
 
-    // Deteksi jika user berada di area bawah (dekat offset 0)
     final nearBottom = offset < 120;
 
-    // Tampilkan tombol scroll ke bawah jika user scroll ke atas (offset menjauh dari 0)
     final showButton = offset > 600;
 
     if (nearBottom != _userIsNearBottom || showButton != _showScrollButton) {
@@ -143,7 +133,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       });
     }
 
-    // Tampilkan tanggal melayang saat user scroll ke atas (menjauh dari pesan terbaru)
     if (offset > 200) {
       _updateFloatingDate();
     } else if (_showFloatingDate) {
@@ -198,7 +187,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (_isUserScrolling && !force) return;
 
     if (force || _userIsNearBottom) {
-      // Kita beri sedikit delay agar frame pesan baru benar-benar stabil
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
         _scrollToBottom(force: force);
@@ -302,8 +290,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
 
       final myPrivkey = AppSettings.instance.myPrivkey;
-      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver); //ED25519-X25519
-//      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver); (Secp256k1)
+      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver);
       final pendingMessage = tempMessage.copyWith(
         id: offlineId,
         content: encrypted,
@@ -337,9 +324,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             ),
             Positioned(
-              // Vertikal: Tetap dinamis ngikutin jari (dikurangi 80 biar di atasnya)
               top: tapPosition.dy - 80,
-              // Horizontal: Selalu di tengah layar
               left: centerX,
               child: _buildReactionPopupContent(),
             ),
@@ -361,13 +346,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       color: Colors.transparent,
       child: Row(
         mainAxisSize: MainAxisSize.min,
-
-        // Memastikan semuanya sejajar di tengah secara horizontal
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 1. Kapsul Emoji & Plus (Dibuat presisi tinggi 44)
           SizedBox(
-            height: 46, // PAKSA tinggi agar sama dengan lingkaran salin
+            height: 46,
             child: Container(
               decoration: BoxDecoration(
                 color: bgColor,
@@ -379,7 +361,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ],
               ),
-              // Padding vertikal di-nol-kan karena tinggi sudah diatur oleh SizedBox
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -392,8 +373,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
 
           const SizedBox(width: 8),
-
-          // 2. Lingkaran Salin (Tinggi 44)
           GestureDetector(
             onTap: () {
               if (_messageForReaction != null) {
@@ -449,7 +428,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void _handleReaction(String emoji) async {
     if (_messageForReaction == null) return;
 
-    // Kunci data pesan ke variabel lokal agar tidak null saat proses await
     final targetMessage = _messageForReaction!;
     HapticFeedback.lightImpact();
 
@@ -486,7 +464,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         emoji: emoji,
       );
 
-      // Reset data pesan hanya setelah semua proses selesai
       _messageForReaction = null;
 
     } catch (e) {
@@ -496,7 +473,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _showAllReactionsDialog() {
-    // TAMBAHKAN INI: Menghilangkan fokus dari TextField agar keyboard turun
     FocusScope.of(context).unfocus();
 
     final backupMessage = _messageForReaction;
@@ -508,7 +484,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     showDialog(
       context: context,
-      // Tambahkan ini agar saat klik di luar, dialog tertutup tanpa memicu input
       barrierDismissible: true,
       builder: (context) {
         return Dialog(
@@ -563,10 +538,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _reactionOverlayEntry = null;
     }
   }
-
-  // =============================
-  // UTIL
-  // =============================
 
   String _getDateLabel(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -1111,16 +1082,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         child: Row(
           mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
-            // 1. LOGO DENGAN DINAMIS SIZE (TUMBUH DARI KECIL KE BESAR)
             if (_draggingId == message.id)
-            // Menggunakan Sizedbox dinamis agar dorongan ke bubble halus
               SizedBox(
-                width: (_dragOffset * 0.6).clamp(0.0, 46.0), // Lebar tumbuh perlahan
+                width: (_dragOffset * 0.6).clamp(0.0, 46.0),
                 child: Opacity(
                   opacity: (_dragOffset / 40).clamp(0.0, 1.0),
                   child: Center(
                     child: Transform.scale(
-                      scale: (_dragOffset / 50).clamp(0.0, 1.0), // Ikon membesar
+                      scale: (_dragOffset / 50).clamp(0.0, 1.0),
                       child: Container(
                         width: 26,
                         height: 26,
@@ -1142,8 +1111,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ),
               ),
-
-            // 2. BUBBLE CHAT
             _buildMessageBubble(message),
           ],
         ),
@@ -1151,7 +1118,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  //Mengatur jarak Bubble Pesan dan ketika ada reaksi pada pesan
+  //Mengatur jarak Bubble Pesan dan ketika ada reaksi pada pesan (FIX)
   Widget _buildMessageBubble(ChatMessage message) {
     final theme = Theme.of(context);
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
@@ -1183,7 +1150,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             clipBehavior: Clip.none,
             children: [
               Container(
-                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.70),
                 margin: EdgeInsets.only(
                   left: isMe ? 50 : 12,
                   right: isMe ? 12 : 50,
@@ -1200,33 +1167,38 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       ? Border.all(color: Colors.white10, width: 0.5)
                       : null,
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (message.replyToContent != null) _buildReplyInBubble(message, isMe),
+                padding: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 6),
+                child: IntrinsicWidth(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (message.replyToContent != null)
+                        _buildReplyInBubble(message, isMe),
 
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      crossAxisAlignment: WrapCrossAlignment.end,
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        Text(
-                          message.plaintext,
-                          style: TextStyle(color: textColor, fontSize: 16),
-                        ),
-                        Transform.translate(
-                          offset: const Offset(0, 4),
-                          child: Row(
+                      const SizedBox(height: 4),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              message.plaintext,
+                              style: TextStyle(color: textColor, fontSize: 16),
+                            ),
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 timeStr,
                                 style: TextStyle(
                                   color: textColor.withAlpha(153),
-                                  fontSize: 12,
+                                  fontSize: 11,
                                 ),
                               ),
                               if (isMe) ...[
@@ -1235,16 +1207,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                               ],
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
               if (hasReactions)
                 Positioned(
-                  bottom: -21, //jarak bubble chat "emot" dibawah jam
+                  bottom: -21,
                   right: isMe ? 20 : null,
                   left: isMe ? null : 20,
                   child: _buildReactionsDisplay(message, isMe, textColor),
@@ -1256,21 +1228,73 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-// Method baru untuk display reactions
+  Widget _buildReplyInBubble(ChatMessage message, bool isMe) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final String senderName = isMe
+        ? (widget.contact.isSaved ? widget.contact.name : "User ${widget.contact.pubkey.substring(0, 8)}")
+        : "You";
+
+    final nameColor = const Color(0xFF1976D2);
+    final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);
+    final contentColor = isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 10, 0, 0),
+      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(10),
+            bottom: Radius.circular(10)
+        ),
+        border: Border(
+          left: BorderSide(
+              color: nameColor,
+              width: 4
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            senderName,
+            style: TextStyle(
+              color: nameColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            message.replyToContent ?? "",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: contentColor,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // display reactions
   Widget _buildReactionsDisplay(ChatMessage message, bool isMe, Color textColor) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        // Background emot: Abu-abu gelap di mode gelap, putih/abu terang di mode terang
         color: isDark ? const Color(0xFF202C33) : const Color(0xFFF0F0F0),
         borderRadius: BorderRadius.circular(12),
 
-        // DI SINI TEMPAT MENGECILKAN GARIS TEPI:
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black12, // Warna garis yang sangat tipis
-          width: 0.5, // Ukuran garis diperkecil (dari 1.0 ke 0.5)
+          color: isDark ? Colors.white10 : Colors.black12,
+          width: 0.5,
         ),
 
         boxShadow: [
@@ -1309,62 +1333,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
-  Widget _buildReplyInBubble(ChatMessage message, bool isMe) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final String senderName = isMe
-        ? (widget.contact.isSaved ? widget.contact.name : "User ${widget.contact.pubkey.substring(0, 8)}")
-        : "You";
-
-    final replyBgColor = Colors.black.withAlpha(25);
-
-    // Warna Nama: Gelap (Biru Muda/Cerah) | Terang (Hijau Tua)
-    final nameColor = isDark ? const Color(0xFFE3F2FD) : const Color(0xFF1976D2);
-
-    // Warna Isi Pesan: Gelap (Putih agak transparan) | Terang (Hitam)
-    final contentColor = isDark ? Colors.white.withAlpha(180) : const Color(0xFF000000);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: replyBgColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(
-              color: isDark ? const Color(0xFFE3F2FD) : const Color(0xFF1976D2),
-              width: 4
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            senderName,
-            style: TextStyle(
-              color: nameColor,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            message.replyToContent ?? "",
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: contentColor,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEmptyState() {
     return Center(child: Opacity(opacity: 0.5, child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.chat_bubble_outline, size: 48), const SizedBox(height: 16), Text('No messages yet with ${widget.contact.name}')])));
   }
@@ -1374,7 +1342,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)), // Lebih membulat
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(widget.contact.isSaved ? 'Rename Contact' : 'Save Contact',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         content: TextField(
@@ -1387,7 +1355,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             )
         ),
         actions: [
-          // Pakai Theme untuk hapus splash kotak
           Theme(
             data: Theme.of(context).copyWith(
               splashColor: Colors.transparent,

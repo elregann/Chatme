@@ -16,36 +16,88 @@ class ChatsScreen extends StatefulWidget {
 }
 
 class _ChatsScreenState extends State<ChatsScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _searchQuery = "";
+
   @override
   void initState() {
     super.initState();
     widget.relayManager.onMessageReceived = () {
-      if (mounted) {
-        setState(() {});
-        DebugLogger.log('🔔 ChatsScreen: UI Refreshing (Pesan baru/Read)');
-      }
+      if (mounted) setState(() {});
     };
 
     widget.relayManager.onMessageDelivered = (eventId) {
-      if (mounted) {
-        setState(() {});
-        DebugLogger.log('🔔 ChatsScreen: UI Refreshing (Status OK: $eventId)');
-      }
+      if (mounted) setState(() {});
     };
   }
 
-  // Generate warna avatar berdasarkan pubkey
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
   Color _getAvatarColor(String pubkey) {
     return Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
   }
 
-  // Ambil inisial nama untuk avatar
   String _getInitials(String name) {
     if (name.trim().isEmpty) return "?";
     return name.trim().substring(0, 1).toUpperCase();
   }
 
-  // Widget icon status pesan
+  Widget _buildHighlightedText(String text, String query, bool isDark) {
+    if (query.isEmpty || !text.toLowerCase().contains(query.toLowerCase())) {
+      return Text(text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)
+      );
+    }
+
+    final List<TextSpan> spans = [];
+    final String lowercaseText = text.toLowerCase();
+    final String lowercaseQuery = query.toLowerCase();
+
+    int start = 0;
+    int indexOfHighlight;
+
+    while ((indexOfHighlight = lowercaseText.indexOf(lowercaseQuery, start)) != -1) {
+      // Teks sebelum bagian yang di-highlight
+      if (indexOfHighlight > start) {
+        spans.add(TextSpan(text: text.substring(start, indexOfHighlight)));
+      }
+
+      // Bagian yang di-highlight (kasih background biru)
+      spans.add(TextSpan(
+        text: text.substring(indexOfHighlight, indexOfHighlight + query.length),
+        style: TextStyle(
+          /// backgroundColor: Colors.blue.withAlpha(100), // Background biru transparan
+          color: isDark ? Colors.white : Colors.black,
+          fontWeight: FontWeight.bold,
+        ),
+      ));
+
+      start = indexOfHighlight + query.length;
+    }
+
+    // Sisa teks setelah highlight terakhir
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start)));
+    }
+
+    return RichText(
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      text: TextSpan(
+        style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14),
+        children: spans,
+      ),
+    );
+  }
+
   Widget _buildStatusIcon(String status, Color color) {
     switch (status) {
       case 'pending':
@@ -65,67 +117,234 @@ class _ChatsScreenState extends State<ChatsScreen> {
   @override
   Widget build(BuildContext context) {
     final myPubkey = AppSettings.instance.myPubkey;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chats'),
-        actions: const [],
-      ),
-      body: ValueListenableBuilder<Box<Contact>>(
-        valueListenable: Hive.box<Contact>('contacts').listenable(),
-        builder: (context, contactBox, _) {
-          return ValueListenableBuilder(
-            valueListenable: Hive.box('chats').listenable(),
-            builder: (context, Box chatBox, _) {
+    return GestureDetector(
+      onTap: () => _searchFocusNode.unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Chats'),
+          elevation: 0,
+        ),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val.toLowerCase();
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search people or messages...',
+                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                    prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 20),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _searchQuery = "";
+                        });
+                        _searchFocusNode.unfocus();
+                      },
+                    )
+                        : null,
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.only(top: 10),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ValueListenableBuilder<Box<Contact>>(
+                valueListenable: Hive.box<Contact>('contacts').listenable(),
+                builder: (context, contactBox, _) {
+                  return ValueListenableBuilder(
+                    valueListenable: Hive.box('chats').listenable(),
+                    builder: (context, Box chatBox, _) {
+                      final myPubkey = AppSettings.instance.myPubkey;
+                      final isDark = Theme.of(context).brightness == Brightness.dark;
+                      final contactList = contactBox.values.toList();
 
-              final contactList = contactBox.values.toList();
-              List<Map<String, dynamic>> chatPreviews = [];
+                      // --- 1. LOGIKA FILTER CONTACTS (Hanya yang di-save) ---
+                      List<Contact> filteredSavedContacts = [];
+                      if (_searchQuery.isNotEmpty) {
+                        filteredSavedContacts = contactList.where((c) {
+                          return c.isSaved && c.name.toLowerCase().contains(_searchQuery);
+                        }).toList();
+                      }
 
-              for (var contact in contactList) {
-                final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
-                final dynamic rawData = chatBox.get(chatKey);
-                List<ChatMessage> messages = rawData is List ? rawData.cast<ChatMessage>().toList() : [];
+                      // --- 2. LOGIKA FILTER CHATS (Berdasarkan Nama/Pubkey) ---
+                      List<Map<String, dynamic>> chatPreviews = [];
+                      // --- 3. LOGIKA FILTER MESSAGES (Scan isi pesan) ---
+                      List<Map<String, dynamic>> messageResults = [];
 
-                int latestTime = contact.lastChatTime;
-                ChatMessage? lastMessage;
+                      for (var contact in contactList) {
+                        final String displayName = contact.isSaved
+                            ? contact.name
+                            : 'User ${contact.pubkey.substring(0, 8)}';
 
-                if (messages.isNotEmpty) {
-                  messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-                  lastMessage = messages.last;
-                  latestTime = lastMessage.timestamp;
-                }
+                        // Ambil pesan dari box
+                        final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
+                        final dynamic rawData = chatBox.get(chatKey);
+                        List<ChatMessage> messages = rawData is List ? rawData.cast<ChatMessage>().toList() : [];
 
-                if (messages.isNotEmpty || contact.lastChatTime > 0) {
-                  chatPreviews.add({
-                    'contact': contact,
-                    'lastMsg': lastMessage,
-                    'time': latestTime,
-                  });
-                }
-              }
+                        // Cek apakah nama cocok untuk kategori CHATS
+                        bool nameMatches = _searchQuery.isNotEmpty &&
+                            (displayName.toLowerCase().contains(_searchQuery) ||
+                                contact.pubkey.toLowerCase().contains(_searchQuery));
 
-              chatPreviews.sort((a, b) => (b['time'] as int).compareTo(a['time'] as int));
+                        // Cek isi pesan untuk kategori MESSAGES (minimal 3 huruf biar ringan)
+                        if (_searchQuery.length >= 2) {
+                          for (var m in messages) {
+                            if (m.plaintext.toLowerCase().contains(_searchQuery)) {
+                              messageResults.add({
+                                'contact': contact,
+                                'message': m,
+                              });
+                            }
+                          }
+                        }
 
-              if (chatPreviews.isEmpty) return _buildEmptyState();
+                        // Logika untuk menyusun Preview Chat (seperti biasa)
+                        int latestTime = contact.lastChatTime;
+                        ChatMessage? lastMessage;
 
-              return ListView.builder(
-                itemCount: chatPreviews.length,
-                itemBuilder: (context, index) {
-                  final item = chatPreviews[index];
-                  return _buildContactItem(
-                      item['contact'] as Contact,
-                      item['lastMsg'] as ChatMessage?
+                        if (messages.isNotEmpty) {
+                          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+                          lastMessage = messages.last;
+                          latestTime = lastMessage.timestamp;
+                        }
+
+                        // Masukkan ke daftar Chat jika ada pesan atau nama cocok saat dicari
+                        if ((messages.isNotEmpty || contact.lastChatTime > 0) &&
+                            (_searchQuery.isEmpty || nameMatches)) {
+                          chatPreviews.add({
+                            'contact': contact,
+                            'lastMsg': lastMessage,
+                            'time': latestTime,
+                          });
+                        }
+                      }
+
+                      // Urutkan chat berdasarkan waktu terbaru
+                      chatPreviews.sort((a, b) => (b['time'] as int).compareTo(a['time'] as int));
+
+                      // Jika semua kosong
+                      if (chatPreviews.isEmpty && filteredSavedContacts.isEmpty && messageResults.isEmpty) {
+                        return _searchQuery.isEmpty ? _buildEmptyState() : _buildNoResultState();
+                      }
+
+                      return ListView(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                        children: [
+                          // ================= SEKSI CONTACTS =================
+                          if (_searchQuery.isNotEmpty && filteredSavedContacts.isNotEmpty) ...[
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                              child: Text("CONTACTS", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                            ),
+                            ...filteredSavedContacts.map((contact) => _buildContactItem(contact, null)).toList(),
+                            const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
+                          ],
+
+                          // ================= SEKSI CHATS =================
+                          if (chatPreviews.isNotEmpty) ...[
+                            if (_searchQuery.isNotEmpty)
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                                child: Text("CHATS", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                              ),
+                            ...chatPreviews.map((item) => _buildContactItem(
+                                item['contact'] as Contact,
+                                item['lastMsg'] as ChatMessage?
+                            )).toList(),
+                            if (_searchQuery.isNotEmpty && messageResults.isNotEmpty)
+                              const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
+                          ],
+
+                          // ================= SEKSI MESSAGES (Tanpa Ikon) =================
+                          if (_searchQuery.isNotEmpty && messageResults.isNotEmpty) ...[
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                              child: Text("MESSAGES", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                            ),
+                            ...messageResults.map((res) {
+                              final contact = res['contact'] as Contact;
+                              final msg = res['message'] as ChatMessage;
+                              return ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                title: Text(
+                                  contact.isSaved ? contact.name : "User ${contact.pubkey.substring(0,8)}",
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
+                                ),
+                                subtitle: Row(
+                                  children: [
+                                    if (msg.senderPubkey == myPubkey) // Cek kalau itu pesan kita
+                                      Text(
+                                          "You: ",
+                                          style: TextStyle(
+                                              color: Colors.blue.withAlpha(150),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14
+                                          )
+                                      ),
+                                    Expanded(
+                                      child: _buildHighlightedText(msg.plaintext, _searchQuery, isDark),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () {
+                                  Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(
+                                    contact: contact,
+                                    relayManager: widget.relayManager,
+                                  )));
+                                },
+                              );
+                            }).toList(),
+                          ],
+                        ],
+                      );
+                    },
                   );
                 },
-              );
-            },
-          );
-        },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // Widget item kontak dalam list
+  Widget _buildNoResultState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.search_off_rounded, size: 70, color: Colors.grey.withAlpha(100)),
+          const SizedBox(height: 16),
+          Text(
+            'No results for "$_searchQuery"',
+            style: const TextStyle(color: Colors.grey, fontSize: 15),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildContactItem(Contact contact, ChatMessage? lastMsg) {
     final myPubkey = AppSettings.instance.myPubkey;
     final String displayName = contact.isSaved
@@ -137,62 +356,74 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
     return ListTile(
       leading: CircleAvatar(
+        radius: 26,
         backgroundColor: _getAvatarColor(contact.pubkey),
         child: Text(
           _getInitials(displayName),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
       title: Text(
         displayName,
-        style: const TextStyle(fontWeight: FontWeight.bold),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
       ),
-      subtitle: Row(
-        children: [
-          if (lastMsg != null && isMe) ...[
-            _buildStatusIcon(lastMsg.status, isDark ? Colors.white70 : Colors.black54),
-            const SizedBox(width: 4),
-          ],
-          Expanded(
-            child: Text(
-              lastMsg != null ? lastMsg.plaintext : 'Tap to start chatting',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isMe ? Colors.grey : null,
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(
+          children: [
+            if (lastMsg != null && isMe) ...[
+              _buildStatusIcon(lastMsg.status, isDark ? Colors.white70 : Colors.black54),
+              const SizedBox(width: 4),
+            ],
+            Expanded(
+              child: Text(
+                lastMsg != null ? lastMsg.plaintext : 'Tap to start chatting',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isMe ? Colors.grey : (isDark ? Colors.white70 : Colors.black87),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             TimeUtils.formatTimeHumanized(lastMsg?.timestamp ?? contact.lastChatTime),
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
+            style: TextStyle(
+                fontSize: 11,
+                color: contact.unreadCount > 0 ? Colors.grey : Colors.grey
+            ),
           ),
-          // GANTI BAGIAN INI DI DALAM trailing: Column
+          const SizedBox(height: 4),
           if (contact.unreadCount > 0)
             Container(
-              margin: const EdgeInsets.only(top: 4),
-              width: 20,  // Lebar tetap agar bulat
-              height: 20, // Tinggi tetap agar bulat
-              alignment: Alignment.center, // Supaya angka tepat di tengah
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              padding: const EdgeInsets.all(4),
               decoration: const BoxDecoration(
                 color: Colors.red,
-                shape: BoxShape.circle, // Membuat lingkaran sempurna
+                shape: BoxShape.circle,
               ),
               child: Text(
                   '${contact.unreadCount}',
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 10, // Ukuran font diperkecil sedikit agar pas di dalam lingkaran
+                      fontSize: 10,
                       fontWeight: FontWeight.bold
                   )
               ),
-            ),
+            )
+          else
+            const SizedBox(height: 18),
         ],
       ),
       onLongPress: () => _showDeleteDialog(contact),
@@ -210,30 +441,31 @@ class _ChatsScreenState extends State<ChatsScreen> {
     );
   }
 
-  // Widget state kosong
   Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.chat_bubble_outline, size: 80, color: Theme.of(context).disabledColor),
+          Icon(Icons.chat_bubble_outline_rounded, size: 80, color: Colors.grey.withAlpha(50)),
           const SizedBox(height: 20),
-          const Text('No conversations yet'),
+          const Text('No conversations yet', style: TextStyle(color: Colors.grey)),
         ],
       ),
     );
   }
 
-  // Dialog konfirmasi hapus chat
   Future<void> _showDeleteDialog(Contact contact) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete chat?'),
-        content: const Text('All messages with this contact will be deleted.'),
+        content: Text('All messages with ${contact.name} will be deleted.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Hapus', style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete', style: TextStyle(color: Colors.red))
+          ),
         ],
       ),
     );
@@ -244,5 +476,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       await ChatManager.instance.deleteChatHistory(chatKey);
       if (!contact.isSaved) await Hive.box<Contact>('contacts').delete(contact.pubkey);
     }
+
+    _searchFocusNode.unfocus();
   }
 }

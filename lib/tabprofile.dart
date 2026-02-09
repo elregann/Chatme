@@ -801,7 +801,7 @@ class ProfileScreen extends StatelessWidget {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                   ),
                   const SizedBox(height: 8),
-                  Text('Version 1.0.0-Alpha',
+                  Text('Version 1.0.3-Alpha',
                       style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
                   const SizedBox(height: 20),
                 ],
