@@ -109,6 +109,7 @@ class NotificationHandler {
       'Pesan & Panggilan',
       channelDescription: 'Notifikasi untuk pesan chat',
       importance: Importance.high,
+      icon: '@mipmap/ic_launcher',
       priority: Priority.high,
       fullScreenIntent: false,
       category: AndroidNotificationCategory.message,

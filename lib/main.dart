@@ -707,18 +707,18 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             useMaterial3: true,
-            // Gunakan hitam pekat atau sedikit biru gelap (Rich Black)
-            scaffoldBackgroundColor: const Color(0xFF0B141B),
+            scaffoldBackgroundColor: const Color(0xFF121212),
             colorScheme: ColorScheme.fromSeed(
               brightness: Brightness.dark,
               seedColor: Colors.blue,
-              surface: const Color(0xFF111B21), // Warna container/permukaan
+              surface: const Color(0xFF1E1E1E),
+              surfaceTint: Colors.transparent,
             ),
             appBarTheme: const AppBarTheme(
               elevation: 0,
               centerTitle: true,
               surfaceTintColor: Colors.transparent,
-              backgroundColor: const Color(0xFF0B141B),
+              backgroundColor: const Color(0xFF121212),
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.light,
