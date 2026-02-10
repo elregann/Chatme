@@ -685,32 +685,43 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
           theme: ThemeData(
             brightness: Brightness.light,
             useMaterial3: true,
-            colorSchemeSeed: Colors.blue,
+            // Ini kunci untuk mematikan warna 'pucat' otomatis
+            scaffoldBackgroundColor: Colors.white,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              surface: Colors.white, // Memastikan permukaan (card/dialog) juga putih bersih
+            ),
             appBarTheme: const AppBarTheme(
               elevation: 0,
               centerTitle: true,
               surfaceTintColor: Colors.transparent,
-              backgroundColor: Colors.transparent,
+              backgroundColor: Colors.white, // AppBar juga putih bersih
+              iconTheme: IconThemeData(color: Colors.black87),
+              titleTextStyle: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.dark,
-                statusBarBrightness: Brightness.light,
               ),
             ),
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             useMaterial3: true,
-            colorSchemeSeed: Colors.blue,
+            // Gunakan hitam pekat atau sedikit biru gelap (Rich Black)
+            scaffoldBackgroundColor: const Color(0xFF0B141B),
+            colorScheme: ColorScheme.fromSeed(
+              brightness: Brightness.dark,
+              seedColor: Colors.blue,
+              surface: const Color(0xFF111B21), // Warna container/permukaan
+            ),
             appBarTheme: const AppBarTheme(
               elevation: 0,
               centerTitle: true,
               surfaceTintColor: Colors.transparent,
-              backgroundColor: Colors.transparent,
+              backgroundColor: const Color(0xFF0B141B),
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.light,
-                statusBarBrightness: Brightness.dark,
               ),
             ),
           ),

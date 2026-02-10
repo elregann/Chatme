@@ -638,7 +638,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             },
           ),
           IconButton(
-              icon: Icon(widget.contact.isSaved ? Icons.edit : Icons.person_add_alt_1, color: isDark ? Colors.white : Colors.black),
+              icon: Icon(widget.contact.isSaved ? Icons.edit_note_rounded : Icons.person_add_alt_1, color: isDark ? Colors.white : Colors.black),
               onPressed: _showSaveContactDialog
           ),
         ],
@@ -1339,52 +1339,102 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Future<void> _showSaveContactDialog() async {
     final nameController = TextEditingController(text: widget.contact.isSaved ? widget.contact.name : "");
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text(widget.contact.isSaved ? 'Rename Contact' : 'Save Contact',
-            style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: TextField(
-            controller: nameController,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'Contact Name',
-              labelStyle: const TextStyle(color: Colors.grey),
-              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey[600]!)),
-            )
-        ),
-        actions: [
-          Theme(
-            data: Theme.of(context).copyWith(
-              splashColor: Colors.transparent,
-              highlightColor: Colors.transparent,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header Ikon (Style Profile)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withAlpha(25),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                  widget.contact.isSaved ? Icons.edit_note_rounded : Icons.person_add_alt_1_rounded,
+                  color: Colors.blue,
+                  size: 32
+              ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+            const SizedBox(height: 16),
+            Text(
+                widget.contact.isSaved ? 'Rename Contact' : 'Save Contact',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Give a name to this public key identity.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Input Nama (Style Restore Dialog)
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Enter name...',
+                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(150)),
+                filled: true,
+                fillColor: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(10),
+                prefixIcon: const Icon(Icons.badge_outlined, size: 20),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
                 ),
-                TextButton(
-                  onPressed: () async {
-                    if (nameController.text.trim().isNotEmpty) {
-                      widget.contact.name = nameController.text.trim();
-                      widget.contact.isSaved = true;
-                      await Hive.box<Contact>('contacts').put(widget.contact.pubkey, widget.contact);
-                      if (mounted) {
-                        setState(() {});
-                        Navigator.pop(context);
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Action Buttons (Style Restore)
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      if (nameController.text.trim().isNotEmpty) {
+                        widget.contact.name = nameController.text.trim();
+                        widget.contact.isSaved = true;
+                        await Hive.box<Contact>('contacts').put(widget.contact.pubkey, widget.contact);
+                        HapticFeedback.lightImpact(); // Getar halus saat berhasil
+                        if (mounted) {
+                          setState(() {});
+                          Navigator.pop(context);
+                        }
                       }
-                    }
-                  },
-                  child: Text('Save', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
