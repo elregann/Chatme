@@ -216,12 +216,9 @@ class ProfileScreen extends StatelessWidget {
   Future<void> _showMnemonicDialog(BuildContext context) async {
     final settingsBox = Hive.box('settings');
     String displayMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
+    bool hasMnemonic = displayMnemonic.isNotEmpty;
 
-    if (displayMnemonic.isEmpty) {
-      displayMnemonic = "Mnemonic not found. Please restore your account.";
-    }
-
-    final words = displayMnemonic.split(' ');
+    final words = hasMnemonic ? displayMnemonic.split(' ') : [];
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     await showDialog(
@@ -239,31 +236,40 @@ class ProfileScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.purple.withAlpha(25),
+                    color: hasMnemonic ? Colors.purple.withAlpha(25) : Colors.amber.withAlpha(25),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.purple, size: 28),
+                  child: Icon(
+                    hasMnemonic ? Icons.auto_awesome_rounded : Icons.key_off_rounded,
+                    color: hasMnemonic ? Colors.purple : Colors.amber,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                const Text('Recovery Phrase', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                Text(
+                  hasMnemonic ? 'Recovery Phrase' : 'Mnemonic Not Available',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
                 const SizedBox(height: 6),
                 Text(
-                  'Keep these 12 words safe and private.',
+                  hasMnemonic
+                      ? 'Keep these 12 words safe and private.'
+                      : 'Account restored via Private Key.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
                 ),
                 const SizedBox(height: 16),
 
-                // CONTAINER UTAMA MNEMONIC
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(8),
+                  padding: EdgeInsets.all(hasMnemonic ? 8 : 20),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.purple.withAlpha(12) : Colors.purple.withAlpha(8),
+                    color: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(5),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.purple.withAlpha(25)),
                   ),
-                  child: Center(
+                  child: hasMnemonic
+                      ? Center(
                     child: Wrap(
                       spacing: 6,
                       runSpacing: 6,
@@ -295,6 +301,17 @@ class ProfileScreen extends StatelessWidget {
                         );
                       }),
                     ),
+                  )
+                      : Column(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: Colors.amber.withAlpha(200), size: 20),
+                      const SizedBox(height: 8),
+                      const Text(
+                        "Your recovery phrase cannot be displayed because you logged in using a Private Key.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -305,21 +322,23 @@ class ProfileScreen extends StatelessWidget {
                       onPressed: () => Navigator.pop(context),
                       child: Text('Close', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: displayMnemonic));
-                        HapticFeedback.lightImpact();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.purple,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    if (hasMnemonic) ...[
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: displayMnemonic));
+                          HapticFeedback.lightImpact();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Copy Words', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                       ),
-                      child: const Text('Copy Words', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                    ),
+                    ],
                   ],
                 ),
               ],
@@ -801,7 +820,7 @@ class ProfileScreen extends StatelessWidget {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                   ),
                   const SizedBox(height: 8),
-                  Text('Version 1.0.3-Alpha',
+                  Text('Version 1.0.6-Alpha',
                       style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
                   const SizedBox(height: 20),
                 ],
