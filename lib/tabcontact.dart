@@ -17,41 +17,87 @@ class ContactsScreen extends StatefulWidget {
 }
 
 class _ContactsScreenState extends State<ContactsScreen> {
-  bool _isResolving = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _searchQuery = "";
 
-  // Ganti/Tambah kode di atas void _addContact()
-  Future<String?> _resolveNip05(String nip05) async {
+  List<Map<String, String>> _globalSearchResults = [];
+  bool _isSearchingGlobal = false;
+  Timer? _debounce; // Biar gak nembak Firebase terus-menerus pas ngetik
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchGlobalUser(String query) async {
+    if (query.length < 2) {
+      setState(() {
+        _globalSearchResults = [];
+        _isSearchingGlobal = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearchingGlobal = true);
+
     try {
-      if (!nip05.contains('@')) return null;
-
-      final parts = nip05.split('@');
-      final name = parts[0];
-      final domain = parts[1];
-
-      // Request dengan Header lengkap agar tidak kena status 418 (Teapot)
-      final url = Uri.parse('https://$domain/.well-known/nostr.json?name=$name');
-      final response = await http.get(
-        url,
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0', // Pura-pura jadi browser
-        },
-      ).timeout(const Duration(seconds: 10));
+      // Panggil Database
+      final url = Uri.parse('https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app/usernames.json');
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final Map<String, dynamic>? data = jsonDecode(response.body);
+        List<Map<String, String>> results = [];
 
-        // Cek dulu apakah field 'names' ada, jangan langsung tembak
-        if (data != null && data['names'] != null && data['names'][name] != null) {
-          return data['names'][name] as String;
+        if (data != null) {
+          data.forEach((username, pubkey) {
+            if (username.toLowerCase().contains(query.toLowerCase())) {
+              results.add({
+                'username': username,
+                'pubkey': pubkey.toString(),
+              });
+            }
+          });
         }
-      } else {
-        DebugLogger.log('📡 Server Error ${response.statusCode}: ${response.body}', type: 'NETWORK');
+
+        setState(() {
+          _globalSearchResults = results;
+          _isSearchingGlobal = false;
+        });
       }
     } catch (e) {
-      DebugLogger.log('❌ NIP-05 Resolve Error: $e', type: 'ERROR');
+      DebugLogger.log('❌ Global Search Error: $e', type: 'ERROR');
+      setState(() => _isSearchingGlobal = false);
     }
-    return null;
+  }
+
+  Future<void> _quickAddFromGlobal(String name, String pubkey) async {
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      final contact = Contact(
+        pubkey: pubkey,
+        name: name,
+        isSaved: true,
+        lastChatTime: 0,
+        lastMessage: '',
+        unreadCount: 0,
+      );
+      await contactsBox.put(pubkey, contact);
+      HapticFeedback.mediumImpact();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$name added to contacts'), backgroundColor: Colors.green),
+        );
+        _searchController.clear();
+        setState(() => _searchQuery = "");
+      }
+    } catch (e) {
+      DebugLogger.log('❌ Quick Add Error: $e', type: 'ERROR');
+    }
   }
 
   // Tambah kontak baru
@@ -73,7 +119,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header ala ProfileScreen
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -90,20 +135,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
               ),
-
-              // Indikator Loading di dalam Dialog
-              if (_isResolving)
-                const Padding(
-                  padding: EdgeInsets.only(top: 12.0),
-                  child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue)
-                  ),
-                ),
-
               const SizedBox(height: 20),
-
               Form(
                 key: formKey,
                 child: Column(
@@ -112,7 +144,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       controller: nameController,
                       style: const TextStyle(fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: 'Enter name...',
+                        hintText: 'Enter name',
                         hintStyle: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(150)),
                         filled: true,
                         fillColor: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(10),
@@ -121,13 +153,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       ),
                       validator: (value) => (value == null || value.isEmpty) ? 'Name required' : null,
                     ),
+
                     const SizedBox(height: 12),
+
                     TextFormField(
                       controller: pubkeyController,
                       maxLines: 2,
                       style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
                       decoration: InputDecoration(
-                        hintText: 'Paste Public Key here...',
+                        hintText: 'Paste Public Key here',
                         hintStyle: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(150), fontFamily: 'sans-serif'),
                         filled: true,
                         fillColor: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(10),
@@ -143,8 +177,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                       ),
                       validator: (value) {
-                        if (value == null || value.isEmpty) return 'Public Key or NIP-05 required';
-                        if (!value.contains('@') && value.length != 64) return 'Must be 64 characters or NIP-05';
+                        if (value == null || value.isEmpty) return 'Public Key required';
+                        if (value.length != 64) return 'Must be 64 characters';
                         return null;
                       },
                     ),
@@ -166,30 +200,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _isResolving ? null : () async {
+                      onPressed: () async {
                         if (formKey.currentState!.validate()) {
                           final name = nameController.text.trim();
                           String targetPubkey = pubkeyController.text.trim().toLowerCase();
-
-                          if (targetPubkey.contains('@')) {
-                            setDialogState(() => _isResolving = true);
-
-                            final resolvedHex = await _resolveNip05(targetPubkey);
-
-                            if (context.mounted) {
-                              setDialogState(() => _isResolving = false);
-                            }
-
-                            if (resolvedHex == null) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('❌ NIP-05 not found'), backgroundColor: Colors.red),
-                                );
-                              }
-                              return;
-                            }
-                            targetPubkey = resolvedHex;
-                          }
 
                           try {
                             final contactsBox = Hive.box<Contact>('contacts');
@@ -219,9 +233,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: Text(_isResolving ? 'Searching...' : 'Add Contact', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      child: const Text('Add Contact', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                  ),
+                  )
                 ],
               ),
             ],
@@ -242,7 +256,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header Ikon Peringatan (Style Profile)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -319,47 +332,154 @@ class _ContactsScreenState extends State<ContactsScreen> {
       } else {
         await contactsBox.delete(contact.pubkey);
       }
-      DebugLogger.log('👤 Contact removed from list: ${contact.name}', type: 'UI');
+      DebugLogger.log('Contact removed from list: ${contact.name}', type: 'UI');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Contacts'),
-      ),
-      body: ValueListenableBuilder<Box<Contact>>(
-        valueListenable: Hive.box<Contact>('contacts').listenable(),
-        builder: (context, box, _) {
-          final contacts = box.values
-              .where((c) => c.isSaved == true)
-              .toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-          contacts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return GestureDetector(
+      onTap: () => _searchFocusNode.unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Contacts'),
+          elevation: 0,
+        ),
+        body: Column(
+          children: [
+            // --- UI SEARCH BAR ---
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val.toLowerCase();
+                    });
 
-          if (contacts.isEmpty) {
-            return _buildEmptyState();
-          }
+                    // Debouncing: Tunggu user berhenti ngetik selama 500ms baru cari ke Firebase
+                    if (_debounce?.isActive ?? false) _debounce!.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 500), () {
+                      _searchGlobalUser(_searchQuery);
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search people by ID or name',
+                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                    prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 20),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _searchQuery = "";
+                        });
+                        _searchFocusNode.unfocus();
+                      },
+                    )
+                        : null,
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.only(top: 10),
+                  ),
+                ),
+              ),
+            ),
 
-          return ListView.builder(
-            itemCount: contacts.length,
-            itemBuilder: (context, index) {
-              final contact = contacts[index];
-              return _buildContactTile(contact);
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addContact,
-        backgroundColor: Colors.blue.withAlpha(40),
-        elevation: 0,
-        focusElevation: 0,
-        hoverElevation: 0,
-        highlightElevation: 0,
-        shape: const CircleBorder(),
-        child: const Icon(Icons.person_add, color: Colors.blue),
+            // --- LIST AREA ---
+            Expanded(
+              child: ValueListenableBuilder<Box<Contact>>(
+                valueListenable: Hive.box<Contact>('contacts').listenable(),
+                builder: (context, box, _) {
+                  // Filter lokal berdasarkan search query
+                  final contacts = box.values
+                      .where((c) => c.isSaved == true)
+                      .where((c) => _searchQuery.isEmpty || c.name.toLowerCase().contains(_searchQuery))
+                      .toList();
+
+                  contacts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+                  if (contacts.isEmpty && _searchQuery.isEmpty) {
+                    return _buildEmptyState();
+                  }
+
+                  return ListView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    children: [
+                      // SEKSI "GLOBAL SEARCH" (Hasil dari Firebase)
+                      if (_searchQuery.length >= 2) ...[
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: Text("GLOBAL SEARCH", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                        ),
+
+                        // Tampilkan Loading jika sedang mencari
+                        if (_isSearchingGlobal)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(12.0),
+                              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
+                          )
+                        // Tampilkan hasil jika data ditemukan
+                        else if (_globalSearchResults.isNotEmpty)
+                          ..._globalSearchResults.map((res) => ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.blue.withAlpha(30),
+                              child: const Icon(Icons.public, color: Colors.blue, size: 20),
+                            ),
+                            title: Text(res['username'] ?? ''),
+                            subtitle: Text('${res['pubkey']?.substring(0, 16)}...', style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                            trailing: const Icon(Icons.person_add_alt_1_rounded, color: Colors.blue),
+                            onTap: () {
+                              _searchFocusNode.unfocus();
+                              _quickAddFromGlobal(res['username']!, res['pubkey']!);
+                            },
+                          )).toList()
+                        // Tampilkan pesan jika tidak ada hasil
+                        else if (!_isSearchingGlobal && _globalSearchResults.isEmpty && _searchQuery.length > 1)
+                            const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Text("No global user found", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            )
+                          else
+                            const SizedBox.shrink(),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Divider(height: 1, thickness: 0.1),
+                        ),
+                      ],
+
+                      // SEKSI DAFTAR KONTAK SAYA
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Text("MY CONTACTS", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                      ),
+                      ...contacts.map((contact) => _buildContactTile(contact)).toList(),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _addContact,
+          backgroundColor: Colors.blue.withAlpha(40),
+          elevation: 0,
+          shape: const CircleBorder(),
+          child: const Icon(Icons.person_add, color: Colors.blue),
+        ),
       ),
     );
   }

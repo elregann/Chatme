@@ -556,7 +556,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
+    // Inisialisasi Firebase yang Harmonis
     if (kIsWeb) {
+      // Options manual
       await Firebase.initializeApp(
         options: const FirebaseOptions(
           apiKey: "AIzaSyCQyZZuU7sKqdKNqUDWBhGwuujVxrL6T6I",
@@ -569,11 +571,14 @@ void main() async {
         ),
       );
     } else {
-      await Firebase.initializeApp();
+      // ANDROID: Gunakan pengecekan agar tidak Duplicate
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
     }
 
+    // Inisialisasi Database Lokal (Hive)
     await Hive.initFlutter();
-
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
     if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ChatMessageAdapter());
 
@@ -581,22 +586,25 @@ void main() async {
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
 
-    NotificationHandler.init().then((_) {
-    });
-
+    // Inisialisasi Notifikasi (Gunakan await agar stabil)
+    await NotificationHandler.init();
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
+    // Load Data & Cleanup
     await AppSettings.instance.load();
     await ChatManager.instance.cleanupTempMessages();
 
-    FlutterLocalNotificationsPlugin()
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    // Izin Notifikasi (Hanya di Android)
+    if (!kIsWeb) {
+      await FlutterLocalNotificationsPlugin()
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+    }
 
     runApp(const ChatMeApp());
 
   } catch (e) {
-
+    // Layar darurat jika inisialisasi gagal
     runApp(MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(

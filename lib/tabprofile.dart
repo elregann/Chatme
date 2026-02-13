@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'main.dart';
 import 'relaymanager.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -57,61 +56,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<bool> _claimUsername(String username, String pubkey) async {
     try {
-      // 1. Bersihkan nama (hanya huruf, angka, dan underscore)
       final cleanName = username.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '');
       if (cleanName.length < 3) return false;
 
-      // 2. Tunjuk ke folder 'usernames' di Firebase
-      DatabaseReference ref = FirebaseDatabase.instance.ref("usernames/$cleanName");
+      // URL Database
+      final String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
+      DatabaseReference ref = FirebaseDatabase.instanceFor(
+          app: Firebase.app(),
+          databaseURL: rtdbUrl
+      ).ref("usernames/$cleanName");
 
-      // 3. Cek apakah sudah ada yang punya
-      final snapshot = await ref.get();
+      // Gunakan timeout agar tidak nunggu selamanya jika internet lemot
+      final snapshot = await ref.get().timeout(const Duration(seconds: 10));
+
       if (snapshot.exists) {
-        // Jika sudah ada, cek apakah itu milik saya sendiri?
         if (snapshot.value == pubkey) return true;
-        return false; // Milik orang lain
+        return false;
       }
 
-      // 4. Tulis ke Firebase
       await ref.set(pubkey);
       return true;
     } catch (e) {
       print('❌ Firebase Error: $e');
       return false;
     }
-  }
-
-  Future<bool> _verifyNip05(String handle, String pubkey) async {
-    try {
-      if (handle.isEmpty) return false;
-
-      String name = handle;
-      String domain = "iris.to";
-
-      if (handle.contains('@')) {
-        final parts = handle.split('@');
-        name = parts[0];
-        domain = parts[1];
-      }
-
-      if (kDebugMode) {
-        print("🔍 [DEBUG] Mencoba Verifikasi NIP-05: $name di $domain");
-        await Future.delayed(const Duration(seconds: 1));
-        return true;
-      }
-
-      final url = 'https://$domain/.well-known/nostr.json?name=$name';
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final names = data['names'] as Map<String, dynamic>;
-        return names[name] == pubkey;
-      }
-    } catch (e) {
-      DebugLogger.log('NIP-05 Error: $e', type: 'ERROR');
-    }
-    return false;
   }
 
   // Widget title section
@@ -665,8 +633,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 const SizedBox(height: 24),
                 Text(
-                  'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data. however, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.\n\n'
-                      'As a user, you are responsible for the safety of your Private Key. We do not store, collect, or have any access to your personal data, messages, or keys. By using Chatme, you acknowledge that your data security rests entirely in your hands through the cryptographic power of the Nostr network.',
+                  'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data. However, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.\n\n'
+
+                      'To safeguard your conversations, Chatme implements an advanced encryption framework that builds upon the foundations of NIP-04 and NIP-44. We utilize AES-256-GCM (Authenticated Encryption with Associated Data) and HKDF SHA-256 for dynamic key derivation on the secp256k1 curve. By cryptographically binding the identities of the sender and receiver to each encrypted packet, we ensure not only absolute message privacy but also mathematical integrity, preventing unauthorized manipulation or cross-protocol attacks.\n\n'
+
+                      'As a user, you are responsible for the safety of your Private Key. We do not store, collect, or have any access to your personal data, messages, or keys. By using Chatme, you acknowledge that your data security rests entirely in your hands through the cryptographic power of the Nostr network.\n\n'
+
+                      'To enhance global discoverability, Chatme maintains a public search index where you can voluntarily link a username to your Public Key. This registry acts solely as a directory to help others find you and does not grant us any access to your private communications or encrypted data. Your sovereignty remains intact as this index is mathematically decoupled from your message content, ensuring that even with a public handle, your privacy remains unbreachable.\n\n'
+
+                      'Should you prefer not to use our global discovery system, you may still use Chatme freely by adding contacts manually. In this case, your username and Public Key will not be indexed, ensuring your identity remains invisible to the public search according to your chosen level of privacy.',
                   style: TextStyle(
                     fontSize: 14,
                     height: 1.6,
@@ -755,7 +730,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Expanded(
                       child: TextField(
                         controller: _nip05Controller,
-                        autofocus: true,
+                        autofocus: false,
                         decoration: const InputDecoration(
                           hintText: 'Enter name...',
                           border: InputBorder.none,
@@ -812,7 +787,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.purple,
                         size: 20
                     ),
-                    const SizedBox(width: 16), // Jarak disamakan dengan standar ListTile
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Text(
                         _currentHandle,
@@ -877,7 +852,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withAlpha(20),
+                        color: Colors.grey.withAlpha(20),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -994,9 +969,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     leading: const Icon(Icons.article_outlined, color: Colors.blueGrey),
                     title: const Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => showLicensePage(
-                      context: context,
-                    ),
+                    onTap: () async {
+                      final List<LicenseEntry> licenses = await LicenseRegistry.licenses.toList();
+
+                      if (!context.mounted) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => Scaffold(
+                            appBar: AppBar(
+                              title: const Text('Licenses', style: TextStyle(fontSize: 22)),
+                              elevation: 0,
+                              centerTitle: true,
+                            ),
+                            body: ListView.builder(
+                              padding: const EdgeInsets.all(24.0),
+                              itemCount: licenses.length,
+                              itemBuilder: (context, index) {
+                                final entry = licenses[index];
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      entry.packages.join(', '),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ...entry.paragraphs.map((p) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: Text(
+                                        p.text,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          height: 1.6,
+                                          color: Theme.of(context).textTheme.bodyMedium?.color?.withAlpha(200),
+                                        ),
+                                      ),
+                                    )),
+                                    if (index < licenses.length - 1)
+                                      Divider(color: Theme.of(context).dividerColor.withAlpha(51), height: 48),
+                                    if (index == licenses.length - 1) ...[
+                                      const SizedBox(height: 32),
+                                      Divider(color: Theme.of(context).dividerColor.withAlpha(51)),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'End of Licenses',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w300,
+                                          color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(150),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1028,7 +1064,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                   ),
                   const SizedBox(height: 8),
-                  Text('Version 1.0.6-Alpha',
+                  Text('Version 1.0.8-Alpha',
                       style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
                   const SizedBox(height: 20),
                 ],

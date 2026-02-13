@@ -146,7 +146,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                     });
                   },
                   decoration: InputDecoration(
-                    hintText: 'Search people or messages...',
+                    hintText: 'Search contact or messages',
                     hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
                     prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 20),
                     suffixIcon: _searchController.text.isNotEmpty
