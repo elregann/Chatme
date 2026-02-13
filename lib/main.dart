@@ -258,20 +258,27 @@ class AppSettings {
   factory AppSettings() => _instance;
   AppSettings._internal();
 
+  bool isNip05Verified = false;
+
   static AppSettings get instance => _instance;
 
   String myPubkey = '';
   String myPrivkey = '';
   String myName = '';
   String myMnemonic = '';
+  String myNip05 = '';
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> load() async {
     try {
-      final settingsBox = Hive.box('settings');
+      final settingsBox = Hive.box('settings'); // 1. Buka kardusnya dulu di sini
+
+      // 2. Sekarang baru bisa ambil isinya
       myPubkey = settingsBox.get('my_pubkey', defaultValue: '');
       myPrivkey = settingsBox.get('my_privkey', defaultValue: '');
       myMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
+      myNip05 = settingsBox.get('my_nip05', defaultValue: '');
+      isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false); // <-- Pindahkan ke sini
 
       myName = settingsBox.get('my_name', defaultValue: 'User${Random().nextInt(9999)}');
 
@@ -345,6 +352,15 @@ class AppSettings {
       themeString = 'system';
     }
     await Hive.box('settings').put('theme_mode', themeString);
+  }
+
+  // Fungsi untuk menyimpan NIP-05 secara permanen
+  Future<void> updateNip05(String newNip05, bool verified) async {
+    myNip05 = newNip05;
+    isNip05Verified = verified;
+    await Hive.box('settings').put('my_nip05', newNip05);
+    await Hive.box('settings').put('is_nip05_verified', verified);
+    DebugLogger.log('Identity updated: $newNip05 (Verified: $verified)', type: 'SETUP');
   }
 
   Future<Map<String, dynamic>> backupKeys() async {

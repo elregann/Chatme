@@ -10,6 +10,7 @@ import 'call.dart';
 import 'main.dart';
 import 'chatmanager.dart';
 import 'encryption_secp256k1.dart';
+import 'hybrid_dm.dart';
 
 class RelayManager {
   Function? onMessageReceived;
@@ -451,11 +452,12 @@ class RelayManager {
         throw Exception('Missing pubkey or privkey');
       }
 
-      final encryptedContent = EncryptionManager.encrypt(
-        plaintext,
-        myPrivkey,
-        myPubkey,
-        receiverPubkey,
+      final encryptedContent = HybridDM.encryptMessage(
+        plaintext: plaintext,
+        myPrivateKey: myPrivkey,
+        myPublicKey: myPubkey,
+        peerPublicKey: receiverPubkey,
+        peerSupportsChatMe: true,
       );
 
       if (encryptedContent.isEmpty) {

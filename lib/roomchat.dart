@@ -10,7 +10,7 @@ import 'main.dart';
 import 'callmanager.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
-import 'encryption_secp256k1.dart';
+import 'hybrid_dm.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -290,7 +290,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
 
       final myPrivkey = AppSettings.instance.myPrivkey;
-      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver);
+
+      final encrypted = HybridDM.encryptMessage(
+        plaintext: text,
+        myPrivateKey: myPrivkey,
+        myPublicKey: myPubkey,
+        peerPublicKey: receiver,
+        peerSupportsChatMe: true,
+      );
+
       final pendingMessage = tempMessage.copyWith(
         id: offlineId,
         content: encrypted,

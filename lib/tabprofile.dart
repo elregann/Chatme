@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'main.dart';
 import 'relaymanager.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
   final RelayManager relayManager;
 
@@ -15,7 +18,33 @@ class ProfileScreen extends StatelessWidget {
     required this.relayManager,
   });
 
-  // Warna avatar berdasarkan pubkey
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final TextEditingController _nip05Controller = TextEditingController();
+  bool _isEditing = true;
+  String _currentHandle = "";
+
+  @override
+  void initState() {
+    super.initState();
+
+    _currentHandle = AppSettings.instance.myNip05;
+    if (_currentHandle.isNotEmpty) {
+      _isEditing = false;
+
+      _nip05Controller.text = _currentHandle.split('@')[0];
+    }
+  }
+
+  @override
+  void dispose() {
+    _nip05Controller.dispose();
+    super.dispose();
+  }
+
   Color _getAvatarColor(String pubkey) {
     if (pubkey.isEmpty) return Colors.grey;
     try {
@@ -23,6 +52,39 @@ class ProfileScreen extends StatelessWidget {
     } catch (e) {
       return Colors.blue;
     }
+  }
+
+  Future<bool> _verifyNip05(String handle, String pubkey) async {
+    try {
+      if (handle.isEmpty) return false;
+
+      String name = handle;
+      String domain = "iris.to";
+
+      if (handle.contains('@')) {
+        final parts = handle.split('@');
+        name = parts[0];
+        domain = parts[1];
+      }
+
+      if (kDebugMode) {
+        print("🔍 [DEBUG] Mencoba Verifikasi NIP-05: $name di $domain");
+        await Future.delayed(const Duration(seconds: 1));
+        return true;
+      }
+
+      final url = 'https://$domain/.well-known/nostr.json?name=$name';
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final names = data['names'] as Map<String, dynamic>;
+        return names[name] == pubkey;
+      }
+    } catch (e) {
+      DebugLogger.log('NIP-05 Error: $e', type: 'ERROR');
+    }
+    return false;
   }
 
   // Widget title section
@@ -80,7 +142,6 @@ class ProfileScreen extends StatelessWidget {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        // Kita hapus custom contentPadding agar kembali ke default yang lega seperti Mnemonic
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -101,10 +162,7 @@ class ProfileScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
             ),
-
             const SizedBox(height: 16),
-
-            // Peringatan
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
@@ -429,8 +487,8 @@ class ProfileScreen extends StatelessWidget {
                         if (input.isEmpty) return;
                         try {
                           await AppSettings.instance.importAccount(input);
-                          relayManager.disconnect();
-                          relayManager.connect();
+                          widget.relayManager.disconnect();
+                          widget.relayManager.connect();
                           if (context.mounted) Navigator.pop(context);
                         } catch (e) {
                           if (context.mounted) {
@@ -525,7 +583,7 @@ class ProfileScreen extends StatelessWidget {
 
     return InkWell(
       onTap: () {
-        onThemeToggle(mode);
+        widget.onThemeToggle(mode);
         Navigator.pop(context);
       },
       borderRadius: BorderRadius.circular(16),
@@ -633,17 +691,127 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text(settings.myName, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                      (!_isEditing && _currentHandle.isNotEmpty)
+                          ? _currentHandle
+                          : settings.myName,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: (!_isEditing && _currentHandle.isNotEmpty)
+                            ? (Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : Colors.black)
+                            : null,
+                      )
+                  ),
                   const SizedBox(height: 12),
                   _buildConnectionStatus(),
                 ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+            _buildSectionTitle('Identity Hub'),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: _isEditing
+                    ? Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _nip05Controller,
+                        decoration: const InputDecoration(
+                          hintText: 'Enter name...',
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        if (_nip05Controller.text.isNotEmpty) {
+                          final input = _nip05Controller.text.trim();
+                          final String fullHandle = input.contains('@') ? input : "$input@iris.to";
+
+                          final myPubkey = AppSettings.instance.myPubkey;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Verifying identity...'), duration: Duration(seconds: 1)),
+                          );
+                          bool isLegit = await _verifyNip05(fullHandle, myPubkey);
+
+                          await AppSettings.instance.updateNip05(fullHandle, isLegit);
+
+                          setState(() {
+                            _currentHandle = fullHandle;
+                            _isEditing = false;
+                          });
+
+                          if (isLegit) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('✅ Identity Verified!'), backgroundColor: Colors.green),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('❌ Verification Failed. Simulation not triggered.'), backgroundColor: Colors.orange),
+                            );
+                          }
+                        }
+                      },
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.purple.withAlpha(30),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('CLAIM', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold, fontSize: 12)),
+                    ),
+                  ],
+                )
+                    : Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    Icon(
+                        AppSettings.instance.isNip05Verified
+                            ? Icons.verified_rounded
+                            : Icons.verified_user_rounded,
+                        color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.purple,
+                        size: 20
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _currentHandle,
+                        style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit_note_rounded, color: Colors.grey, size: 22),
+                      onPressed: () {
+                        setState(() {
+                          _isEditing = true;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
             _buildSectionTitle('Your Private Number'),
             Card(
               elevation: 0,
-              // Border sekarang pasif (tidak ada onTap di ListTile)
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
@@ -672,9 +840,8 @@ class ProfileScreen extends StatelessWidget {
                         color: Theme.of(context).colorScheme.primary.withAlpha(20),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(
+                      child: const Icon(
                           Icons.copy_rounded,
-                          color: Theme.of(context).colorScheme.primary,
                           size: 18
                       ),
                     ),
@@ -835,7 +1002,7 @@ class ProfileScreen extends StatelessWidget {
   // Widget status koneksi relay
   Widget _buildConnectionStatus() {
     return ValueListenableBuilder<bool>(
-      valueListenable: relayManager.isConnected,
+      valueListenable: widget.relayManager.isConnected,
       builder: (context, isConnected, _) {
         final color = isConnected ? Colors.green : Colors.orange;
         return Container(
