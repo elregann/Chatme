@@ -7,6 +7,7 @@ import 'relaymanager.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -51,6 +52,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
     } catch (e) {
       return Colors.blue;
+    }
+  }
+
+  Future<bool> _claimUsername(String username, String pubkey) async {
+    try {
+      // 1. Bersihkan nama (hanya huruf, angka, dan underscore)
+      final cleanName = username.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '');
+      if (cleanName.length < 3) return false;
+
+      // 2. Tunjuk ke folder 'usernames' di Firebase
+      DatabaseReference ref = FirebaseDatabase.instance.ref("usernames/$cleanName");
+
+      // 3. Cek apakah sudah ada yang punya
+      final snapshot = await ref.get();
+      if (snapshot.exists) {
+        // Jika sudah ada, cek apakah itu milik saya sendiri?
+        if (snapshot.value == pubkey) return true;
+        return false; // Milik orang lain
+      }
+
+      // 4. Tulis ke Firebase
+      await ref.set(pubkey);
+      return true;
+    } catch (e) {
+      print('❌ Firebase Error: $e');
+      return false;
     }
   }
 
@@ -683,25 +710,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   CircleAvatar(
-                    radius: 50,
+                    radius: 40, // Ukuran lebih kecil sesuai permintaan
                     backgroundColor: _getAvatarColor(settings.myPubkey),
                     child: Text(
-                      settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?',
-                      style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                      // Logika inisial: Ambil dari handle jika ada, jika tidak dari myName
+                      ((!_isEditing && _currentHandle.isNotEmpty)
+                          ? _currentHandle[0].toUpperCase()
+                          : (settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?')),
+                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Text(
                       (!_isEditing && _currentHandle.isNotEmpty)
                           ? _currentHandle
                           : settings.myName,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: (!_isEditing && _currentHandle.isNotEmpty)
-                            ? (Theme.of(context).brightness == Brightness.dark
+                      style: TextStyle(
+                        fontSize: 16, // Sedikit lebih besar dari 15 agar tetap terbaca sebagai judul
+                        fontWeight: FontWeight.bold, // Kembali ke Strong (Tegas)
+                        color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white
-                            : Colors.black)
-                            : null,
+                            : Colors.black,
                       )
                   ),
                   const SizedBox(height: 12),
@@ -710,7 +739,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Identity Hub'),
+            _buildSectionTitle('Chatme Official ID'),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -718,18 +747,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
               ),
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                // Padding 16 horizontal & 8 vertical ini adalah "kunci" agar tingginya sama dengan ListTile
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: _isEditing
                     ? Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _nip05Controller,
+                        autofocus: true,
                         decoration: const InputDecoration(
                           hintText: 'Enter name...',
                           border: InputBorder.none,
                           isDense: true,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                          contentPadding: EdgeInsets.zero,
                         ),
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                       ),
@@ -738,35 +769,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onPressed: () async {
                         if (_nip05Controller.text.isNotEmpty) {
                           final input = _nip05Controller.text.trim();
-                          final String fullHandle = input.contains('@') ? input : "$input@iris.to";
-
+                          final String cleanName = input.contains('@') ? input.split('@')[0] : input;
                           final myPubkey = AppSettings.instance.myPubkey;
 
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Verifying identity...'), duration: Duration(seconds: 1)),
+                            const SnackBar(content: Text('Claiming identity...'), duration: Duration(seconds: 1)),
                           );
-                          bool isLegit = await _verifyNip05(fullHandle, myPubkey);
 
-                          await AppSettings.instance.updateNip05(fullHandle, isLegit);
+                          bool isSuccess = await _claimUsername(cleanName, myPubkey);
 
-                          setState(() {
-                            _currentHandle = fullHandle;
-                            _isEditing = false;
-                          });
-
-                          if (isLegit) {
+                          if (isSuccess) {
+                            await AppSettings.instance.updateNip05("$cleanName@chatme", true);
+                            setState(() {
+                              _currentHandle = "$cleanName@chatme";
+                              _isEditing = false;
+                            });
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('✅ Identity Verified!'), backgroundColor: Colors.green),
+                              SnackBar(content: Text('✅ Identity Claimed: $cleanName@chatme'), backgroundColor: Colors.green),
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('❌ Verification Failed. Simulation not triggered.'), backgroundColor: Colors.orange),
+                              const SnackBar(content: Text('❌ Name already taken or Error!'), backgroundColor: Colors.orange),
                             );
                           }
                         }
                       },
                       style: TextButton.styleFrom(
                         backgroundColor: Colors.purple.withAlpha(30),
+                        visualDensity: VisualDensity.compact,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       child: const Text('CLAIM', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold, fontSize: 12)),
@@ -775,7 +805,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 )
                     : Row(
                   children: [
-                    const SizedBox(width: 12),
                     Icon(
                         AppSettings.instance.isNip05Verified
                             ? Icons.verified_rounded
@@ -783,26 +812,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.purple,
                         size: 20
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16), // Jarak disamakan dengan standar ListTile
                     Expanded(
                       child: Text(
                         _currentHandle,
                         style: TextStyle(
                           color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
+                              ? Colors.white70
+                              : Colors.black54,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.edit_note_rounded, color: Colors.grey, size: 22),
-                      onPressed: () {
-                        setState(() {
-                          _isEditing = true;
-                        });
-                      },
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => setState(() => _isEditing = true),
+                        borderRadius: BorderRadius.circular(50),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withAlpha(20),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                              Icons.edit_note_rounded,
+                              color: Colors.grey,
+                              size: 18
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -842,6 +882,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       child: const Icon(
                           Icons.copy_rounded,
+                          color: Colors.grey,
                           size: 18
                       ),
                     ),

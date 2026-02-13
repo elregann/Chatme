@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import 'package:crypto/crypto.dart';
@@ -555,6 +556,22 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
+    if (kIsWeb) {
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: "AIzaSyCQyZZuU7sKqdKNqUDWBhGwuujVxrL6T6I",
+          authDomain: "chatme-412d1.firebaseapp.com",
+          databaseURL: "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "chatme-412d1",
+          storageBucket: "chatme-412d1.firebasestorage.app",
+          messagingSenderId: "446305355740",
+          appId: "1:446305355740:web:49ea3ae055fce21ca07119",
+        ),
+      );
+    } else {
+      await Firebase.initializeApp();
+    }
+
     await Hive.initFlutter();
 
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
