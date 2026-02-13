@@ -480,14 +480,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.12.12+hotfix.1"
-  freezed_annotation:
-    dependency: transitive
-    description:
-      name: freezed_annotation
-      sha256: "7294967ff0a6d98638e7acb774aac3af2550777accd8149c90af5b014e6d44d8"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.0"
   frontend_server_client:
     dependency: transitive
     description:
@@ -545,7 +537,7 @@ packages:
     source: hosted
     version: "2.0.1"
   http:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: http
       sha256: "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412"
@@ -973,14 +965,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  sodium:
-    dependency: "direct main"
-    description:
-      name: sodium
-      sha256: "515b86c186f4caca49051caf858d878ca7cc4ff4542411e9febb50654eac8a62"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.4.6"
   source_gen:
     dependency: transitive
     description:
