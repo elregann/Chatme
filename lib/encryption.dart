@@ -21,9 +21,9 @@ class Secp256k1Constants {
 }
 
 // =======================
-// SIMPLE ECDH
+// ECDH
 // =======================
-class SimpleECDH {
+class ECDH {
   static final _domainParams = ecc.ECDomainParameters('secp256k1');
 
   static Uint8List computeSharedSecret(String privateKeyHex, String publicKeyHex) {
@@ -153,7 +153,7 @@ class EncryptionManager {
       if (plaintext.isEmpty) return '';
 
       final sharedSecret =
-      SimpleECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
+      ECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
 
       final randomSalt = _generateSecureRandomBytes(16);
       final staticSalt = _deriveStaticSalt(myPublicKey, peerPublicKey);
@@ -228,7 +228,7 @@ class EncryptionManager {
       }
 
       final sharedSecret =
-      SimpleECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
+      ECDH.computeSharedSecret(myPrivateKey, peerPublicKey);
 
       final staticSalt = _deriveStaticSalt(myPublicKey, peerPublicKey);
 

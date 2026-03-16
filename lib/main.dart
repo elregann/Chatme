@@ -759,7 +759,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               elevation: 0,
               centerTitle: true,
               surfaceTintColor: Colors.transparent,
-              backgroundColor: const Color(0xFF121212),
+              backgroundColor: Color(0xFF121212),
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.light,
