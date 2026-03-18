@@ -20,7 +20,7 @@ import 'chatmanager.dart';
 import 'tabcontact.dart';
 import 'tabprofile.dart';
 import 'tabchat.dart';
-import 'keymanager.dart';
+import 'core/crypto/key_generator.dart';
 
 part 'main.g.dart';
 

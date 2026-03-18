@@ -10,7 +10,7 @@ import 'main.dart';
 import 'callmanager.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
-import 'encryption.dart';
+import 'core/crypto/encryption.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;

@@ -9,7 +9,8 @@ import 'callmanager.dart';
 import 'call.dart';
 import 'main.dart';
 import 'chatmanager.dart';
-import 'encryption.dart';
+import 'core/crypto/encryption.dart';
+import 'core/crypto/nostr_protocol.dart';
 
 class RelayManager {
   Function? onMessageReceived;
@@ -483,7 +484,7 @@ class RelayManager {
         throw Exception('Event ID generation failed');
       }
 
-      final signature = EncryptionManager.sign(eventId, myPrivkey);
+      final signature = NostrSigner.sign(eventId, myPrivkey);
 
       if (signature.isEmpty) {
         throw Exception('Signature generation failed');
@@ -532,7 +533,7 @@ class RelayManager {
       };
 
       final eventId = NostrHelpers.generateEventId(unsignedEvent);
-      final signature = EncryptionManager.sign(eventId, myPrivkey);
+      final signature = NostrSigner.sign(eventId, myPrivkey);
       final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
 
       for (final conn in _connections.values) {
@@ -574,7 +575,7 @@ class RelayManager {
       };
 
       final eventId = NostrHelpers.generateEventId(unsignedEvent);
-      final signature = EncryptionManager.sign(eventId, myPrivkey);
+      final signature = NostrSigner.sign(eventId, myPrivkey);
       final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
 
       for (final entry in _connections.entries) {
@@ -605,7 +606,7 @@ class RelayManager {
       };
 
       final eventId = NostrHelpers.generateEventId(unsignedEvent);
-      final signature = EncryptionManager.sign(eventId, myPrivkey);
+      final signature = NostrSigner.sign(eventId, myPrivkey);
       final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
 
       for (final entry in _connections.entries) {
@@ -783,9 +784,9 @@ class RelayManager {
           'content': msg.content,
         };
 
-        final String finalId = EncryptionManager.calculateEventId(event);
+        final String finalId = NostrSigner.calculateEventId(event);
         event['id'] = finalId;
-        event['sig'] = EncryptionManager.sign(finalId, AppSettings.instance.myPrivkey);
+        event['sig'] = NostrSigner.sign(finalId, AppSettings.instance.myPrivkey);
 
         bool sentToAtLeastOne = false;
         for (final entry in _connections.entries) {
