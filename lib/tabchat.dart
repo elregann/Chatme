@@ -4,8 +4,11 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'roomchat.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
-import 'main.dart';
 import 'package:flutter/services.dart';
+import 'services/app_settings.dart';
+import 'models/contact.dart';
+import 'models/chat_message.dart';
+import 'core/utils/time_utils.dart';
 
 class ChatsScreen extends StatefulWidget {
   final RelayManager relayManager;

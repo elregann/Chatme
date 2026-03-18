@@ -11,6 +11,11 @@ import 'main.dart';
 import 'chatmanager.dart';
 import 'core/crypto/encryption.dart';
 import 'core/crypto/nostr_protocol.dart';
+import 'services/app_settings.dart';
+import 'models/contact.dart';
+import 'core/utils/debug_logger.dart';
+import 'models/chat_message.dart';
+import 'services/nostr_service.dart';
 
 class RelayManager {
   Function? onMessageReceived;

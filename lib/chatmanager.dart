@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'notification_handler.dart';
-import 'main.dart';
-//fix
+import 'services/app_settings.dart';
+import 'models/contact.dart';
+import 'core/utils/debug_logger.dart';
+import 'models/chat_message.dart';
+import 'services/nostr_service.dart';
+
 class ChatManager {
   static final ChatManager _instance = ChatManager._internal();
   factory ChatManager() => _instance;

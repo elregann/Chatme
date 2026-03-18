@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'main.dart';
 import 'roomchat.dart';
 import 'relaymanager.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'models/contact.dart';
+import 'core/utils/debug_logger.dart';
+import 'core/utils/ui_utils.dart';
 
 class ContactsScreen extends StatefulWidget {
   final RelayManager relayManager;

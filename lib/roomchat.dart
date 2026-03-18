@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
-import 'main.dart';
 import 'callmanager.dart';
 import 'relaymanager.dart';
 import 'chatmanager.dart';
 import 'core/crypto/encryption.dart';
+import 'services/app_settings.dart';
+import 'models/contact.dart';
+import 'models/chat_message.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
