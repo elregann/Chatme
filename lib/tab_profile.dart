@@ -1,8 +1,10 @@
+// tab_profile.dart
+
 import 'dart:async';
 import 'package:hive/hive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'relaymanager.dart';
+import 'relay_manager.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -60,13 +62,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (cleanName.length < 3) return false;
 
       // URL Database
-      final String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
+      const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
       DatabaseReference ref = FirebaseDatabase.instanceFor(
           app: Firebase.app(),
           databaseURL: rtdbUrl
       ).ref("usernames/$cleanName");
 
-      // Gunakan timeout agar tidak nunggu selamanya jika internet lemot
       final snapshot = await ref.get().timeout(const Duration(seconds: 10));
 
       if (snapshot.exists) {
@@ -77,7 +78,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await ref.set(pubkey);
       return true;
     } catch (e) {
-      print('❌ Firebase Error: $e');
       return false;
     }
   }
@@ -743,27 +743,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     TextButton(
                       onPressed: () async {
                         if (_nip05Controller.text.isNotEmpty) {
+                          final messenger = ScaffoldMessenger.of(context);
                           final input = _nip05Controller.text.trim();
                           final String cleanName = input.contains('@') ? input.split('@')[0] : input;
                           final myPubkey = AppSettings.instance.myPubkey;
 
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          messenger.showSnackBar(
                             const SnackBar(content: Text('Claiming identity...'), duration: Duration(seconds: 1)),
                           );
 
                           bool isSuccess = await _claimUsername(cleanName, myPubkey);
 
+                          if (!mounted) return;
+
                           if (isSuccess) {
                             await AppSettings.instance.updateNip05("$cleanName@chatme", true);
+
+                            if (!mounted) return;
+
                             setState(() {
                               _currentHandle = "$cleanName@chatme";
                               _isEditing = false;
                             });
-                            ScaffoldMessenger.of(context).showSnackBar(
+
+                            messenger.showSnackBar(
                               SnackBar(content: Text('✅ Identity Claimed: $cleanName@chatme'), backgroundColor: Colors.green),
                             );
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            messenger.showSnackBar(
                               const SnackBar(content: Text('❌ Name already taken or Error!'), backgroundColor: Colors.orange),
                             );
                           }

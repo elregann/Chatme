@@ -18,12 +18,12 @@ import 'services/network_manager.dart';
 import 'core/utils/debug_logger.dart';
 
 import 'call.dart';
-import 'roomchat.dart';
-import 'relaymanager.dart';
-import 'chatmanager.dart';
-import 'tabcontact.dart';
-import 'tabprofile.dart';
-import 'tabchat.dart';
+import 'room_chat.dart';
+import 'relay_manager.dart';
+import 'chat_manager.dart';
+import 'tab_contact.dart';
+import 'tab_profile.dart';
+import 'tab_chat.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 

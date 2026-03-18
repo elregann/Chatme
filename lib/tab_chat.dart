@@ -1,9 +1,11 @@
+// tab_chat.dart
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'roomchat.dart';
-import 'relaymanager.dart';
-import 'chatmanager.dart';
+import 'room_chat.dart';
+import 'relay_manager.dart';
+import 'chat_manager.dart';
 import 'package:flutter/services.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
@@ -120,7 +122,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final myPubkey = AppSettings.instance.myPubkey;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
@@ -260,7 +261,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                               padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                               child: Text("CONTACTS", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
                             ),
-                            ...filteredSavedContacts.map((contact) => _buildContactItem(contact, null)).toList(),
+                            ...filteredSavedContacts.map((contact) => _buildContactItem(contact, null)),
                             const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
                           ],
 
@@ -274,7 +275,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             ...chatPreviews.map((item) => _buildContactItem(
                                 item['contact'] as Contact,
                                 item['lastMsg'] as ChatMessage?
-                            )).toList(),
+                            )),
                             if (_searchQuery.isNotEmpty && messageResults.isNotEmpty)
                               const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
                           ],
@@ -318,7 +319,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                   )));
                                 },
                               );
-                            }).toList(),
+                            }),
                           ],
                         ],
                       );

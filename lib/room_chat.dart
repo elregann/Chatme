@@ -1,3 +1,5 @@
+// room_chat.dart
+
 import 'package:flutter/foundation.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
@@ -6,9 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
-import 'callmanager.dart';
-import 'relaymanager.dart';
-import 'chatmanager.dart';
+import 'call_manager.dart';
+import 'relay_manager.dart';
+import 'chat_manager.dart';
 import 'core/crypto/encryption.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
@@ -625,17 +627,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               final String pubkey = widget.contact.pubkey;
               final int colorValue = int.tryParse(pubkey.substring(0, 8), radix: 16) ?? 0xFF000000;
               final Color warnaKontak = Color(colorValue | 0xFF000000);
+              final currentContext = context;
 
               Future.delayed(Duration.zero, () {
-                if (!mounted) return;
-
-                CallManager.instance.startCallFlow(
-                  context: context,
-                  peerName: displayName,
-                  peerPubkey: pubkey,
-                  relay: widget.relayManager,
-                  peerColor: warnaKontak,
-                );
+                if (currentContext.mounted) {
+                  CallManager.instance.startCallFlow(
+                    context: currentContext,
+                    peerName: displayName,
+                    peerPubkey: pubkey,
+                    relay: widget.relayManager,
+                    peerColor: warnaKontak,
+                  );
+                }
               });
             },
           ),
@@ -1238,7 +1241,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ? (widget.contact.isSaved ? widget.contact.name : "User ${widget.contact.pubkey.substring(0, 8)}")
         : "You";
 
-    final nameColor = const Color(0xFF1976D2);
+    const nameColor = Color(0xFF1976D2);
     final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);
     final contentColor = isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153);
 
@@ -1251,7 +1254,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             top: Radius.circular(10),
             bottom: Radius.circular(10)
         ),
-        border: Border(
+        border: const Border(
           left: BorderSide(
               color: nameColor,
               width: 4
@@ -1264,7 +1267,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         children: [
           Text(
             senderName,
-            style: TextStyle(
+            style: const TextStyle(
               color: nameColor,
               fontWeight: FontWeight.bold,
               fontSize: 12,
@@ -1411,16 +1414,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () async {
+                    onPressed: () {
+                      final currentContext = context;
                       if (nameController.text.trim().isNotEmpty) {
                         widget.contact.name = nameController.text.trim();
                         widget.contact.isSaved = true;
-                        await Hive.box<Contact>('contacts').put(widget.contact.pubkey, widget.contact);
-                        HapticFeedback.lightImpact(); // Getar halus saat berhasil
-                        if (mounted) {
-                          setState(() {});
-                          Navigator.pop(context);
-                        }
+                        Hive.box<Contact>('contacts').put(widget.contact.pubkey, widget.contact).then((_) {
+                          HapticFeedback.lightImpact();
+                          if (currentContext.mounted) {
+                            setState(() {});
+                            Navigator.pop(currentContext);
+                          }
+                        });
                       }
                     },
                     style: ElevatedButton.styleFrom(

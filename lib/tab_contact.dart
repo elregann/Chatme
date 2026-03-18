@@ -1,8 +1,10 @@
+// tab_contact.dart
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'roomchat.dart';
-import 'relaymanager.dart';
+import 'room_chat.dart';
+import 'relay_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -25,7 +27,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   List<Map<String, String>> _globalSearchResults = [];
   bool _isSearchingGlobal = false;
-  Timer? _debounce; // Biar gak nembak Firebase terus-menerus pas ngetik
+  Timer? _debounce;
 
   @override
   void dispose() {
@@ -447,7 +449,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               _searchFocusNode.unfocus();
                               _quickAddFromGlobal(res['username']!, res['pubkey']!);
                             },
-                          )).toList()
+                          ))
                         // Tampilkan pesan jika tidak ada hasil
                         else if (!_isSearchingGlobal && _globalSearchResults.isEmpty && _searchQuery.length > 1)
                             const Padding(
@@ -467,7 +469,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                         child: Text("MY CONTACTS", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
                       ),
-                      ...contacts.map((contact) => _buildContactTile(contact)).toList(),
+                      ...contacts.map((contact) => _buildContactTile(contact)),
                     ],
                   );
                 },

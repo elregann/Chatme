@@ -1,3 +1,5 @@
+// relay_manager.dart
+
 import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
@@ -5,10 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'callmanager.dart';
+import 'call_manager.dart';
 import 'call.dart';
 import 'main.dart';
-import 'chatmanager.dart';
+import 'chat_manager.dart';
 import 'core/crypto/encryption.dart';
 import 'core/crypto/nostr_protocol.dart';
 import 'services/app_settings.dart';
@@ -82,7 +84,9 @@ class RelayManager {
     _cleanupTimer?.cancel();
     _queueTimer?.cancel();
     _isProcessingQueue = false;
-    for (var timer in _pingTimers.values) timer.cancel();
+    for (var timer in _pingTimers.values) {
+      timer.cancel();
+    }
     _pingTimers.clear();
 
     for (var url in _connections.keys.toList()) {
@@ -132,13 +136,13 @@ class RelayManager {
 
       final List<int> neededKinds = [1, 4, 7, 1000];
 
-      final subToMe = jsonEncode(["REQ", _subscriptionId! + "_incoming", {
+      final subToMe = jsonEncode(["REQ", "${_subscriptionId!}_incoming", {
         "kinds": neededKinds,
         "#p": [myPubkey],
         "since": syncSince
       }]);
 
-      final subFromMe = jsonEncode(["REQ", _subscriptionId! + "_outgoing", {
+      final subFromMe = jsonEncode(["REQ", "${_subscriptionId!}_outgoing", {
         "kinds": neededKinds,
         "authors": [myPubkey],
         "since": syncSince
@@ -170,7 +174,9 @@ class RelayManager {
       _connections[url]?.sink.close();
       _connections.remove(url);
       _connectionStatus.remove(url);
-    } catch (e) {}
+    } catch (e) {
+      DebugLogger.log('❌ Error closing connection: $e');
+    }
   }
 
   void _handleData(dynamic data, String url) {
@@ -183,7 +189,9 @@ class RelayManager {
         if (decoded[0] == "EVENT") _handleEvent(decoded, url);
         if (decoded[0] == "OK") _handleOk(decoded, url);
       }
-    } catch (e) {}
+    } catch (e) {
+      DebugLogger.log('❌ Error handling data: $e');
+    }
   }
 
   void _handleEvent(List<dynamic> decoded, String url) {
@@ -199,7 +207,9 @@ class RelayManager {
     final senderPubkey = event['pubkey']?.toString() ?? '';
 
     if (kind == 1000) {
-      try { if (onSignalReceived != null) onSignalReceived!(event); } catch (e) {}
+      try { if (onSignalReceived != null) onSignalReceived!(event); } catch (e) {
+        DebugLogger.log('❌ Error onSignalReceived: $e');
+      }
       if (senderPubkey == myPubkey) return;
       if (now - createdAt > 30) return;
 
@@ -238,7 +248,9 @@ class RelayManager {
           if (savedContact != null && savedContact.isSaved) {
             finalDisplayName = savedContact.name;
           }
-        } catch (e) {}
+        } catch (e) {
+          DebugLogger.log('❌ Gagal memuat kontak: $e');
+        }
 
         final Color incomingPeerColor = Color(
             int.parse(callerPubkey.substring(0, 8), radix: 16) | 0xFF000000
@@ -544,7 +556,9 @@ class RelayManager {
       for (final conn in _connections.values) {
         conn.sink.add(jsonEncode(["EVENT", signedEvent]));
       }
-    } catch (e) {}
+    } catch (e) {
+      DebugLogger.log('❌ Error sendReceipt: $e');
+    }
   }
 
   Future<void> sendReaction({
@@ -619,7 +633,9 @@ class RelayManager {
           entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      DebugLogger.log('❌ Error sendCallSignal: $e');
+    }
   }
 
   Future<void> _updateContactWithMessage(String peerPubkey, String message, int timestamp, bool isFromMe, bool alreadyExists) async {
@@ -647,7 +663,9 @@ class RelayManager {
         if (currentlyChattingWith == peerPubkey) contact.unreadCount = 0;
       }
       await contactsBox.put(peerPubkey, contact);
-    } catch (e) {}
+    } catch (e) {
+      DebugLogger.log('❌ Error updating contact: $e');
+    }
   }
 
   Future<void> _updateMessageReaction(
