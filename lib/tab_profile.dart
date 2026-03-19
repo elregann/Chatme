@@ -635,7 +635,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data. However, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.\n\n'
 
-                      'To safeguard your conversations, Chatme implements an advanced encryption framework that builds upon the foundations of NIP-04 and NIP-44. We utilize AES-256-GCM (Authenticated Encryption with Associated Data) and HKDF SHA-256 for dynamic key derivation on the secp256k1 curve. By cryptographically binding the identities of the sender and receiver to each encrypted packet, we ensure not only absolute message privacy but also mathematical integrity, preventing unauthorized manipulation or cross-protocol attacks.\n\n'
+                      'To safeguard your conversations, Chatme implements an encryption framework based on the NIP-04 standard. We utilize AES-256-CBC for message encryption and SHA-256/HMAC for integrity, leveraging the secp256k1 curve for key exchange. By cryptographically binding the identities of the sender and receiver to each encrypted packet, we ensure absolute message privacy and prevent unauthorized manipulation.\n\n'
 
                       'As a user, you are responsible for the safety of your Private Key. We do not store, collect, or have any access to your personal data, messages, or keys. By using Chatme, you acknowledge that your data security rests entirely in your hands through the cryptographic power of the Nostr network.\n\n'
 
@@ -1071,7 +1071,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                   ),
                   const SizedBox(height: 8),
-                  Text('Version 1.0.8-Alpha',
+                  Text('Version 1.0.0-Alpha',
                       style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
                   const SizedBox(height: 20),
                 ],

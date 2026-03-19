@@ -1,6 +1,6 @@
-# chatme
+# Chatme
 
-A new Flutter project.
+Nostr ChatApp
 
 ## Getting Started
 

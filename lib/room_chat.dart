@@ -11,7 +11,7 @@ import 'package:intl/intl.dart';
 import 'call_manager.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
-import 'core/crypto/encryption.dart';
+import 'core/crypto/nip04.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
@@ -294,7 +294,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
 
       final myPrivkey = AppSettings.instance.myPrivkey;
-      final encrypted = EncryptionManager.encrypt(text, myPrivkey, myPubkey, receiver);
+
+      final encrypted = Nip04.encrypt(
+          text,
+          myPrivkey,
+          receiver);
+
       final pendingMessage = tempMessage.copyWith(
         id: offlineId,
         content: encrypted,

@@ -11,7 +11,7 @@ import 'call_manager.dart';
 import 'call.dart';
 import 'main.dart';
 import 'chat_manager.dart';
-import 'core/crypto/encryption.dart';
+import 'core/crypto/nip04.dart';
 import 'core/crypto/nostr_protocol.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
@@ -310,11 +310,9 @@ class RelayManager {
       final content = event['content']?.toString() ?? '';
       final myPrivkey = AppSettings.instance.myPrivkey;
 
-      // Dekripsi pesan
-      String decrypted = EncryptionManager.decrypt(
+      String decrypted = Nip04.decrypt(
         content,
         myPrivkey,
-        myPubkey,
         peerPubkey,
       );
 
@@ -469,10 +467,9 @@ class RelayManager {
         throw Exception('Missing pubkey or privkey');
       }
 
-      final encryptedContent = EncryptionManager.encrypt(
+      final encryptedContent = Nip04.encrypt(
         plaintext,
         myPrivkey,
-        myPubkey,
         receiverPubkey,
       );
 
@@ -574,10 +571,9 @@ class RelayManager {
 
       final reactionPlaintext = 'REACTION:$emoji:$messageId';
 
-      final encryptedContent = EncryptionManager.encrypt(
+      final encryptedContent = Nip04.encrypt(
         reactionPlaintext,
         myPrivkey,
-        myPubkey,
         receiverPubkey,
       );
       if (encryptedContent.isEmpty) return;
