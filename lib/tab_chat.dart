@@ -410,22 +410,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
           ),
           const SizedBox(height: 4),
           if (contact.unreadCount > 0)
-            Container(
-              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                  '${contact.unreadCount}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold
-                  )
-              ),
+            Badge.count(
+              count: contact.unreadCount,
             )
           else
             const SizedBox(height: 18),

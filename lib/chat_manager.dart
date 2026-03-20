@@ -8,6 +8,7 @@ import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
 import 'models/chat_message.dart';
 import 'services/nostr_service.dart';
+import 'relay_manager.dart';
 
 class ChatManager {
   static final ChatManager _instance = ChatManager._internal();
@@ -110,12 +111,54 @@ class ChatManager {
   void _triggerNotification(ChatMessage message) {
     final contact = Hive.box<Contact>('contacts').get(message.senderPubkey);
     final senderName = contact?.name ?? "User ${message.senderPubkey.substring(0, 8)}";
-    NotificationHandler.showNotification(
-      id: message.timestamp % 2147483647,
-      title: senderName,
-      body: message.plaintext,
-      payload: message.senderPubkey,
+    NotificationHandler.showChatNotification(
+      senderPubkey: message.senderPubkey,
+      senderName: senderName,
+      message: message.plaintext,
     );
+  }
+
+  static Future<void> sendReplyFromNotification({
+    required String receiverPubkey,
+    required String plaintext,
+    required RelayManager relayManager,
+  }) async {
+    try {
+      final myPubkey = AppSettings.instance.myPubkey;
+      final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
+      final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
+      final tempMessage = ChatMessage(
+        id: tempId,
+        senderPubkey: myPubkey,
+        receiverPubkey: receiverPubkey,
+        content: '',
+        plaintext: plaintext,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        status: 'sending',
+        chatKey: chatKey,
+      );
+
+      await ChatManager.instance.saveMessage(tempMessage);
+
+      final event = await relayManager.sendMessage(
+        receiverPubkey: receiverPubkey,
+        plaintext: plaintext,
+      );
+
+      final realMessage = tempMessage.copyWith(
+        id: event['id'].toString(),
+        content: event['content'].toString(),
+        status: 'sending',
+      );
+
+      await ChatManager.instance.saveMessage(realMessage);
+      await ChatManager.instance.deleteMessage(tempId, chatKey);
+      NotificationHandler.clearNotification(receiverPubkey);
+
+    } catch (e) {
+      DebugLogger.log('❌ sendReplyFromNotification error: $e', type: 'ERROR');
+    }
   }
 
   Future<void> updateMessageStatus(String messageId, String newStatus, {String? chatKey}) async {

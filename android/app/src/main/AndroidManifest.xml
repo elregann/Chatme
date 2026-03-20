@@ -72,6 +72,15 @@
 
         </activity>
 
+        <!-- Handler untuk inline reply & action dari notifikasi di background -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.dexterous.flutterlocalnotifications.ACTION_TRIGGERED"/>
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

@@ -714,7 +714,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Chatme Official ID'),
+            _buildSectionTitle('Official Global ID'),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -722,7 +722,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
               ),
               child: Padding(
-                // Padding 16 horizontal & 8 vertical ini adalah "kunci" agar tingginya sama dengan ListTile
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: _isEditing
                     ? Row(
@@ -1071,7 +1070,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                   ),
                   const SizedBox(height: 8),
-                  Text('Version 1.0.0-Alpha',
+                  Text('Version 1.1.0 Beta Version',
                       style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
                   const SizedBox(height: 20),
                 ],

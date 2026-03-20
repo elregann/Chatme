@@ -15,6 +15,7 @@ import 'core/crypto/nip04.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
+import 'notification_handler.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -30,7 +31,7 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> {
+class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
@@ -60,23 +61,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   ChatMessage? _messageForReaction;
   final List<String> _quickReactions = ['👍', '❤️', '😂'];
   final List<String> _allReactions = [
-    // Baris 1: Reaksi Utama (Wajib ada)
     '👍', '❤️', '😂', '😮', '😢', '😡',
-    // Baris 2: Apresiasi & Perayaan
     '👏', '🎉', '🔥', '⭐', '❤️‍🔥', '🥹',
-    // Baris 3: Ekspresi Chatting Populer
     '🥳', '🫠', '🙏', '💯', '✨', '💬',
-    // Baris 4: Respon Cepat (OK, No, DLL)
     '👀', '🤔', '😎', '✅', '❌', '🚀',
-    // Baris 5: Kasih Sayang & Sopan
     '🥰', '🤝', '🙌', '💪', '🫡', '🌹',
-    // Baris 6: Lucu & Santai
     '🤪', '🙈', '👻', '🍻', '🌈', '💤'
   ];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    NotificationHandler.clearNotification(widget.contact.pubkey);
     widget.relayManager.currentlyChattingWith = widget.contact.pubkey;
     widget.relayManager.onMessageReceived = () async {
       if (!mounted) return;
@@ -98,7 +95,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      NotificationHandler.clearNotification(widget.contact.pubkey);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _removeReactionOverlay();
 
     widget.relayManager.currentlyChattingWith = null;
@@ -584,14 +589,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     String displayName = widget.contact.isSaved ? widget.contact.name : "User ${widget.contact.pubkey.substring(0, 8)}";
     final chatKey = ChatManager.instance.getChatKey(AppSettings.instance.myPubkey, widget.contact.pubkey);
 
-    // Kunci warna Header & Divider agar konsisten
-    final headerColor = isDark ? const Color(0xFF1F2C34) : Colors.white;
+    // Warna Header & Divider
+    final headerColor = isDark ? const Color(0xFF121212) : Colors.white;
     final accentColor = isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2);
     final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
 
     return Scaffold(
       backgroundColor: isDark
-          ? Theme.of(context).scaffoldBackgroundColor
+          // Background Roomchat
+          ? const Color(0xFF121212)
           : const Color(0xFFE5DDD5),
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
@@ -1142,8 +1148,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     // Tema Bubble
     final bubbleColor = isMe
-        ? (isDark ? const Color(0xFF2F5B80) : const Color(0xFFE3F2FD))
-        : (isDark ? const Color(0xFF1E272E) : const Color(0xFFFFFFFF));
+        ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
+        : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF));
 
     // Teks: Terang (Hitam), Gelap (Putih)
     final textColor = isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);

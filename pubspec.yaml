@@ -1,5 +1,5 @@
 name: chatme
-description: "Chat App dengan Nostr Valid"
+description: "Chat App with Nostr"
 publish_to: 'none'
 
 version: 1.0.0+1

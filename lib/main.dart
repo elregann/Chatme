@@ -1,6 +1,8 @@
 // main.dart
 
 import 'dart:io';
+import 'dart:ui';
+import 'dart:isolate';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -89,6 +91,51 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+
+    // Notification bar
+    if (!kIsWeb) {
+      IsolateNameServer.removePortNameMapping('chatme_notification_port');
+      final ReceivePort port = ReceivePort();
+      IsolateNameServer.registerPortWithName(port.sendPort, 'chatme_notification_port');
+      port.listen((dynamic data) async {
+        if (data is Map) {
+          final actionId = data['actionId'];
+          final input = data['input'];
+          final payload = data['payload'];
+
+          if (actionId == null && payload != null) {
+            _navigateToChat(payload);
+          } else if (actionId == 'REPLY_ACTION' && input != null && payload != null) {
+            _relayManager.connectIfNeeded();
+            await Future.delayed(const Duration(milliseconds: 800));
+            await ChatManager.sendReplyFromNotification(
+              receiverPubkey: payload,
+              plaintext: input,
+              relayManager: _relayManager,
+            );
+          } else if (actionId == 'MARK_READ_ACTION' && payload != null) {
+            await NotificationHandler.clearNotification(payload);
+            await ChatManager.instance.clearUnreadCount(payload);
+
+            final myPubkey = AppSettings.instance.myPubkey;
+            final chatKey = ChatManager.instance.getChatKey(myPubkey, payload);
+            final messages = await ChatManager.instance.getMessages(payload);
+
+            for (final m in messages) {
+              if (m.senderPubkey == payload && m.status != 'read') {
+                await ChatManager.instance.updateMessageStatus(
+                  m.id, 'read', chatKey: chatKey,
+                );
+                await _relayManager.sendReceipt(m.id, payload, 'read');
+              }
+            }
+            _relayManager.onMessageReceived?.call();
+          }
+        }
+      });
+    }
+
+    NotificationHandler.init(relayManager: _relayManager);
     WidgetsBinding.instance.addObserver(this);
 
     NotificationHandler.onNotificationClick.stream.listen((String? payload) {
@@ -200,7 +247,13 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, surface: Colors.white),
       appBarTheme: const AppBarTheme(
         elevation: 0, centerTitle: true, backgroundColor: Colors.white,
+        scrolledUnderElevation: 0,
         titleTextStyle: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
+      ),
+      navigationBarTheme: const NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        shadowColor: Colors.transparent,
       ),
     );
   }
@@ -211,7 +264,17 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       useMaterial3: true,
       scaffoldBackgroundColor: const Color(0xFF121212),
       colorScheme: ColorScheme.fromSeed(brightness: Brightness.dark, seedColor: Colors.blue, surface: const Color(0xFF1E1E1E)),
-      appBarTheme: const AppBarTheme(elevation: 0, centerTitle: true, backgroundColor: Color(0xFF121212)),
+      appBarTheme: const AppBarTheme(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        backgroundColor: Color(0xFF121212),
+      ),
+      navigationBarTheme: const NavigationBarThemeData(
+        backgroundColor: Color(0xFF121212),
+        elevation: 0,
+        shadowColor: Colors.transparent,
+      ),
     );
   }
 }
@@ -281,11 +344,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           },
           destinations: [
             NavigationDestination(
-              icon: Badge(label: Text('$totalUnread'), isLabelVisible: totalUnread > 0, child: const Icon(Icons.chat_bubble_outline)),
+              icon: Badge(label: Text('$totalUnread'),
+                  isLabelVisible: totalUnread > 0,
+                  child: const Icon(Icons.chat_rounded)),
               label: 'Chats',
             ),
-            const NavigationDestination(icon: Icon(Icons.people_outline), label: 'Contacts'),
-            const NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Profile'),
+            const NavigationDestination(icon: Icon(Icons.people), label: 'Contacts'),
+            const NavigationDestination(icon: Icon(Icons.grid_view_rounded), label: 'More'),
           ],
         );
       },
