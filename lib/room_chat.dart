@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -50,6 +51,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   int _newMessagesCount = 0;
   double _lastKeyboardHeight = 300;
+
+  bool _isShortText(String text, BuildContext context) {
+    const double timeWidth = 55;
+    final maxWidth = MediaQuery.of(context).size.width * 0.70 - 80 - timeWidth;
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: const TextStyle(fontSize: 16)),
+      maxLines: 1,
+      textDirection: ui.TextDirection.ltr,
+    )..layout(maxWidth: maxWidth);
+
+    return !textPainter.didExceedMaxLines;
+  }
 
   String _floatingDate = "";
   bool _showFloatingDate = false;
@@ -1127,7 +1140,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   ),
                 ),
               ),
-            _buildMessageBubble(message),
+            Flexible(
+              child: _buildMessageBubble(message),
+            ),
           ],
         ),
       ),
@@ -1184,6 +1199,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       : null,
                 ),
                 padding: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 6),
+
                 child: IntrinsicWidth(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1194,7 +1210,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
                       const SizedBox(height: 4),
 
-                      Row(
+                      (_isShortText(message.plaintext, context))
+                          ? Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -1204,19 +1221,36 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                               style: TextStyle(color: textColor, fontSize: 16),
                             ),
                           ),
-
-                          const SizedBox(width: 10),
-
+                          const SizedBox(width: 8),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                timeStr,
-                                style: TextStyle(
-                                  color: textColor.withAlpha(153),
-                                  fontSize: 11,
-                                ),
-                              ),
+                              Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
+                              if (isMe) ...[
+                                const SizedBox(width: 4),
+                                _buildStatusIcon(message.status, textColor),
+                              ],
+                            ],
+                          ),
+                        ],
+                      )
+
+                          : Wrap(
+                        alignment: WrapAlignment.end,
+                        crossAxisAlignment: WrapCrossAlignment.end,
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: Text(
+                              message.plaintext,
+                              style: TextStyle(color: textColor, fontSize: 16),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
                               if (isMe) ...[
                                 const SizedBox(width: 4),
                                 _buildStatusIcon(message.status, textColor),
@@ -1225,6 +1259,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                           ),
                         ],
                       ),
+
                     ],
                   ),
                 ),

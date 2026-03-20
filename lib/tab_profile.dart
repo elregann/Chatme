@@ -1070,7 +1070,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                   ),
                   const SizedBox(height: 8),
-                  Text('Version 1.1.0 Beta Version',
+                  Text('Version 1.2.0 Beta Version',
                       style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
                   const SizedBox(height: 20),
                 ],
