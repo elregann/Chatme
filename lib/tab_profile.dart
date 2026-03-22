@@ -1,17 +1,15 @@
 // tab_profile.dart
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'relay_manager.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'services/app_settings.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
 import 'ui/profile/restore_account.dart';
 import 'ui/profile/appearance.dart';
+import 'ui/profile/global_id.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -56,32 +54,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
     } catch (e) {
       return Colors.blue;
-    }
-  }
-
-  Future<bool> _claimUsername(String username, String pubkey) async {
-    try {
-      final cleanName = username.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '');
-      if (cleanName.length < 3) return false;
-
-      // URL Database
-      const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
-      DatabaseReference ref = FirebaseDatabase.instanceFor(
-          app: Firebase.app(),
-          databaseURL: rtdbUrl
-      ).ref("usernames/$cleanName");
-
-      final snapshot = await ref.get().timeout(const Duration(seconds: 10));
-
-      if (snapshot.exists) {
-        if (snapshot.value == pubkey) return true;
-        return false;
-      }
-
-      await ref.set(pubkey);
-      return true;
-    } catch (e) {
-      return false;
     }
   }
 
@@ -254,7 +226,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 12),
                   Text(
                       (!_isEditing && _currentHandle.isNotEmpty)
-                          ? _currentHandle
+                          ? _currentHandle.split('@')[0]
                           : settings.myName,
                       style: TextStyle(
                         fontSize: 16, // Sedikit lebih besar dari 15 agar tetap terbaca sebagai judul
@@ -274,115 +246,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25))
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25)),
               ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: _isEditing
-                    ? Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _nip05Controller,
-                        autofocus: false,
-                        decoration: const InputDecoration(
-                          hintText: 'Enter name...',
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        if (_nip05Controller.text.isNotEmpty) {
-                          final messenger = ScaffoldMessenger.of(context);
-                          final input = _nip05Controller.text.trim();
-                          final String cleanName = input.contains('@') ? input.split('@')[0] : input;
-                          final myPubkey = AppSettings.instance.myPubkey;
-
-                          messenger.showSnackBar(
-                            const SnackBar(content: Text('Claiming identity...'), duration: Duration(seconds: 1)),
-                          );
-
-                          bool isSuccess = await _claimUsername(cleanName, myPubkey);
-
-                          if (!mounted) return;
-
-                          if (isSuccess) {
-                            await AppSettings.instance.updateNip05("$cleanName@chatme", true);
-
-                            if (!mounted) return;
-
-                            setState(() {
-                              _currentHandle = "$cleanName@chatme";
-                              _isEditing = false;
-                            });
-
-                            messenger.showSnackBar(
-                              SnackBar(content: Text('✅ Identity Claimed: $cleanName@chatme'), backgroundColor: Colors.green),
-                            );
-                          } else {
-                            messenger.showSnackBar(
-                              const SnackBar(content: Text('❌ Name already taken or Error!'), backgroundColor: Colors.orange),
-                            );
-                          }
-                        }
-                      },
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.purple.withAlpha(30),
-                        visualDensity: VisualDensity.compact,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: const Text('CLAIM', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ),
-                  ],
-                )
-                    : Row(
-                  children: [
-                    Icon(
-                        AppSettings.instance.isNip05Verified
-                            ? Icons.verified_rounded
-                            : Icons.verified_user_rounded,
-                        color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.purple,
-                        size: 20
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        _currentHandle,
-                        style: TextStyle(
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black54,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => setState(() => _isEditing = true),
-                        borderRadius: BorderRadius.circular(50),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withAlpha(20),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                              Icons.edit_note_rounded,
-                              color: Colors.grey,
-                              size: 18
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              child: ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                leading: Icon(
+                  AppSettings.instance.isNip05Verified ? Icons.verified_rounded : Icons.verified_user_rounded,
+                  color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.purple,
                 ),
+                title: Text(
+                  AppSettings.instance.myNip05.isNotEmpty ? AppSettings.instance.myNip05 : 'Claim your ID',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const GlobalIdPage()),
+                  );
+                  setState(() {
+                    _currentHandle = AppSettings.instance.myNip05;
+                  });
+                },
               ),
             ),
             const SizedBox(height: 24),
