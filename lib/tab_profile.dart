@@ -9,6 +9,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'services/app_settings.dart';
+import 'ui/profile/security_vault.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -127,140 +128,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // Dialog backup keys
-  Future<void> _showBackupDialog(BuildContext context) async {
-    final settings = AppSettings.instance;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withAlpha(25),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.security_rounded, color: Colors.orange, size: 28),
-            ),
-            const SizedBox(height: 12),
-            const Text('Security Vault', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 6),
-            Text(
-              'Keep these keys safe and private.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.red.withAlpha(15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.gpp_maybe_rounded, color: Colors.red, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Never share your Private Key with anyone.',
-                      style: TextStyle(color: isDark ? Colors.red[200] : Colors.red[800], fontSize: 11, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Kartu Kunci
-            _buildKeyTile(context, 'Public Key', settings.myPubkey, Colors.blue),
-            const SizedBox(height: 10),
-            _buildKeyTile(context, 'Private Key', settings.myPrivkey, Colors.orange),
-
-            const SizedBox(height: 20),
-
-            // Action Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Close', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: settings.exportKeys()));
-                    HapticFeedback.lightImpact();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: const Text('Copy All', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ],
+  void _showBackupDialog(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BackupKeysPage(
+          pubkey: AppSettings.instance.myPubkey,
+          privkey: AppSettings.instance.myPrivkey,
+          exportKeys: AppSettings.instance.exportKeys,
         ),
-      ),
-    );
-  }
-
-// Widget pendukung untuk kartu kunci yang lebih rapi
-  Widget _buildKeyTile(BuildContext context, String label, String key, Color color) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor.withAlpha(20)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 1)),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  key,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: key));
-                  HapticFeedback.lightImpact();
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(30),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.copy_rounded, color: color, size: 14),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -899,8 +775,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const Divider(height: 1, indent: 56),
                   ListTile(
                     leading: const Icon(Icons.security_rounded, color: Colors.orange),
-                    title: const Text('Backup Your Keys', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                    subtitle: const Text('Save your private identity', style: TextStyle(fontSize: 12)),
+                    title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showBackupDialog(context),
                   ),
