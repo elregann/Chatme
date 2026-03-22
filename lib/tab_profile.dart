@@ -10,6 +10,7 @@ import 'ui/profile/recovery_phrase.dart';
 import 'ui/profile/restore_account.dart';
 import 'ui/profile/appearance.dart';
 import 'ui/profile/global_id.dart';
+import 'ui/profile/relay_status.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -213,10 +214,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   CircleAvatar(
-                    radius: 40, // Ukuran lebih kecil sesuai permintaan
+                    radius: 40,
                     backgroundColor: _getAvatarColor(settings.myPubkey),
                     child: Text(
-                      // Logika inisial: Ambil dari handle jika ada, jika tidak dari myName
                       ((!_isEditing && _currentHandle.isNotEmpty)
                           ? _currentHandle[0].toUpperCase()
                           : (settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?')),
@@ -229,20 +229,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ? _currentHandle.split('@')[0]
                           : settings.myName,
                       style: TextStyle(
-                        fontSize: 16, // Sedikit lebih besar dari 15 agar tetap terbaca sebagai judul
-                        fontWeight: FontWeight.bold, // Kembali ke Strong (Tegas)
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
                         color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white
                             : Colors.black,
                       )
                   ),
-                  const SizedBox(height: 12),
-                  _buildConnectionStatus(),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Official Global ID'),
+            _buildSectionTitle('Global ID'),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -309,6 +307,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           size: 18
                       ),
                     ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildSectionTitle('Network'),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25)),
+              ),
+              child: ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                leading: const Icon(Icons.cell_tower_rounded, color: Colors.green),
+                title: const Text('Relay Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RelayStatusPage(relayManager: widget.relayManager),
                   ),
                 ),
               ),
@@ -511,35 +530,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  // Widget status koneksi relay
-  Widget _buildConnectionStatus() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: widget.relayManager.isConnected,
-      builder: (context, isConnected, _) {
-        final color = isConnected ? Colors.green : Colors.orange;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withAlpha(25),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withAlpha(76)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.circle, size: 8, color: color),
-              const SizedBox(width: 8),
-              Text(
-                isConnected ? 'Relay Connected' : 'Relay Connecting',
-                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

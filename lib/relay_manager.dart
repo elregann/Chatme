@@ -41,6 +41,7 @@ class RelayManager {
   String? _subscriptionId;
   final ValueNotifier<bool> _isConnected = ValueNotifier(false);
   final ValueNotifier<int> _connectedCount = ValueNotifier(0);
+  Map<String, bool> get connectionStatus => Map.unmodifiable(_connectionStatus);
   bool _isInitialized = false;
   bool _isConnecting = false;
   bool _isProcessingQueue = false;
