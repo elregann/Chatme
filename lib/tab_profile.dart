@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'services/app_settings.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
+import 'ui/profile/restore_account.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -149,113 +150,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Dialog restore account (Versi Upgrade: Bisa Hex & Mnemonic)
-  Future<void> _showRestoreDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withAlpha(25),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.settings_backup_restore_rounded, color: Colors.red, size: 32),
-              ),
-              const SizedBox(height: 12),
-              const Text('Restore Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 8),
-              Text(
-                'Enter your Hex key or 12-word phrase.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
-              ),
-
-              const SizedBox(height: 16),
-
-              TextField(
-                controller: controller,
-                maxLines: 4,
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Paste here...',
-                  hintStyle: TextStyle(fontSize: 12, color: Colors.grey.withAlpha(150)),
-                  filled: true,
-                  fillColor: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(10),
-                  contentPadding: const EdgeInsets.all(16),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: Theme.of(context).dividerColor.withAlpha(30)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: Theme.of(context).dividerColor.withAlpha(30)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: Theme.of(context).primaryColor.withAlpha(100), width: 1.5),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        final input = controller.text.trim();
-                        if (input.isEmpty) return;
-                        try {
-                          await AppSettings.instance.importAccount(input);
-                          widget.relayManager.disconnect();
-                          widget.relayManager.connect();
-                          if (context.mounted) Navigator.pop(context);
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text('Error: $e'),
-                              backgroundColor: Colors.red,
-                              behavior: SnackBarBehavior.floating,
-                            ));
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Restore', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+  // Dialog restore account
+  void _showRestoreDialog(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RestoreAccountPage(relayManager: widget.relayManager),
       ),
     );
   }
