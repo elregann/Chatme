@@ -11,6 +11,7 @@ import 'services/app_settings.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
 import 'ui/profile/restore_account.dart';
+import 'ui/profile/appearance.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -161,103 +162,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // Dialog Pilih Tema
-  Future<void> _showThemeDialog(BuildContext context) async {
-    final currentMode = AppSettings.instance.themeMode;
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        contentPadding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withAlpha(25),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.palette_rounded, color: Colors.blue, size: 28),
-            ),
-            const SizedBox(height: 12),
-            const Text('Appearance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 4),
-            Text(
-              'Choose your interface style.',
-              style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Pilihan Tema
-            _buildThemeCard(context, 'System Default', Icons.brightness_auto_rounded, ThemeMode.system, currentMode),
-            const SizedBox(height: 8),
-            _buildThemeCard(context, 'Light Mode', Icons.light_mode_rounded, ThemeMode.light, currentMode),
-            const SizedBox(height: 8),
-            _buildThemeCard(context, 'Dark Mode', Icons.dark_mode_rounded, ThemeMode.dark, currentMode),
-
-            const SizedBox(height: 12),
-
-            // Tombol Close
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                ),
-                child: Text('Close', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildThemeCard(BuildContext context, String label, IconData icon, ThemeMode mode, ThemeMode currentMode) {
-    final isSelected = currentMode == mode;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return InkWell(
-      onTap: () {
-        widget.onThemeToggle(mode);
-        Navigator.pop(context);
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? Colors.blue.withAlpha(100) : Theme.of(context).dividerColor.withAlpha(30),
-            width: isSelected ? 1.5 : 1,
-          ),
-          color: isSelected
-              ? Colors.blue.withAlpha(isDark ? 30 : 15)
-              : Theme.of(context).cardColor.withAlpha(100),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: isSelected ? Colors.blue : Colors.grey, size: 20),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.blue : Theme.of(context).textTheme.bodyMedium?.color,
-              ),
-            ),
-            const Spacer(),
-            if (isSelected)
-              const Icon(Icons.check_circle_rounded, color: Colors.blue, size: 18),
-          ],
-        ),
+  void _showThemeDialog(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AppearancePage(onThemeToggle: widget.onThemeToggle),
       ),
     );
   }
@@ -579,12 +488,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 leading: const Icon(Icons.palette_rounded, color: Colors.blue),
                 title: const Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                subtitle: Text(
-                  AppSettings.instance.themeMode == ThemeMode.system
-                      ? 'System default'
-                      : AppSettings.instance.themeMode == ThemeMode.dark ? 'Dark' : 'Light',
-                  style: const TextStyle(fontSize: 12),
-                ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showThemeDialog(context),
               ),
@@ -704,22 +607,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 40),
-            Center(
-              child: Column(
-                children: [
-                  const Opacity(
-                    opacity: 0.5,
-                    child: Text('ChatMe Decentralized Messenger\nOwned by You, Not by Cloud',
-                        textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Version 1.2.0 Beta Version',
-                      style: TextStyle(fontSize: 10, color: Colors.grey.withAlpha(127))),
-                  const SizedBox(height: 20),
-                ],
+            const SizedBox(height: 24),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25)),
+              ),
+              child: ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                leading: const Icon(Icons.info_outline_rounded, color: Colors.grey),
+                title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                trailing: Text('1.2.0', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
               ),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
