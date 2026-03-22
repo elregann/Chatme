@@ -1,7 +1,6 @@
 // tab_profile.dart
 
 import 'dart:async';
-import 'package:hive/hive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'relay_manager.dart';
@@ -10,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'services/app_settings.dart';
 import 'ui/profile/security_vault.dart';
+import 'ui/profile/recovery_phrase.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -141,140 +141,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Dialog Tampilan 12 Kata (Mnemonic)
-  Future<void> _showMnemonicDialog(BuildContext context) async {
-    final settingsBox = Hive.box('settings');
-    String displayMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
-    bool hasMnemonic = displayMnemonic.isNotEmpty;
-
-    final words = hasMnemonic ? displayMnemonic.split(' ') : [];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        content: SizedBox(
-          width: 320,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: hasMnemonic ? Colors.purple.withAlpha(25) : Colors.amber.withAlpha(25),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    hasMnemonic ? Icons.auto_awesome_rounded : Icons.key_off_rounded,
-                    color: hasMnemonic ? Colors.purple : Colors.amber,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  hasMnemonic ? 'Recovery Phrase' : 'Mnemonic Not Available',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  hasMnemonic
-                      ? 'Keep these 12 words safe and private.'
-                      : 'Account restored via Private Key.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
-                ),
-                const SizedBox(height: 16),
-
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(hasMnemonic ? 8 : 20),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(5),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.purple.withAlpha(25)),
-                  ),
-                  child: hasMnemonic
-                      ? Center(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      alignment: WrapAlignment.center,
-                      children: List.generate(words.length, (index) {
-                        return Container(
-                          width: 90,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.black38 : Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.purple.withAlpha(15)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('${index + 1}',
-                                  style: const TextStyle(fontSize: 9, color: Colors.purple, fontWeight: FontWeight.bold)
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(words[index],
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                    ),
-                  )
-                      : Column(
-                    children: [
-                      Icon(Icons.info_outline_rounded, color: Colors.amber.withAlpha(200), size: 20),
-                      const SizedBox(height: 8),
-                      const Text(
-                        "Your recovery phrase cannot be displayed because you logged in using a Private Key.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text('Close', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                    ),
-                    if (hasMnemonic) ...[
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: displayMnemonic));
-                          HapticFeedback.lightImpact();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Copy Words', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+  // Dialog 12 words (Mnemonic)
+  void _showMnemonicDialog(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const RecoveryPhrasePage()),
     );
   }
 
@@ -768,7 +639,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     leading: const Icon(Icons.auto_awesome_rounded, color: Colors.purple),
                     title: const Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                    subtitle: const Text('12 words backup', style: TextStyle(fontSize: 12)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showMnemonicDialog(context),
                   ),
@@ -789,7 +659,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     leading: const Icon(Icons.settings_backup_restore_rounded, color: Colors.red),
                     title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                    subtitle: const Text('Use private key to login', style: TextStyle(fontSize: 12)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showRestoreDialog(context),
                   ),
