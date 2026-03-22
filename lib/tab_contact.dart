@@ -115,79 +115,127 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   // Hapus kontak
   Future<void> _deleteContact(Contact contact) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+    final textPrimary = isDark ? Colors.white : Colors.black;
+    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.withAlpha(25),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.person_remove_rounded, color: Colors.red, size: 32),
-            ),
-            const SizedBox(height: 16),
-            const Text('Remove Contact', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 8),
+      builder: (context) => Dialog(
+        backgroundColor: bgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
 
-            // Teks Penjelasan
-            RichText(
-              textAlign: TextAlign.center,
-              text: TextSpan(
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180),
-                    height: 1.5
-                ),
+              // Header
+              Row(
                 children: [
-                  const TextSpan(text: 'Are you sure you want to remove '),
-                  TextSpan(
-                    text: contact.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Remove contact',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          contact.name,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const TextSpan(text: '?\n'),
-                  const TextSpan(
-                    text: 'Don\'t worry, chat history will remain.',
-                    style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withAlpha(15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.withAlpha(30), width: 0.5),
+                    ),
+                    child: Icon(Icons.person_remove_rounded, size: 18, color: Colors.red.withAlpha(200)),
                   ),
                 ],
               ),
-            ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-            // Action Buttons (Style Restore)
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              // Divider
+              Divider(height: 0.5, thickness: 0.5, color: borderColor),
+
+              const SizedBox(height: 16),
+
+              // Info
+              Text(
+                'Chat history will remain after removal.',
+                style: TextStyle(fontSize: 13, color: textSecondary, height: 1.5),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context, false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: borderColor, width: 0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(fontSize: 13, color: textSecondary),
+                          ),
+                        ),
+                      ),
                     ),
-                    child: const Text('Remove', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context, true),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.red.withAlpha(40), width: 0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Remove',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.red.withAlpha(200),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -341,12 +389,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _addContact,
-          backgroundColor: Colors.blue.withAlpha(40),
-          elevation: 0,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.blue),
+        floatingActionButton: GestureDetector(
+          onTap: _addContact,
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: Colors.blue.withAlpha(40),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.blue),
+          ),
         ),
       ),
     );
@@ -391,15 +444,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.people, size: 80, color: Theme.of(context).disabledColor),
+          Icon(Icons.people_outline_rounded, size: 80, color: Colors.grey.withAlpha(50)),
           const SizedBox(height: 20),
-          const Text('No saved contacts yet'),
-          const SizedBox(height: 20),
-          FilledButton.tonal(
-              style: FilledButton.styleFrom(elevation: 0),
-              onPressed: _addContact,
-              child: const Text('Add Contact')
-          ),
+          const Text('No saved contacts yet', style: TextStyle(color: Colors.grey)),
         ],
       ),
     );

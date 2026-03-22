@@ -16,12 +16,17 @@ class _AddContactPageState extends State<AddContactPage> {
   final TextEditingController _pubkeyController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _submitted = false;
 
   @override
   void dispose() {
     _nameController.dispose();
     _pubkeyController.dispose();
     super.dispose();
+  }
+
+  void _resetSubmitted() {
+    if (_submitted) setState(() => _submitted = false);
   }
 
   @override
@@ -89,25 +94,30 @@ class _AddContactPageState extends State<AddContactPage> {
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
               ),
               const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: borderColor, width: 0.5),
+              TextFormField(
+                controller: _nameController,
+                style: TextStyle(fontSize: 14, color: textPrimary),
+                onTap: _resetSubmitted,
+                onChanged: (_) => _resetSubmitted(),
+                decoration: InputDecoration(
+                  hintText: 'Enter name',
+                  hintStyle: TextStyle(fontSize: 13, color: textSecondary),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  filled: true,
+                  fillColor: cardColor,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  errorStyle: const TextStyle(fontSize: 11, height: 1.2),
                 ),
-                child: TextFormField(
-                  controller: _nameController,
-                  style: TextStyle(fontSize: 14, color: textPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'Enter name',
-                    hintStyle: TextStyle(fontSize: 14, color: textSecondary),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    border: InputBorder.none,
-                  ),
-                  validator: (value) => (value == null || value.isEmpty) ? 'Name is required' : null,
-                ),
+                validator: (value) {
+                  if (!_submitted) return null;
+                  if (value == null || value.isEmpty) return 'Name is required';
+                  return null;
+                },
               ),
-
               const SizedBox(height: 20),
 
               // Pubkey field
@@ -116,52 +126,58 @@ class _AddContactPageState extends State<AddContactPage> {
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
               ),
               const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: borderColor, width: 0.5),
-                ),
-                child: TextFormField(
-                  controller: _pubkeyController,
-                  maxLines: 3,
-                  style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'Paste public key here',
-                    hintStyle: TextStyle(fontSize: 13, color: textSecondary, fontFamily: 'sans-serif'),
-                    contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
-                    border: InputBorder.none,
-                    suffixIcon: GestureDetector(
-                      onTap: () async {
-                        final data = await Clipboard.getData('text/plain');
-                        if (data?.text != null) {
-                          _pubkeyController.text = data!.text!.trim();
-                          HapticFeedback.lightImpact();
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Icon(Icons.content_paste_rounded, size: 18, color: textSecondary),
-                      ),
+              TextFormField(
+                controller: _pubkeyController,
+                minLines: 1,
+                maxLines: 3,
+                style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textPrimary),
+                onTap: _resetSubmitted,
+                onChanged: (_) => _resetSubmitted(),
+                decoration: InputDecoration(
+                  hintText: 'Paste public key here',
+                  hintStyle: TextStyle(fontSize: 13, color: textSecondary, fontFamily: 'sans-serif'),
+                  contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
+                  filled: true,
+                  fillColor: cardColor,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  errorStyle: const TextStyle(fontSize: 11, height: 1.2),
+                  suffixIcon: GestureDetector(
+                    onTap: () async {
+                      final data = await Clipboard.getData('text/plain');
+                      if (data?.text != null) {
+                        _pubkeyController.text = data!.text!.trim();
+                        HapticFeedback.lightImpact();
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Icon(Icons.content_paste_rounded, size: 18, color: textSecondary),
                     ),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Public key is required';
-                    if (value.trim().length != 64) return 'Must be 64 characters';
-                    return null;
-                  },
                 ),
+                validator: (value) {
+                  if (!_submitted) return null;
+                  if (value == null || value.isEmpty) return 'Public key is required';
+                  if (value.trim().length != 64) return 'Must be 64 characters';
+                  return null;
+                },
               ),
-
               const SizedBox(height: 28),
 
               // Add button
               GestureDetector(
                 onTap: _isLoading ? null : () async {
-                  if (!_formKey.currentState!.validate()) return;
-
                   final navigator = Navigator.of(context);
                   final messenger = ScaffoldMessenger.of(context);
+
+                  setState(() => _submitted = true);
+                  await Future.microtask(() {});
+                  if (!_formKey.currentState!.validate()) return;
+
                   setState(() => _isLoading = true);
 
                   try {

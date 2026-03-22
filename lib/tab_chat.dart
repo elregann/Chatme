@@ -446,81 +446,126 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   Future<void> _showDeleteDialog(Contact contact) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+    final textPrimary = isDark ? Colors.white : Colors.black;
+    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header Ikon Tong Sampah (Gaya Lingkaran Transparan)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.withAlpha(25),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.delete_sweep_rounded, color: Colors.red, size: 32),
-            ),
-            const SizedBox(height: 16),
-            const Text('Clear Chat History?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 8),
+      builder: (context) => Dialog(
+        backgroundColor: bgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
 
-            // Penjelasan yang lebih informatif
-            RichText(
-              textAlign: TextAlign.center,
-              text: TextSpan(
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180),
-                    height: 1.5,
-                    fontFamily: 'sans-serif'
-                ),
+              // Header
+              Row(
                 children: [
-                  const TextSpan(text: 'This will permanently delete all messages with '),
-                  TextSpan(
-                    text: contact.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Clear chat history',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          contact.name,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const TextSpan(text: '.\n'),
-                  const TextSpan(
-                    text: 'This action cannot be undone.',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withAlpha(15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.withAlpha(30), width: 0.5),
+                    ),
+                    child: Icon(Icons.delete_sweep_rounded, size: 18, color: Colors.red.withAlpha(200)),
                   ),
                 ],
               ),
-            ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-            // Action Buttons ala gaya Restore
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: Text('Keep Chat', style: TextStyle(color: Colors.grey[600])),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              Divider(height: 0.5, thickness: 0.5, color: borderColor),
+
+              const SizedBox(height: 16),
+
+              // Info
+              Text(
+                'All messages will be permanently deleted. This action cannot be undone.',
+                style: TextStyle(fontSize: 13, color: textSecondary, height: 1.5),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context, false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: borderColor, width: 0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Keep chat',
+                            style: TextStyle(fontSize: 13, color: textSecondary),
+                          ),
+                        ),
+                      ),
                     ),
-                    child: const Text('Delete All', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context, true),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.red.withAlpha(40), width: 0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Delete all',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.red.withAlpha(200),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -530,7 +575,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
       await ChatManager.instance.deleteChatHistory(chatKey);
       if (!contact.isSaved) await Hive.box<Contact>('contacts').delete(contact.pubkey);
-      HapticFeedback.vibrate(); // Getar lebih kuat sebagai tanda penghapusan
+      HapticFeedback.vibrate();
     }
 
     _searchFocusNode.unfocus();

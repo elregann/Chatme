@@ -612,7 +612,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         backgroundColor: headerColor,
         scrolledUnderElevation: 0,
         elevation: 0,
-        title: InkWell(
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_ios_rounded,
+            color: isDark ? Colors.white : Colors.black,
+            size: 18,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: GestureDetector(
           onTap: () {
             Clipboard.setData(ClipboardData(text: widget.contact.pubkey));
             HapticFeedback.lightImpact();
@@ -634,7 +642,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     Text(displayName, style: TextStyle(fontSize: 16,
                         fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black),
                         overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4), // jarak nama lawan dan pubkey diroomchat
+                    const SizedBox(height: 4),
                     Text('${widget.contact.pubkey.substring(0, 16)}...',
                         style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54)),
                   ],
@@ -1321,102 +1329,153 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   Future<void> _showSaveContactDialog() async {
     final nameController = TextEditingController(text: widget.contact.isSaved ? widget.contact.name : "");
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+    final textPrimary = isDark ? Colors.white : Colors.black;
+    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header Ikon (Style Profile)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withAlpha(25),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                  widget.contact.isSaved ? Icons.edit_note_rounded : Icons.person_add_alt_1_rounded,
-                  color: Colors.blue,
-                  size: 32
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-                widget.contact.isSaved ? 'Rename Contact' : 'Save Contact',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Give a name to this public key identity.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha(180)),
-            ),
+      builder: (context) => Dialog(
+        backgroundColor: bgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
 
-            const SizedBox(height: 20),
-
-            // Input Nama (Style Restore Dialog)
-            TextField(
-              controller: nameController,
-              autofocus: true,
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Enter name...',
-                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(150)),
-                filled: true,
-                fillColor: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(10),
-                prefixIcon: const Icon(Icons.badge_outlined, size: 20),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Action Buttons (Style Restore)
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      final currentContext = context;
-                      if (nameController.text.trim().isNotEmpty) {
-                        widget.contact.name = nameController.text.trim();
-                        widget.contact.isSaved = true;
-                        Hive.box<Contact>('contacts').put(widget.contact.pubkey, widget.contact).then((_) {
-                          HapticFeedback.lightImpact();
-                          if (currentContext.mounted) {
-                            setState(() {});
-                            Navigator.pop(currentContext);
-                          }
-                        });
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              // Header
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.contact.isSaved ? 'Rename contact' : 'Save contact',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Give a name to this identity.',
+                          style: TextStyle(fontSize: 12, color: textSecondary),
+                        ),
+                      ],
                     ),
-                    child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withAlpha(15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue.withAlpha(30), width: 0.5),
+                    ),
+                    child: Icon(
+                      widget.contact.isSaved ? Icons.edit_note_rounded : Icons.person_add_alt_1_rounded,
+                      size: 18,
+                      color: Colors.blue.withAlpha(200),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              Divider(height: 0.5, thickness: 0.5, color: borderColor),
+
+              const SizedBox(height: 16),
+
+              // Input
+              Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor, width: 0.5),
+                ),
+                child: TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  style: TextStyle(fontSize: 14, color: textPrimary),
+                  decoration: InputDecoration(
+                    hintText: 'Enter name',
+                    hintStyle: TextStyle(fontSize: 14, color: textSecondary),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    border: InputBorder.none,
                   ),
                 ),
-              ],
-            ),
-          ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: borderColor, width: 0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(fontSize: 13, color: textSecondary),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        final currentContext = context;
+                        if (nameController.text.trim().isNotEmpty) {
+                          widget.contact.name = nameController.text.trim();
+                          widget.contact.isSaved = true;
+                          Hive.box<Contact>('contacts').put(widget.contact.pubkey, widget.contact).then((_) {
+                            HapticFeedback.lightImpact();
+                            if (currentContext.mounted) {
+                              setState(() {});
+                              Navigator.pop(currentContext);
+                            }
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withAlpha(15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.blue.withAlpha(40), width: 0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Save',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.blue.withAlpha(200),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

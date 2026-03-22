@@ -151,16 +151,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
       MaterialPageRoute(
         builder: (context) => Scaffold(
           appBar: AppBar(
-            title: const Text('Privacy Policy', style: TextStyle(fontSize: 22)),
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF121212)
+                : Colors.white,
             elevation: 0,
+            scrolledUnderElevation: 0,
             centerTitle: true,
+            title: Text(
+              'Privacy Policy',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 16,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+              ),
+            ),
+            leading: IconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_rounded,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+                size: 18,
+              ),
+              onPressed: () => Navigator.pop(context),
+            ),
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 24),
                 Text(
                   'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data. However, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.\n\n'
 
@@ -436,9 +458,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         MaterialPageRoute(
                           builder: (context) => Scaffold(
                             appBar: AppBar(
-                              title: const Text('Licenses', style: TextStyle(fontSize: 22)),
+                              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                                  ? const Color(0xFF121212)
+                                  : Colors.white,
                               elevation: 0,
+                              scrolledUnderElevation: 0,
                               centerTitle: true,
+                              title: Text(
+                                'Licenses',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black,
+                                ),
+                              ),
+                              leading: IconButton(
+                                icon: Icon(
+                                  Icons.arrow_back_ios_rounded,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black,
+                                  size: 18,
+                                ),
+                                onPressed: () => Navigator.pop(context),
+                              ),
                             ),
                             body: ListView.builder(
                               padding: const EdgeInsets.all(24.0),
@@ -523,7 +568,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: const Icon(Icons.info_outline_rounded, color: Colors.grey),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: Text('1.2.0', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
+                trailing: Text('1.2.1-7', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
               ),
             ),
             const SizedBox(height: 20),

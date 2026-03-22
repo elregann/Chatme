@@ -28,7 +28,8 @@ class RelayManager {
   final List<String> relays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
-    'wss://relay.snort.social',
+    'wss://nostr.mom',
+    'wss://relay.primal.net',
   ];
 
   final Map<String, WebSocketChannel> _connections = {};
