@@ -1,12 +1,10 @@
 // room_chat.dart
 
-import 'package:flutter/foundation.dart';
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'call_manager.dart';
@@ -37,8 +35,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
 
-  bool _isEmojiVisible = false;
-
   bool _isSending = false;
   bool _showScrollButton = false;
   bool _userIsNearBottom = true;
@@ -50,7 +46,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   String? _draggingId;
 
   int _newMessagesCount = 0;
-  double _lastKeyboardHeight = 300;
 
   bool _isShortText(String text, BuildContext context) {
     const double timeWidth = 55;
@@ -627,16 +622,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               CircleAvatar(
                 radius: 20,
                 backgroundColor: _getAvatarColor(widget.contact.pubkey),
-                child: Text(_getInitials(displayName), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                child: Text(_getInitials(displayName),
+                    style: const TextStyle(color: Colors.white,
+                        fontSize: 14, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(displayName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black), overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4), // jarak nama lawan dan pubkey di roomchat
-                    Text('${widget.contact.pubkey.substring(0, 16)}...', style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54)),
+                    Text(displayName, style: TextStyle(fontSize: 16,
+                        fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black),
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4), // jarak nama lawan dan pubkey diroomchat
+                    Text('${widget.contact.pubkey.substring(0, 16)}...',
+                        style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54)),
                   ],
                 ),
               ),
@@ -829,182 +829,100 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     const accentColor = Color(0xFF1976D2);
     final inputBgColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
 
-    // Bungkus dengan VisibilityBuilder agar kita tahu status keyboard secara real-time
-    return KeyboardVisibilityBuilder(
-      builder: (context, isKeyboardVisible) {
-        // Ambil tinggi keyboard saat ini
-        double currentHeight = MediaQuery.of(context).viewInsets.bottom;
-
-        // Jika keyboard sedang muncul, simpan tingginya ke memori kita
-        if (currentHeight > 0) {
-          _lastKeyboardHeight = currentHeight;
-        }
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    10,                // Kiri
-                    kIsWeb ? 20 : 6,   // Atas
-                    10,                // Kanan
-                    kIsWeb ? 20 : 6    // Bawah
-                ),
-                child: Container(
-                  constraints: BoxConstraints(
-                    minHeight: 38,
-                    maxHeight: _replyingTo != null ? 230 : 180,
-                  ),
-                  decoration: BoxDecoration(
-                    color: inputBgColor,
-                    borderRadius: BorderRadius.circular(22), // Sudut lingkaran
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(isDark ? 30 : 15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_replyingTo != null) _buildReplyPreviewInside(),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 2),
-                              child: TextField(
-                                controller: _messageController,
-                                focusNode: _focusNode,
-                                onTap: () {
-                                  if (_isEmojiVisible) setState(() => _isEmojiVisible = false);
-                                },
-                                textCapitalization: TextCapitalization.sentences,
-                                maxLines: 5,
-                                minLines: 1,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: isDark ? Colors.white : Colors.black,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: 'Message',
-                                  hintStyle: TextStyle(
-                                    color: isDark ? Colors.white38 : Colors.black38,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: kIsWeb ? 10 : 8,
-                                  ),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Tombol Emoji
-                          Container(
-                            height: containerHeight,
-                            alignment: Alignment.center,
-                            child: GestureDetector(
-                              onTap: () {
-                                if (kIsWeb) {
-                                  setState(() => _isEmojiVisible = !_isEmojiVisible);
-                                } else {
-                                  if (_isEmojiVisible) {
-                                    _focusNode.requestFocus();
-                                    Future.delayed(const Duration(milliseconds: 100), () {
-                                      if (mounted) setState(() => _isEmojiVisible = false);
-                                    });
-                                  } else {
-                                    _focusNode.unfocus();
-                                    Future.delayed(const Duration(milliseconds: 150), () {
-                                      if (mounted) setState(() => _isEmojiVisible = true);
-                                    });
-                                  }
-                                }
-                              },
-                              child: Transform.translate(
-                                offset: const Offset(0, -4),
-                                child: Container(
-                                  height: actionButtonSize,
-                                  width: actionButtonSize,
-                                  color: Colors.transparent,
-                                  child: Icon(
-                                    _isEmojiVisible ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined,
-                                    color: isDark ? Colors.white54 : Colors.black45,
-                                    size: 26,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Tombol Send
-                          Container(
-                            height: containerHeight,
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.only(right: 4, left: 10),
-                            child: GestureDetector(
-                              onTap: _isSending ? null : _sendMessage,
-                              child: Transform.translate(
-                                offset: const Offset(0, -4),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  height: actionButtonSize,
-                                  width: actionButtonSize,
-                                  decoration: const BoxDecoration(
-                                    color: accentColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: _isSending
-                                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+            10,
+            kIsWeb ? 20 : 6,
+            10,
+            kIsWeb ? 20 : 6
+        ),
+        child: Container(
+          constraints: BoxConstraints(
+            minHeight: 38,
+            maxHeight: _replyingTo != null ? 230 : 180,
+          ),
+          decoration: BoxDecoration(
+            color: inputBgColor,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(isDark ? 30 : 15),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-            ),
-
-            // Bagian Emoji: Muncul hanya jika emoji aktif DAN keyboard sudah tertutup
-            if (_isEmojiVisible && !isKeyboardVisible)
-              SizedBox(
-                height: _lastKeyboardHeight, // Pakai angka terakhir yang ditangkap
-                child: EmojiPicker(
-                  onEmojiSelected: (category, emoji) {
-                    _messageController.text = _messageController.text + emoji.emoji;
-                  },
-                  config: Config(
-                    height: _lastKeyboardHeight,
-                    checkPlatformCompatibility: true,
-                    emojiViewConfig: EmojiViewConfig(
-                      backgroundColor: isDark ? const Color(0xFF0B0E14) : Colors.white,
-                      columns: 7,
-                      emojiSizeMax: 28,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_replyingTo != null) _buildReplyPreviewInside(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: TextField(
+                        controller: _messageController,
+                        focusNode: _focusNode,
+                        textCapitalization: TextCapitalization.sentences,
+                        maxLines: 5,
+                        minLines: 1,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Message',
+                          hintStyle: TextStyle(
+                            color: isDark ? Colors.white38 : Colors.black38,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: kIsWeb ? 10 : 8,
+                          ),
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
+                      ),
                     ),
-                    categoryViewConfig: CategoryViewConfig(
-                      backgroundColor: isDark ? const Color(0xFF1A1D21) : Colors.grey[100]!,
-                      indicatorColor: accentColor,
-                      iconColorSelected: accentColor,
-                    ),
-                    bottomActionBarConfig: const BottomActionBarConfig(enabled: false),
                   ),
-                ),
+                  // Tombol Send
+                  Container(
+                    height: containerHeight,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.only(right: 4, left: 10),
+                    child: GestureDetector(
+                      onTap: _isSending ? null : _sendMessage,
+                      child: Transform.translate(
+                        offset: const Offset(0, -4),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          height: actionButtonSize,
+                          width: actionButtonSize,
+                          decoration: const BoxDecoration(
+                            color: accentColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: _isSending
+                                ? const SizedBox(width: 20, height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                                : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-          ],
-        );
-      },
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1385,7 +1303,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   Widget _buildEmptyState() {
-    return Center(child: Opacity(opacity: 0.5, child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.chat_bubble_outline, size: 48), const SizedBox(height: 16), Text('No messages yet with ${widget.contact.name}')])));
+    return Center(
+        child: Opacity(
+            opacity: 0.5,
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.chat_bubble_outline, size: 48),
+                  const SizedBox(height: 16),
+                  Text('No messages yet with ${widget.contact.name}')
+                ]
+            )
+        )
+    );
   }
 
   Future<void> _showSaveContactDialog() async {
