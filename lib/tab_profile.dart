@@ -358,7 +358,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
-                    leading: const Icon(Icons.security_rounded, color: Colors.orange),
+                    leading: const Icon(Icons.key, color: Colors.orange),
                     title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showBackupDialog(context),
