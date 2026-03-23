@@ -1,9 +1,16 @@
+import 'package:hive/hive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hive/hive.dart';
 
-class RecoveryPhrasePage extends StatelessWidget {
+class RecoveryPhrasePage extends StatefulWidget {
   const RecoveryPhrasePage({super.key});
+
+  @override
+  State<RecoveryPhrasePage> createState() => _RecoveryPhrasePageState();
+}
+
+class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
+  bool _isRevealed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +41,17 @@ class RecoveryPhrasePage extends StatelessWidget {
           icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          if (hasMnemonic)
+            IconButton(
+              icon: Icon(
+                _isRevealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                size: 18,
+                color: textSecondary,
+              ),
+              onPressed: () => setState(() => _isRevealed = !_isRevealed),
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -46,14 +64,10 @@ class RecoveryPhrasePage extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: hasMnemonic
-                    ? Colors.orange.withAlpha(15)
-                    : Colors.blue.withAlpha(10),
+                color: hasMnemonic ? Colors.orange.withAlpha(15) : Colors.blue.withAlpha(10),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: hasMnemonic
-                      ? Colors.orange.withAlpha(40)
-                      : Colors.blue.withAlpha(30),
+                  color: hasMnemonic ? Colors.orange.withAlpha(40) : Colors.blue.withAlpha(30),
                   width: 0.5,
                 ),
               ),
@@ -61,10 +75,8 @@ class RecoveryPhrasePage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    hasMnemonic ? Icons.info_outline_rounded : Icons.info_outline_rounded,
-                    color: hasMnemonic
-                        ? Colors.orange.withAlpha(200)
-                        : Colors.blue.withAlpha(200),
+                    Icons.info_outline_rounded,
+                    color: hasMnemonic ? Colors.orange.withAlpha(200) : Colors.blue.withAlpha(200),
                     size: 14,
                   ),
                   const SizedBox(width: 10),
@@ -75,9 +87,7 @@ class RecoveryPhrasePage extends StatelessWidget {
                           : 'Recovery phrase is not available because you logged in using a private key.',
                       style: TextStyle(
                         fontSize: 13,
-                        color: hasMnemonic
-                            ? Colors.orange.withAlpha(200)
-                            : Colors.blue.withAlpha(200),
+                        color: hasMnemonic ? Colors.orange.withAlpha(200) : Colors.blue.withAlpha(200),
                         height: 1.5,
                       ),
                     ),
@@ -88,10 +98,20 @@ class RecoveryPhrasePage extends StatelessWidget {
 
             const SizedBox(height: 28),
 
-            // Label
-            Text(
-              hasMnemonic ? 'YOUR 12 WORDS' : 'NOT AVAILABLE',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+            // Label + status
+            Row(
+              children: [
+                Text(
+                  hasMnemonic ? 'YOUR 12 WORDS' : 'NOT AVAILABLE',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+                ),
+                const Spacer(),
+                if (hasMnemonic)
+                  Text(
+                    _isRevealed ? 'Visible' : 'Hidden',
+                    style: TextStyle(fontSize: 11, color: textSecondary),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
 
@@ -105,6 +125,7 @@ class RecoveryPhrasePage extends StatelessWidget {
                 border: Border.all(color: borderColor, width: 0.5),
               ),
               child: hasMnemonic
+                  ? _isRevealed
                   ? GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -142,6 +163,35 @@ class RecoveryPhrasePage extends StatelessWidget {
                   );
                 },
               )
+                  : GestureDetector(
+                onTap: () => setState(() => _isRevealed = true),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withAlpha(8) : Colors.black.withAlpha(5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.lock_outline_rounded, size: 20, color: textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Tap to reveal',
+                        style: TextStyle(fontSize: 13, color: textSecondary, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '12 words hidden for security',
+                        style: TextStyle(fontSize: 11, color: textSecondary.withAlpha(150)),
+                      ),
+                    ],
+                  ),
+                ),
+              )
                   : Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 20),
@@ -156,7 +206,7 @@ class RecoveryPhrasePage extends StatelessWidget {
               ),
             ),
 
-            if (hasMnemonic) ...[
+            if (hasMnemonic && _isRevealed) ...[
               const SizedBox(height: 28),
               GestureDetector(
                 onTap: () {

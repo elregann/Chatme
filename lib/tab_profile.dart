@@ -568,7 +568,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: const Icon(Icons.info_outline_rounded, color: Colors.grey),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: Text('1.2.1-7', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
+                trailing: Text('1.2.2', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
               ),
             ),
             const SizedBox(height: 20),
