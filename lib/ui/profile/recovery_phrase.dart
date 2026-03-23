@@ -64,10 +64,10 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: hasMnemonic ? Colors.orange.withAlpha(15) : Colors.blue.withAlpha(10),
+                color: hasMnemonic ? Colors.orangeAccent.withAlpha(15) : Colors.blue.withAlpha(10),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: hasMnemonic ? Colors.orange.withAlpha(40) : Colors.blue.withAlpha(30),
+                  color: hasMnemonic ? Colors.orangeAccent.withAlpha(40) : Colors.blue.withAlpha(30),
                   width: 0.5,
                 ),
               ),
@@ -76,7 +76,7 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
                 children: [
                   Icon(
                     Icons.info_outline_rounded,
-                    color: hasMnemonic ? Colors.orange.withAlpha(200) : Colors.blue.withAlpha(200),
+                    color: hasMnemonic ? Colors.orangeAccent.withAlpha(200) : Colors.blue.withAlpha(200),
                     size: 14,
                   ),
                   const SizedBox(width: 10),
@@ -87,7 +87,7 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
                           : 'Recovery phrase is not available because you logged in using a private key.',
                       style: TextStyle(
                         fontSize: 13,
-                        color: hasMnemonic ? Colors.orange.withAlpha(200) : Colors.blue.withAlpha(200),
+                        color: hasMnemonic ? Colors.orangeAccent.withAlpha(200) : Colors.blue.withAlpha(200),
                         height: 1.5,
                       ),
                     ),

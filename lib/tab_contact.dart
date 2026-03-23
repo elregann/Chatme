@@ -95,7 +95,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$name added to contacts'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text(
+              '$name added to contacts',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         _searchController.clear();
         setState(() => _searchQuery = "");

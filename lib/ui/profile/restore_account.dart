@@ -57,19 +57,19 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withAlpha(15),
+                color: Colors.deepOrange.withAlpha(15),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.red.withAlpha(40), width: 0.5),
+                border: Border.all(color: Colors.deepOrange.withAlpha(40), width: 0.5),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info_outline_rounded, color: Colors.red.withAlpha(200), size: 14),
+                  Icon(Icons.info_outline_rounded, color: Colors.deepOrange.withAlpha(200), size: 14),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'This will replace your current account. Make sure you have backed up your keys first.',
-                      style: TextStyle(fontSize: 13, color: Colors.red.withAlpha(200), height: 1.5),
+                      style: TextStyle(fontSize: 13, color: Colors.deepOrange.withAlpha(200), height: 1.5),
                     ),
                   ),
                 ],

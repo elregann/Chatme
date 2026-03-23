@@ -11,6 +11,7 @@ import 'ui/profile/restore_account.dart';
 import 'ui/profile/appearance.dart';
 import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
+import 'ui/profile/key_converter.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -273,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: Icon(
                   AppSettings.instance.isNip05Verified ? Icons.verified_rounded : Icons.verified_user_rounded,
-                  color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.purple,
+                  color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.grey,
                 ),
                 title: Text(
                   AppSettings.instance.myNip05.isNotEmpty ? AppSettings.instance.myNip05 : 'Claim your ID',
@@ -292,7 +293,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Your Private Number'),
+            _buildSectionTitle('Your Public Key'),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -330,6 +331,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildSectionTitle('Tools'),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(25)),
+              ),
+              child: ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                leading: const Icon(Icons.swap_horiz_rounded, color: Colors.purpleAccent),
+                title: const Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const KeyConverterPage()),
                 ),
               ),
             ),
@@ -373,14 +393,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         topRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.auto_awesome_rounded, color: Colors.purple),
+                    leading: const Icon(Icons.auto_awesome_rounded, color: Colors.orangeAccent),
                     title: const Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showMnemonicDialog(context),
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
-                    leading: const Icon(Icons.key, color: Colors.orange),
+                    leading: const Icon(Icons.key, color: Colors.red),
                     title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showBackupDialog(context),
@@ -393,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         bottomRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.settings_backup_restore_rounded, color: Colors.red),
+                    leading: const Icon(Icons.settings_backup_restore_rounded, color: Colors.deepOrange),
                     title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showRestoreDialog(context),
@@ -568,7 +588,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: const Icon(Icons.info_outline_rounded, color: Colors.grey),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: Text('1.2.2', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
+                trailing: Text('1.2.3', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
               ),
             ),
             const SizedBox(height: 20),
