@@ -515,21 +515,6 @@ class RelayManager {
         }
       }
 
-      final chatMessage = ChatMessage(
-        id: eventId,
-        senderPubkey: myPubkey,
-        receiverPubkey: receiverPubkey,
-        content: encryptedContent,
-        plaintext: plaintext,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-        status: 'sending',
-        chatKey: ChatManager.instance.getChatKey(myPubkey, receiverPubkey),
-        replyToId: replyToId,
-        replyToContent: replyToContent,
-      );
-
-      await ChatManager.instance.saveMessage(chatMessage);
-
       // Trigger notifikasi via Cloudflare
       _triggerCloudflareNotification(
         receiverPubkey: receiverPubkey,

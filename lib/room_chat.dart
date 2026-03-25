@@ -294,24 +294,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         replyToContent: replyContent,
       );
 
-      final realMessage = tempMessage.copyWith(
-        id: event['id'].toString(),
-        content: event['content'].toString(),
-        status: 'sending',
+      await ChatManager.instance.updateMessageIdAndStatus(
+          tempId,
+          event['id'].toString(),
+          'sending',
+          chatKey
       );
 
-      await ChatManager.instance.saveMessage(realMessage);
-      await ChatManager.instance.deleteMessage(tempId, chatKey);
       _maybeAutoScroll(force: true);
     } catch (e) {
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
-
       final myPrivkey = AppSettings.instance.myPrivkey;
 
-      final encrypted = Nip04.encrypt(
-          text,
-          myPrivkey,
-          receiver);
+      final encrypted = Nip04.encrypt(text, myPrivkey, receiver);
 
       final pendingMessage = tempMessage.copyWith(
         id: offlineId,
@@ -322,7 +317,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       await ChatManager.instance.saveMessage(pendingMessage);
       await ChatManager.instance.deleteMessage(tempId, chatKey);
 
-      debugPrint('Pesan disimpan ke antrean pending karena offline.');
+      debugPrint('Messages are saved to the pending queue because they are offline.');
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
