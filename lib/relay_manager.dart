@@ -18,6 +18,7 @@ import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
 import 'models/chat_message.dart';
 import 'services/nostr_service.dart';
+import 'package:http/http.dart' as http;
 
 class RelayManager {
   Function? onMessageReceived;
@@ -528,10 +529,47 @@ class RelayManager {
       );
 
       await ChatManager.instance.saveMessage(chatMessage);
+
+      // Trigger notifikasi via Cloudflare
+      _triggerCloudflareNotification(
+        receiverPubkey: receiverPubkey,
+        senderPubkey: myPubkey,
+        eventId: eventId,
+      );
       return signedEvent;
+
     } catch (e) {
       DebugLogger.log('❌ ERROR in sendMessage: $e', type: 'ERROR');
       rethrow;
+    }
+  }
+
+  void _triggerCloudflareNotification({
+    required String receiverPubkey,
+    required String senderPubkey,
+    required String eventId,
+  }) async {
+    const workerUrl = 'https://chatme-notifier.ismaelurzaizaranda.workers.dev/';
+    const secretKey = 'chatme2026secret';
+
+    try {
+      final response = await http.post(
+        Uri.parse(workerUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Secret-Key': secretKey,
+        },
+        body: jsonEncode({
+          'receiverPubkey': receiverPubkey,
+          'senderPubkey': senderPubkey,
+          'eventId': eventId,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      DebugLogger.log('🚀 Cloudflare Status: ${response.statusCode}');
+      DebugLogger.log('📦 Cloudflare Response: ${response.body}');
+    } catch (e) {
+      DebugLogger.log('⚠️ Cloudflare error: $e');
     }
   }
 
