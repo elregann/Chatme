@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../models/contact.dart';
 import '../../core/utils/debug_logger.dart';
+import 'package:remixicon/remixicon.dart';
 
 class AddContactPage extends StatefulWidget {
   const AddContactPage({super.key});
@@ -225,7 +226,7 @@ class _AddContactPageState extends State<AddContactPage> {
                       if (_isLoading)
                         SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: textPrimary))
                       else
-                        Icon(Icons.person_add_alt_1_rounded, size: 16, color: textPrimary),
+                        Icon(Remix.user_add_fill, size: 16, color: textPrimary),
                       const SizedBox(width: 8),
                       Text(
                         _isLoading ? 'Adding...' : 'Add contact',

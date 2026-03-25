@@ -12,6 +12,7 @@ import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/ui_utils.dart';
 import 'ui/contacts/add_contact.dart';
+import 'package:remixicon/remixicon.dart';
 
 class ContactsScreen extends StatefulWidget {
   final RelayManager relayManager;
@@ -174,7 +175,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.red.withAlpha(30), width: 0.5),
                     ),
-                    child: Icon(Icons.person_remove_rounded, size: 18, color: Colors.red.withAlpha(200)),
+                    child: Icon(Remix.user_minus_fill, size: 18, color: Colors.red.withAlpha(200)),
                   ),
                 ],
               ),
@@ -358,12 +359,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         else if (_globalSearchResults.isNotEmpty)
                           ..._globalSearchResults.map((res) => ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: Colors.blue.withAlpha(30),
-                              child: const Icon(Icons.public, color: Colors.blue, size: 20),
+                              backgroundColor: UIUtils.getAvatarColor(res['pubkey'] ?? ''),
+                              child: Text(
+                                UIUtils.getInitials(res['username'] ?? '?'),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                             title: Text(res['username'] ?? ''),
                             subtitle: Text('${res['pubkey']?.substring(0, 16)}...', style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
-                            trailing: const Icon(Icons.person_add_alt_1_rounded, color: Colors.blue),
+                            trailing: Icon(Remix.user_add_fill, color: Theme.of(context).iconTheme.color),
                             onTap: () {
                               _searchFocusNode.unfocus();
                               _quickAddFromGlobal(res['username']!, res['pubkey']!);
@@ -407,7 +415,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               height: 56,
               alignment: Alignment.center,
               child: const Icon(
-                Icons.person_add_alt_1_rounded,
+                Remix.user_add_fill,
                 size: 28,
               ),
             ),
@@ -456,7 +464,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.people_outline_rounded, size: 80, color: Colors.grey.withAlpha(50)),
+          Icon(Remix.contacts_line, size: 80, color: Colors.grey.withAlpha(50)),
           const SizedBox(height: 20),
           const Text('No saved contacts yet', style: TextStyle(color: Colors.grey)),
         ],

@@ -350,21 +350,27 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               icon: Badge(
                   label: Text('$totalUnread'),
                   isLabelVisible: totalUnread > 0,
-                  child: const Icon(Remix.chat_3_line)),
+                  child: Icon(
+                    Remix.chat_3_line,
+                    color: Theme.of(context).iconTheme.color,
+                  )),
               selectedIcon: Badge(
                   label: Text('$totalUnread'),
                   isLabelVisible: totalUnread > 0,
-                  child: const Icon(Remix.chat_3_fill)),
+                  child: Icon(
+                    Remix.chat_3_fill,
+                    color: Theme.of(context).iconTheme.color,
+                  )),
               label: 'Chats',
             ),
-            const NavigationDestination(
-              icon: Icon(Remix.contacts_line),
-              selectedIcon: Icon(Remix.contacts_fill),
+            NavigationDestination(
+              icon: Icon(Remix.contacts_line, color: Theme.of(context).iconTheme.color),
+              selectedIcon: Icon(Remix.contacts_fill, color: Theme.of(context).iconTheme.color),
               label: 'Contacts',
             ),
-            const NavigationDestination(
-              icon: Icon(Remix.settings_line),
-              selectedIcon: Icon(Remix.settings_fill),
+            NavigationDestination(
+              icon: Icon(Remix.settings_line, color: Theme.of(context).iconTheme.color),
+              selectedIcon: Icon(Remix.settings_fill, color: Theme.of(context).iconTheme.color),
               label: 'Settings',
             ),
           ],

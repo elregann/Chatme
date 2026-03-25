@@ -15,6 +15,7 @@ import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'notification_handler.dart';
+import 'package:remixicon/remixicon.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -670,7 +671,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             },
           ),
           IconButton(
-              icon: Icon(widget.contact.isSaved ? Icons.edit_note_rounded : Icons.person_add_alt_1, color: isDark ? Colors.white : Colors.black),
+              icon: Icon(widget.contact.isSaved ? Remix.edit_2_fill : Remix.user_add_fill, color: isDark ? Colors.white : Colors.black),
               onPressed: _showSaveContactDialog
           ),
         ],
@@ -1373,7 +1374,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       border: Border.all(color: Colors.blue.withAlpha(30), width: 0.5),
                     ),
                     child: Icon(
-                      widget.contact.isSaved ? Icons.edit_note_rounded : Icons.person_add_alt_1_rounded,
+                      widget.contact.isSaved ? Remix.edit_2_fill : Remix.user_add_fill,
                       size: 18,
                       color: Colors.blue.withAlpha(200),
                     ),

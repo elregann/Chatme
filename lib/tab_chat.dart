@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:remixicon/remixicon.dart';
 import 'room_chat.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
@@ -437,7 +438,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.chat_bubble_outline_rounded, size: 80, color: Colors.grey.withAlpha(50)),
+          Icon(Remix.chat_3_line, size: 80, color: Colors.grey.withAlpha(50)),
           const SizedBox(height: 20),
           const Text('No conversations yet', style: TextStyle(color: Colors.grey)),
         ],

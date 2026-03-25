@@ -73,21 +73,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Widget step guide
   Widget _buildGuideStep(BuildContext context, int step, String text) {
-    final settings = AppSettings.instance;
-    final avatarColor = _getAvatarColor(settings.myPubkey);
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           CircleAvatar(
             radius: 10,
-            backgroundColor: avatarColor.withAlpha(204),
+            backgroundColor: Colors.grey.withAlpha(50),
             child: Text(
               step.toString(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
-                color: Colors.white,
+                color: Theme.of(context).textTheme.bodyLarge?.color,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -401,7 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
-                    leading: const Icon(Icons.key),
+                    leading: const Icon(Remix.key_fill),
                     title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showBackupDialog(context),
@@ -570,10 +567,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    _buildGuideStep(context, 1, 'Copy your public key above'),
-                    _buildGuideStep(context, 2, 'Share it with a friend'),
-                    _buildGuideStep(context, 3, 'Add their key in Contacts tab'),
-                    _buildGuideStep(context, 4, 'Start chatting in Chats tab'),
+                    _buildGuideStep(context, 1, 'Set your handle in Global ID to be searchable'),
+                    _buildGuideStep(context, 2, 'Or copy your Public Key to share privately'),
+                    _buildGuideStep(context, 3, 'Go to Contacts to search name or paste key'),
+                    _buildGuideStep(context, 4, 'Add them to your verified contact list'),
+                    _buildGuideStep(context, 5, 'Start chatting securely in Chats tab'),
                   ],
                 ),
               ),
@@ -589,7 +587,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: const Icon(Icons.info_outline_rounded),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: const Text('1.3.3', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                trailing: const Text('1.3.3-2', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               ),
             ),
             const SizedBox(height: 20),
