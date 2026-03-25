@@ -12,7 +12,17 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  debugPrint("Handling a background message: ${message.messageId}");
+
+  final senderPubkey = message.data['senderPubkey'] ?? '';
+  final body = message.notification?.body ?? "Ada pesan baru masuk!";
+
+  if (senderPubkey.isNotEmpty) {
+    await NotificationHandler.showChatNotification(
+      senderPubkey: senderPubkey,
+      senderName: "Pesan Baru",
+      message: body,
+    );
+  }
 }
 
 @pragma('vm:entry-point')

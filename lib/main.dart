@@ -1,5 +1,6 @@
 // main.dart
 
+import 'package:remixicon/remixicon.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'dart:isolate';
@@ -49,6 +50,8 @@ void main() async {
       if (Firebase.apps.isEmpty) await Firebase.initializeApp();
     }
 
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
     await Hive.initFlutter();
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
     if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ChatMessageAdapter());
@@ -56,9 +59,6 @@ void main() async {
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
-
-    await NotificationHandler.init();
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     await AppSettings.instance.load();
     await ChatManager.instance.cleanupTempMessages();
@@ -342,15 +342,31 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             setState(() => _selectedIndex = index);
             _pageController.jumpToPage(index);
           },
+
+          // Footer App
+          indicatorColor: Colors.grey.withAlpha(50),
           destinations: [
             NavigationDestination(
-              icon: Badge(label: Text('$totalUnread'),
+              icon: Badge(
+                  label: Text('$totalUnread'),
                   isLabelVisible: totalUnread > 0,
-                  child: const Icon(Icons.chat_rounded)),
+                  child: const Icon(Remix.chat_3_line)),
+              selectedIcon: Badge(
+                  label: Text('$totalUnread'),
+                  isLabelVisible: totalUnread > 0,
+                  child: const Icon(Remix.chat_3_fill)),
               label: 'Chats',
             ),
-            const NavigationDestination(icon: Icon(Icons.people), label: 'Contacts'),
-            const NavigationDestination(icon: Icon(Icons.grid_view_rounded), label: 'More'),
+            const NavigationDestination(
+              icon: Icon(Remix.contacts_line),
+              selectedIcon: Icon(Remix.contacts_fill),
+              label: 'Contacts',
+            ),
+            const NavigationDestination(
+              icon: Icon(Remix.settings_line),
+              selectedIcon: Icon(Remix.settings_fill),
+              label: 'Settings',
+            ),
           ],
         );
       },

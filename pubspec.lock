@@ -832,6 +832,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.0"
+  remixicon:
+    dependency: "direct main"
+    description:
+      name: remixicon
+      sha256: "78c984c2f8cfe2fc4a620e89e36445795d7291851a6ffd36a4402c210f2920c4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.9.2"
   shelf:
     dependency: transitive
     description:

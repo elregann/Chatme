@@ -12,6 +12,7 @@ import 'ui/profile/appearance.dart';
 import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
 import 'ui/profile/key_converter.dart';
+import 'package:remixicon/remixicon.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -344,7 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                leading: const Icon(Icons.swap_horiz_rounded, color: Colors.purpleAccent),
+                leading: const Icon(Icons.swap_horiz_rounded),
                 title: const Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
@@ -363,7 +364,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                leading: const Icon(Icons.cell_tower_rounded, color: Colors.green),
+                leading: const Icon(Remix.server_fill),
                 title: const Text('Relay Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
@@ -393,14 +394,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         topRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.auto_awesome_rounded, color: Colors.orangeAccent),
+                    leading: const Icon(Icons.auto_awesome_rounded),
                     title: const Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showMnemonicDialog(context),
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
-                    leading: const Icon(Icons.key, color: Colors.red),
+                    leading: const Icon(Icons.key),
                     title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showBackupDialog(context),
@@ -413,7 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         bottomRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.settings_backup_restore_rounded, color: Colors.deepOrange),
+                    leading: const Icon(Icons.settings_backup_restore_rounded),
                     title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showRestoreDialog(context),
@@ -433,7 +434,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                leading: const Icon(Icons.palette_rounded, color: Colors.blue),
+                leading: const Icon(Icons.brightness_6_outlined),
                 title: const Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showThemeDialog(context),
@@ -453,7 +454,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         topRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.privacy_tip_outlined, color: Colors.teal),
+                    leading: const Icon(Icons.privacy_tip_outlined),
                     title: const Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showPrivacyDialog(context),
@@ -466,7 +467,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         bottomRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.article_outlined, color: Colors.blueGrey),
+                    leading: const Icon(Icons.article_outlined),
                     title: const Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () async {
@@ -586,9 +587,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                leading: const Icon(Icons.info_outline_rounded, color: Colors.grey),
+                leading: const Icon(Icons.info_outline_rounded),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: Text('1.3.3', style: TextStyle(fontSize: 13, color: Colors.grey.withAlpha(180))),
+                trailing: const Text('1.3.3', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               ),
             ),
             const SizedBox(height: 20),

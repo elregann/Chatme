@@ -396,16 +396,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
           ],
         ),
-        floatingActionButton: GestureDetector(
-          onTap: _addContact,
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(40),
-              shape: BoxShape.circle,
+        floatingActionButton: Material(
+          color: Colors.grey.withAlpha(50),
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: _addContact,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.person_add_alt_1_rounded,
+                size: 28,
+              ),
             ),
-            child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.blue),
           ),
         ),
       ),
