@@ -200,7 +200,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       for (var contact in contactList) {
                         final String displayName = contact.isSaved
                             ? contact.name
-                            : 'User ${contact.pubkey.substring(0, 8)}';
+                            : AppSettings.formatDisplayName(contact.pubkey);
 
                         // Ambil pesan dari box
                         final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
@@ -294,7 +294,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                 dense: true,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                 title: Text(
-                                  contact.isSaved ? contact.name : "User ${contact.pubkey.substring(0,8)}",
+                                  contact.isSaved ? contact.name : AppSettings.formatDisplayName(contact.pubkey),
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
                                 ),
                                 subtitle: Row(
@@ -355,7 +355,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final myPubkey = AppSettings.instance.myPubkey;
     final String displayName = contact.isSaved
         ? contact.name
-        : 'User ${contact.pubkey.substring(0, 8)}';
+        : AppSettings.formatDisplayName(contact.pubkey);
 
     final isMe = lastMsg?.senderPubkey == myPubkey;
     final isDark = Theme.of(context).brightness == Brightness.dark;

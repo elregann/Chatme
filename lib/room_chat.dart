@@ -594,7 +594,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     if (senderPubkey == AppSettings.instance.myPubkey) return "You";
     return widget.contact.isSaved
         ? widget.contact.name
-        : "User ${senderPubkey.substring(0, 8)}";
+        : AppSettings.formatDisplayName(senderPubkey);
   }
 
   Color _getAvatarColor(String pubkey) =>
@@ -607,7 +607,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    String displayName = widget.contact.isSaved ? widget.contact.name : "User ${widget.contact.pubkey.substring(0, 8)}";
+
+    String displayName = widget.contact.isSaved
+        ? widget.contact.name
+        : AppSettings.formatDisplayName(widget.contact.pubkey);
+
     final chatKey = ChatManager.instance.getChatKey(AppSettings.instance.myPubkey, widget.contact.pubkey);
 
     // Warna Header & Divider
@@ -1223,8 +1227,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isDark = theme.brightness == Brightness.dark;
 
     final String senderName = isMe
-        ? (widget.contact.isSaved ? widget.contact.name : "User ${widget.contact.pubkey.substring(0, 8)}")
-        : "You";
+        ? "You"
+        : (widget.contact.isSaved
+        ? widget.contact.name
+        : AppSettings.formatDisplayName(widget.contact.pubkey));
 
     const nameColor = Color(0xFF1976D2);
     final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);

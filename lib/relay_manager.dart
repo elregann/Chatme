@@ -244,7 +244,7 @@ class RelayManager {
       final callerPubkey = event['pubkey'];
 
       if (signalData['type'] == 'offer') {
-        String finalDisplayName = "User ${callerPubkey.substring(0, 8)}";
+        String finalDisplayName = AppSettings.formatDisplayName(callerPubkey);
         try {
           final contactBox = Hive.box<Contact>('contacts');
           final savedContact = contactBox.get(callerPubkey);

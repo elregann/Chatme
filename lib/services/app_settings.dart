@@ -1,7 +1,6 @@
 // app_settings.dart
 
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
@@ -29,33 +28,35 @@ class AppSettings {
     try {
       final settingsBox = Hive.box('settings');
 
+      // 1. Ambil data yang sudah ada
       myPubkey = settingsBox.get('my_pubkey', defaultValue: '');
       myPrivkey = settingsBox.get('my_privkey', defaultValue: '');
       myMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
       myNip05 = settingsBox.get('my_nip05', defaultValue: '');
       isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
 
-      myName = settingsBox.get('my_name', defaultValue: 'User${Random().nextInt(9999)}');
+      // Ambil nama yang sudah tersimpan
+      myName = settingsBox.get('my_name', defaultValue: '');
 
-      final savedTheme = settingsBox.get('theme_mode', defaultValue: 'system');
-      if (savedTheme == 'dark') {
-        themeMode = ThemeMode.dark;
-      } else if (savedTheme == 'light') {
-        themeMode = ThemeMode.light;
-      } else {
-        themeMode = ThemeMode.system;
-      }
-
+      // 2. Cek kalau User Baru (Pubkey masih kosong)
       if (myPubkey.isEmpty) {
         final keypair = _generateNostrKeypair();
         myPubkey = keypair['public']!;
         myPrivkey = keypair['private']!;
 
+        // BARU DI SINI KITA BUAT NAMANYA pakai Pubkey yang baru jadi
+        myName = formatDisplayName(myPubkey);
+
         await settingsBox.put('my_pubkey', myPubkey);
         await settingsBox.put('my_privkey', myPrivkey);
         await settingsBox.put('my_name', myName);
+
         DebugLogger.log('Generated new Nostr identity: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
       }
+
+      // 3. Logika Tema (tetap sama)
+      final savedTheme = settingsBox.get('theme_mode', defaultValue: 'system');
+      themeMode = savedTheme == 'dark' ? ThemeMode.dark : (savedTheme == 'light' ? ThemeMode.light : ThemeMode.system);
 
       DebugLogger.log('Settings loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
     } catch (e) {
@@ -159,5 +160,10 @@ Backup Date: ${DateTime.now().toString()}
       DebugLogger.log('Error generating keypair: $e', type: 'ERROR');
       rethrow;
     }
+  }
+
+  //Default name for new user
+  static String formatDisplayName(String pubkey) {
+    return 'Member ${pubkey.length >= 8 ? pubkey.substring(0, 8) : pubkey}';
   }
 }
