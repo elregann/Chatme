@@ -373,7 +373,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
         displayName,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+          color: Theme.of(context).iconTheme.color,
+        ),
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 4),

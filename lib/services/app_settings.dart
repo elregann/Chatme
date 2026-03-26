@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:bip340/bip340.dart' as bip340;
 import '../core/crypto/key_generator.dart';
 import '../core/utils/debug_logger.dart';
+import '../core/utils/key_utils.dart';
 
 class AppSettings {
   static final AppSettings _instance = AppSettings._internal();
@@ -164,6 +165,20 @@ Backup Date: ${DateTime.now().toString()}
 
   //Default name for new user
   static String formatDisplayName(String pubkey) {
-    return 'Member ${pubkey.length >= 8 ? pubkey.substring(0, 8) : pubkey}';
+    if (pubkey.isEmpty) return "User";
+
+    try {
+      String npub = KeyUtils.toNpub(pubkey);
+
+      if (npub.length > 16) {
+        String prefix = npub.substring(0, 8);
+        String suffix = npub.substring(npub.length - 8);
+        return "$prefix...$suffix";
+      }
+
+      return npub;
+    } catch (e) {
+      return "User ${pubkey.substring(0, 8)}";
+    }
   }
 }
