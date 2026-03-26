@@ -370,11 +370,40 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               ),
                             ),
                             title: Text(res['username'] ?? ''),
-                            subtitle: Text('${res['pubkey']?.substring(0, 16)}...', style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
-                            trailing: Icon(Remix.user_add_fill, color: Theme.of(context).iconTheme.color),
+                            subtitle: Text('${res['pubkey']?.substring(0, 16)}...',
+                                style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+
+                            // SEBELAH KANAN: Jadi Button terpisah
+                            trailing: IconButton(
+                              icon: Icon(Remix.user_add_line, color: Theme.of(context).iconTheme.color),
+                              onPressed: () {
+                                // Klik logonya baru beneran Add
+                                _quickAddFromGlobal(res['username']!, res['pubkey']!);
+                              },
+                            ),
+
+                            // AREA UTAMA: Klik masuk ke RoomChat (Tanpa Add)
                             onTap: () {
                               _searchFocusNode.unfocus();
-                              _quickAddFromGlobal(res['username']!, res['pubkey']!);
+
+                              final tempContact = Contact(
+                                pubkey: res['pubkey']!,
+                                name: res['username']!,
+                                isSaved: false,
+                                lastChatTime: 0,
+                                lastMessage: '',
+                                unreadCount: 0,
+                              );
+
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ChatDetailScreen(
+                                    contact: tempContact,
+                                    relayManager: widget.relayManager,
+                                  ),
+                                ),
+                              );
                             },
                           ))
                         // Tampilkan pesan jika tidak ada hasil

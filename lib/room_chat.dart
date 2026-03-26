@@ -16,6 +16,7 @@ import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'notification_handler.dart';
 import 'package:remixicon/remixicon.dart';
+import 'core/utils/debug_logger.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -256,6 +257,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
+
+    // New Logic: Auto-Save for Global Users ---------
+    final contactsBox = Hive.box<Contact>('contacts');
+    if (!contactsBox.containsKey(widget.contact.pubkey)) {
+      final newContact = Contact(
+        pubkey: widget.contact.pubkey,
+        name: widget.contact.name,
+        isSaved: false,
+        lastChatTime: DateTime.now().millisecondsSinceEpoch,
+        lastMessage: text,
+        unreadCount: 0,
+      );
+      await contactsBox.put(widget.contact.pubkey, newContact);
+      DebugLogger.log('New temporary contact registered for Tab Chats', type: 'DATABASE');
+    }
+    // -----------------------------------------------
 
     final replyId = _replyingTo?.id;
     final replyContent = _replyingTo?.plaintext;
@@ -1313,7 +1330,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.chat_bubble_outline, size: 48),
+                  const Icon(Remix.chat_3_line, size: 48),
                   const SizedBox(height: 16),
                   Text('No messages yet with ${widget.contact.name}')
                 ]

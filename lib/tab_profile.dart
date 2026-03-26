@@ -66,7 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.grey),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Theme.of(context).iconTheme.color),
       ),
     );
   }
@@ -272,7 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: Icon(
                   AppSettings.instance.isNip05Verified ? Icons.verified_rounded : Icons.verified_user_rounded,
-                  color: AppSettings.instance.isNip05Verified ? Colors.blue : Colors.grey,
+                  color: AppSettings.instance.isNip05Verified ? Colors.blue : Theme.of(context).iconTheme.color,
                 ),
                 title: Text(
                   AppSettings.instance.myNip05.isNotEmpty ? AppSettings.instance.myNip05 : 'Claim your ID',
@@ -342,7 +342,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                leading: const Icon(Icons.swap_horiz_rounded),
+                leading: Icon(Icons.swap_horiz_rounded, color: Theme.of(context).iconTheme.color),
                 title: const Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
@@ -361,7 +361,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                leading: const Icon(Remix.server_fill),
+                leading: Icon(Remix.server_fill, color: Theme.of(context).iconTheme.color),
                 title: const Text('Relay Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
@@ -391,14 +391,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         topRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.auto_awesome_rounded),
+                    leading: Icon(Remix.eye_fill, color: Theme.of(context).iconTheme.color),
                     title: const Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showMnemonicDialog(context),
                   ),
                   const Divider(height: 1, indent: 56),
                   ListTile(
-                    leading: const Icon(Remix.key_fill),
+                    leading: Icon(Remix.key_fill, color: Theme.of(context).iconTheme.color),
                     title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showBackupDialog(context),
@@ -411,7 +411,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         bottomRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.settings_backup_restore_rounded),
+                    leading: Icon(Icons.settings_backup_restore_rounded, color: Theme.of(context).iconTheme.color),
                     title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showRestoreDialog(context),
@@ -431,7 +431,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                leading: const Icon(Icons.brightness_6_outlined),
+                leading: Icon(Icons.brightness_6_outlined, color: Theme.of(context).iconTheme.color),
                 title: const Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showThemeDialog(context),
@@ -451,7 +451,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         topRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.privacy_tip_outlined),
+                    leading: Icon(Icons.privacy_tip_outlined, color: Theme.of(context).iconTheme.color),
                     title: const Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showPrivacyDialog(context),
@@ -464,7 +464,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         bottomRight: Radius.circular(16),
                       ),
                     ),
-                    leading: const Icon(Icons.article_outlined),
+                    leading: Icon(Icons.article_outlined, color: Theme.of(context).iconTheme.color),
                     title: const Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () async {
@@ -585,9 +585,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                leading: const Icon(Icons.info_outline_rounded),
+                leading: Icon(Icons.info_outline_rounded, color: Theme.of(context).iconTheme.color),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: const Text('1.3.3-2', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                trailing: const Text('1.4.4', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               ),
             ),
             const SizedBox(height: 20),
