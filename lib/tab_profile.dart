@@ -124,13 +124,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // Dialog restore account
-  void _showRestoreDialog(BuildContext context) {
-    Navigator.push(
+  void _showRestoreDialog(BuildContext context) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => RestoreAccountPage(relayManager: widget.relayManager),
       ),
     );
+
+    if (mounted) {
+      setState(() {
+        _currentHandle = AppSettings.instance.myNip05;
+        _isEditing = _currentHandle.isEmpty;
+      });
+    }
   }
 
   // Dialog Pilih Tema
@@ -252,9 +259,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : Colors.black,
+                        color: Theme.of(context).iconTheme.color,
                       )
                   ),
                 ],
@@ -286,6 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                   setState(() {
                     _currentHandle = AppSettings.instance.myNip05;
+                    _isEditing = _currentHandle.isEmpty;
                   });
                 },
               ),
@@ -587,7 +593,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: Icon(Icons.info_outline_rounded, color: Theme.of(context).iconTheme.color),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: const Text('1.4.4', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                trailing: const Text('1.4.7', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               ),
             ),
             const SizedBox(height: 20),

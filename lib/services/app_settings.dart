@@ -9,6 +9,8 @@ import 'package:bip340/bip340.dart' as bip340;
 import '../core/crypto/key_generator.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class AppSettings {
   static final AppSettings _instance = AppSettings._internal();
@@ -66,6 +68,19 @@ class AppSettings {
     }
   }
 
+  Future<String?> _fetchNameFromFirebase(String pubkey) async {
+    try {
+      const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
+      final db = FirebaseDatabase.instanceFor(app: Firebase.app(), databaseURL: rtdbUrl);
+      final snapshot = await db.ref("users/$pubkey").get().timeout(const Duration(seconds: 10));
+      if (snapshot.exists) return snapshot.value as String?;
+      return null;
+    } catch (e) {
+      DebugLogger.log('Failed to fetch name from Firebase: $e', type: 'ERROR');
+      return null;
+    }
+  }
+
   Future<void> importAccount(String input) async {
     try {
       final settingsBox = Hive.box('settings');
@@ -83,10 +98,25 @@ class AppSettings {
 
       myPubkey = bip340.getPublicKey(myPrivkey);
 
+      // Coba ambil nama dari Firebase
+      final fetchedName = await _fetchNameFromFirebase(myPubkey);
+      myName = fetchedName ?? formatDisplayName(myPubkey); // fallback ke default
+
+      if (fetchedName != null) {
+        myNip05 = '$fetchedName@chatme';
+        isNip05Verified = true;
+      } else {
+        myNip05 = '';
+        isNip05Verified = false;
+      }
+
       await settingsBox.putAll({
         'my_pubkey': myPubkey,
         'my_privkey': myPrivkey,
         'my_mnemonic': myMnemonic,
+        'my_name': myName,
+        'my_nip05': myNip05,
+        'is_nip05_verified': isNip05Verified,
       });
 
       DebugLogger.log('✅ Account restored: $myPubkey', type: 'SETUP');

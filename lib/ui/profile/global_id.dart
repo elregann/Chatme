@@ -45,11 +45,16 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
         final oldName = oldNip05.split('@')[0];
         if (oldName != newName) {
           await db.ref("usernames/$oldName").remove();
+          await db.ref("users/$pubkey").remove();
         }
       }
 
       // Daftarkan nama baru
       await newRef.set(pubkey);
+
+      // ✅ Reverse lookup
+      await db.ref("users/$pubkey").set(newName);
+
       return true;
     } catch (e) {
       debugPrint('❌ claimUsername error: $e');
