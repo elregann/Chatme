@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:remixicon/remixicon.dart';
 
 class RecoveryPhrasePage extends StatefulWidget {
   const RecoveryPhrasePage({super.key});
@@ -45,7 +46,7 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
           if (hasMnemonic)
             IconButton(
               icon: Icon(
-                _isRevealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                _isRevealed ? Remix.eye_off_line : Remix.eye_line,
                 size: 18,
                 color: textSecondary,
               ),

@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:remixicon/remixicon.dart';
 
 class BackupKeysPage extends StatefulWidget {
   final String pubkey;
@@ -184,7 +185,7 @@ class _BackupKeysPageState extends State<BackupKeysPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.visibility_off_outlined, size: 14, color: textSecondary),
+                        Icon(Remix.eye_off_line, size: 14, color: textSecondary),
                         const SizedBox(width: 8),
                         Text('Hidden for security', style: TextStyle(fontSize: 13, color: textSecondary)),
                       ],
@@ -206,7 +207,7 @@ class _BackupKeysPageState extends State<BackupKeysPage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                _privkeyVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                _privkeyVisible ? Remix.eye_off_fill : Remix.eye_fill,
                                 size: 13,
                                 color: textSecondary,
                               ),

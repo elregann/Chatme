@@ -43,6 +43,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   bool _isUserScrolling = false;
 
   ChatMessage? _replyingTo;
+  final Map<String, GlobalKey> _messageKeys = {};
+  final Set<String> _highlightedIds = {};
 
   double _dragOffset = 0.0;
   String? _draggingId;
@@ -211,6 +213,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         _scrollToBottom(force: force);
       });
     }
+  }
+
+  void _scrollToMessage(String? messageId) {
+    if (messageId == null) return;
+    final key = _messageKeys[messageId];
+    if (key == null || key.currentContext == null) return;
+
+    Scrollable.ensureVisible(
+      key.currentContext!,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+      alignment: 0.5,
+    );
+
+    setState(() => _highlightedIds.add(messageId));
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _highlightedIds.remove(messageId));
+    });
   }
 
   void _scrollToBottom({bool force = false}) {
@@ -722,6 +742,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
                         final message = messages[index];
+                        _messageKeys[message.id] ??= GlobalKey();
                         double topPadding = 1;
 
                         if (index < messages.length - 1) {
@@ -1115,109 +1136,114 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final textColor = isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
 
     final hasReactions = message.reactions.isNotEmpty;
+    final isHighlighted = _highlightedIds.contains(message.id);
 
     return Align(
+      key: _messageKeys[message.id],
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
         padding: EdgeInsets.only(bottom: hasReactions ? 25 : 2),
-        child: GestureDetector(
-          onLongPressStart: (details) => _showReactionPopup(context, details.globalPosition, message),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.70),
-                margin: EdgeInsets.only(
-                  left: isMe ? 50 : 12,
-                  right: isMe ? 12 : 50,
-                ),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(16),
-                    topRight: const Radius.circular(16),
-                    bottomLeft: Radius.circular(isMe ? 16 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isHighlighted ? Colors.blue.withAlpha(40) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: GestureDetector(
+            onLongPressStart: (details) => _showReactionPopup(context, details.globalPosition, message),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.70),
+                  margin: EdgeInsets.only(
+                    left: isMe ? 50 : 12,
+                    right: isMe ? 12 : 50,
                   ),
-                  border: isDark && !isMe
-                      ? Border.all(color: Colors.white10, width: 0.5)
-                      : null,
-                ),
-                padding: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 6),
+                  decoration: BoxDecoration(
+                    color: bubbleColor,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(isMe ? 16 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                    ),
+                    border: isDark && !isMe
+                        ? Border.all(color: Colors.white10, width: 0.5)
+                        : null,
+                  ),
+                  padding: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 6),
+                  child: IntrinsicWidth(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (message.replyToContent != null)
+                          _buildReplyInBubble(message, isMe),
 
-                child: IntrinsicWidth(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (message.replyToContent != null)
-                        _buildReplyInBubble(message, isMe),
+                        const SizedBox(height: 4),
 
-                      const SizedBox(height: 4),
-
-                      (_isShortText(message.plaintext, context))
-                          ? Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              message.plaintext,
-                              style: TextStyle(color: textColor, fontSize: 16),
+                        (_isShortText(message.plaintext, context))
+                            ? Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                message.plaintext,
+                                style: TextStyle(color: textColor, fontSize: 16),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
-                              if (isMe) ...[
-                                const SizedBox(width: 4),
-                                _buildStatusIcon(message.status, textColor),
+                            const SizedBox(width: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
+                                if (isMe) ...[
+                                  const SizedBox(width: 4),
+                                  _buildStatusIcon(message.status, textColor),
+                                ],
                               ],
-                            ],
-                          ),
-                        ],
-                      )
-
-                          : Wrap(
-                        alignment: WrapAlignment.end,
-                        crossAxisAlignment: WrapCrossAlignment.end,
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: Text(
-                              message.plaintext,
-                              style: TextStyle(color: textColor, fontSize: 16),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
-                              if (isMe) ...[
-                                const SizedBox(width: 4),
-                                _buildStatusIcon(message.status, textColor),
+                          ],
+                        )
+                            : Wrap(
+                          alignment: WrapAlignment.end,
+                          crossAxisAlignment: WrapCrossAlignment.end,
+                          children: [
+                            SizedBox(
+                              width: double.infinity,
+                              child: Text(
+                                message.plaintext,
+                                style: TextStyle(color: textColor, fontSize: 16),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
+                                if (isMe) ...[
+                                  const SizedBox(width: 4),
+                                  _buildStatusIcon(message.status, textColor),
+                                ],
                               ],
-                            ],
-                          ),
-                        ],
-                      ),
-
-                    ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              if (hasReactions)
-                Positioned(
-                  bottom: -21,
-                  right: isMe ? 20 : null,
-                  left: isMe ? null : 20,
-                  child: _buildReactionsDisplay(message, isMe, textColor),
-                ),
-            ],
+                if (hasReactions)
+                  Positioned(
+                    bottom: -21,
+                    right: isMe ? 20 : null,
+                    left: isMe ? null : 20,
+                    child: _buildReactionsDisplay(message, isMe, textColor),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1236,8 +1262,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);
     final contentColor = isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153);
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(0, 10, 0, 0),
+    return GestureDetector(
+        onTap: () => _scrollToMessage(message.replyToId),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(0, 10, 0, 0),
       padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
       decoration: BoxDecoration(
         color: bgColor,
@@ -1275,6 +1303,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           ),
         ],
       ),
+    ),
     );
   }
 
