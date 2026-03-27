@@ -335,7 +335,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return ValueListenableBuilder(
       valueListenable: Hive.box<Contact>('contacts').listenable(),
       builder: (context, Box<Contact> box, _) {
-        final totalUnread = box.values.fold<int>(0, (sum, contact) => sum + contact.unreadCount);
+        final totalUnread = box.values.where((contact) => contact.unreadCount > 0).length;
         return NavigationBar(
           selectedIndex: _selectedIndex,
           onDestinationSelected: (index) {
@@ -348,14 +348,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           destinations: [
             NavigationDestination(
               icon: Badge(
-                  label: Text('$totalUnread'),
+                  label: Text(
+                    '$totalUnread',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Colors.red,
                   isLabelVisible: totalUnread > 0,
                   child: Icon(
                     Remix.chat_3_line,
                     color: Theme.of(context).iconTheme.color,
                   )),
               selectedIcon: Badge(
-                  label: Text('$totalUnread'),
+                  label: Text(
+                    '$totalUnread',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Colors.red,
                   isLabelVisible: totalUnread > 0,
                   child: Icon(
                     Remix.chat_3_fill,

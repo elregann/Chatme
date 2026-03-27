@@ -417,6 +417,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
           if (contact.unreadCount > 0)
             Badge.count(
               count: contact.unreadCount,
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
             )
           else
             const SizedBox(height: 18),
