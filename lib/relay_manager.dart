@@ -338,9 +338,7 @@ class RelayManager {
             return;
           }
         }
-      }
-
-      else if (event['kind'] == 7) {
+      } else if (event['kind'] == 7) {
         String? targetId;
         for (var t in tags) {
           if (t is List && t.length > 1 && t[0] == 'e') {
@@ -349,7 +347,6 @@ class RelayManager {
           }
         }
         if (targetId != null) {
-          // Pada Kind 7, emoji ada di 'content'
           await _updateMessageReaction(targetId, senderPubkey, content, chatKey);
           if (onMessageReceived != null) onMessageReceived!();
           return;
@@ -365,17 +362,14 @@ class RelayManager {
       }
 
       String? replyToContent;
+      String? replyToSenderPubkey;
       if (replyToId != null) {
         final originalMsg = await ChatManager.instance.getMessageById(replyToId, chatKey);
         replyToContent = originalMsg?.plaintext;
+        replyToSenderPubkey = originalMsg?.senderPubkey;
       }
 
-      String initialStatus;
-      if (isFromMe) {
-        initialStatus = 'sending';
-      } else {
-        initialStatus = 'sent';
-      }
+      final String initialStatus = isFromMe ? 'sending' : 'sent';
 
       final chatMessage = ChatMessage(
         id: eventId,
@@ -388,6 +382,7 @@ class RelayManager {
         chatKey: chatKey,
         replyToId: replyToId,
         replyToContent: replyToContent,
+        replyToSenderPubkey: replyToSenderPubkey,
       );
 
       await ChatManager.instance.saveMessage(chatMessage);

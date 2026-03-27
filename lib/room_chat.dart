@@ -276,6 +276,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final replyId = _replyingTo?.id;
     final replyContent = _replyingTo?.plaintext;
+    final replySenderPubkey = _replyingTo?.senderPubkey;
 
     _messageController.clear();
     setState(() {
@@ -299,6 +300,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       chatKey: chatKey,
       replyToId: replyId,
       replyToContent: replyContent,
+      replyToSenderPubkey: replySenderPubkey,
     );
 
     try {
@@ -1226,11 +1228,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final String senderName = isMe
-        ? "You"
-        : (widget.contact.isSaved
-        ? widget.contact.name
-        : AppSettings.formatDisplayName(widget.contact.pubkey));
+    final String senderName = _getReplyName(
+      message.replyToSenderPubkey ?? message.senderPubkey,
+    );
 
     const nameColor = Color(0xFF1976D2);
     final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);

@@ -17,8 +17,8 @@ class ChatMessage {
   @HiveField(7) final String chatKey;
   @HiveField(8) final String? replyToId;
   @HiveField(9) final String? replyToContent;
-  @HiveField(10, defaultValue: {})
-  Map<String, String> reactions;
+  @HiveField(10, defaultValue: {}) Map<String, String> reactions;
+  @HiveField(11, defaultValue: '') final String? replyToSenderPubkey;
 
   ChatMessage({
     required this.id,
@@ -32,6 +32,7 @@ class ChatMessage {
     this.replyToId,
     this.replyToContent,
     this.reactions = const {},
+    this.replyToSenderPubkey,
   });
 
   ChatMessage copyWithStatus(String newStatus) {
@@ -50,6 +51,7 @@ class ChatMessage {
     String? replyToId,
     String? replyToContent,
     Map<String, String>? reactions,
+    String? replyToSenderPubkey,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -63,6 +65,7 @@ class ChatMessage {
       replyToId: replyToId ?? this.replyToId,
       replyToContent: replyToContent ?? this.replyToContent,
       reactions: reactions ?? Map.from(this.reactions),
+      replyToSenderPubkey: replyToSenderPubkey ?? this.replyToSenderPubkey,
     );
   }
 
@@ -85,6 +88,7 @@ class ChatMessage {
       'replyToId': replyToId,
       'replyToContent': replyToContent,
       'reactions': reactions,
+      'replyToSenderPubkey': replyToSenderPubkey,
     };
   }
 
@@ -101,6 +105,7 @@ class ChatMessage {
       replyToId: map['replyToId'],
       replyToContent: map['replyToContent'],
       reactions: Map<String, String>.from(map['reactions'] ?? {}),
+      replyToSenderPubkey: map['replyToSenderPubkey'],
     );
   }
 }
