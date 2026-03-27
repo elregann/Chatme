@@ -713,9 +713,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               });
             },
           ),
-          IconButton(
-              icon: Icon(widget.contact.isSaved ? Remix.edit_2_fill : Remix.user_add_fill, color: isDark ? Colors.white : Colors.black),
-              onPressed: _showSaveContactDialog
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: isDark ? Colors.white : Colors.black),
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            elevation: 0,
+            offset: const Offset(0, 40),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                color: isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15),
+                width: 0.5,
+              ),
+            ),
+            onSelected: (value) {
+              if (value == 'save_rename') _showSaveContactDialog();
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'save_rename',
+                height: 40,
+                child: Text(
+                  widget.contact.isSaved ? 'Rename' : 'Save Contact',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
