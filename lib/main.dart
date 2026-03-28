@@ -18,6 +18,7 @@ import 'models/chat_message.dart';
 import 'services/app_settings.dart';
 import 'notification_handler.dart';
 import 'services/network_manager.dart';
+import 'services/background_service.dart';
 import 'core/utils/debug_logger.dart';
 
 import 'call.dart';
@@ -61,6 +62,8 @@ void main() async {
     await Hive.openBox('chats');
 
     await AppSettings.instance.load();
+    await BackgroundService.initialize();
+    await BackgroundService.registerReconnectTask();
     await ChatManager.instance.cleanupTempMessages();
 
     if (!kIsWeb) {
