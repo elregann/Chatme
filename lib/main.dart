@@ -155,6 +155,9 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
     Future.delayed(const Duration(milliseconds: 500), () {
       _relayManager.connect();
+      _networkManager.onReconnect = () {
+        _relayManager.connectIfNeeded();
+      };
       _networkManager.initialize();
     });
   }

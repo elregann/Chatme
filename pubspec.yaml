@@ -36,6 +36,7 @@ dependencies:
   bech32: ^0.2.1
   remixicon: ^4.9.2
   workmanager: ^0.9.0
+  connectivity_plus: ^6.0.0
 
 dev_dependencies:
   flutter_test:
