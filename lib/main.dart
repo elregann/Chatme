@@ -62,6 +62,14 @@ void main() async {
     await Hive.openBox('chats');
 
     await AppSettings.instance.load();
+
+    if (!kIsWeb) {
+      final myPubkey = AppSettings.instance.myPubkey;
+      if (myPubkey.isNotEmpty) {
+        await FirebaseMessaging.instance.subscribeToTopic(myPubkey);
+      }
+    }
+
     await BackgroundService.initialize();
     await BackgroundService.registerReconnectTask();
     await ChatManager.instance.cleanupTempMessages();

@@ -80,12 +80,6 @@
             </intent-filter>
         </receiver>
 
-        <provider
-            android:name="androidx.work.impl.WorkManagerInitializer"
-            android:authorities="${applicationId}.workmanager-init"
-            android:exported="false"
-            android:multiprocess="true" />
-
         <receiver
             android:name="com.pribadi.chatme.NostrReconnectReceiver"
             android:exported="false">

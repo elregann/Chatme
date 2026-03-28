@@ -510,11 +510,19 @@ class RelayManager {
         }
       }
 
+      // Ambil nama pengirim dari contacts
+      final contactsBox = Hive.box<Contact>('contacts');
+      final myContact = contactsBox.get(myPubkey);
+      final senderName = (myContact != null && myContact.isSaved)
+          ? myContact.name
+          : AppSettings.formatDisplayName(myPubkey);
+
       // Trigger notifikasi via Cloudflare
       _triggerCloudflareNotification(
         receiverPubkey: receiverPubkey,
         senderPubkey: myPubkey,
         eventId: eventId,
+        senderName: senderName,
       );
       return signedEvent;
 
@@ -528,6 +536,7 @@ class RelayManager {
     required String receiverPubkey,
     required String senderPubkey,
     required String eventId,
+    required String senderName,
   }) async {
     const workerUrl = 'https://chatme-notifier.ismaelurzaizaranda.workers.dev/';
     const secretKey = 'chatme2026secret';
@@ -543,6 +552,7 @@ class RelayManager {
           'receiverPubkey': receiverPubkey,
           'senderPubkey': senderPubkey,
           'eventId': eventId,
+          'senderName': senderName,
         }),
       ).timeout(const Duration(seconds: 10));
 

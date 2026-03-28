@@ -14,12 +14,13 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
 
   final senderPubkey = message.data['senderPubkey'] ?? '';
-  final body = message.notification?.body ?? "Ada pesan baru masuk!";
+  final senderName = message.data['senderName'] ?? 'Pesan Baru';
+  final body = message.data['body'] ?? 'Ada pesan baru masuk!';
 
   if (senderPubkey.isNotEmpty) {
     await NotificationHandler.showChatNotification(
       senderPubkey: senderPubkey,
-      senderName: "Pesan Baru",
+      senderName: senderName,
       message: body,
     );
   }
