@@ -5,6 +5,8 @@ import 'dart:async';
 import 'dart:isolate';
 import 'chat_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'core/crypto/nip04.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -12,18 +14,37 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
+  await Hive.initFlutter();
 
   final senderPubkey = message.data['senderPubkey'] ?? '';
   final senderName = message.data['senderName'] ?? 'Pesan Baru';
-  final body = message.data['body'] ?? 'Ada pesan baru masuk!';
+  final ciphertext = message.data['ciphertext'] ?? '';
+  final eventId = message.data['eventId'] ?? '';
 
-  if (senderPubkey.isNotEmpty) {
-    await NotificationHandler.showChatNotification(
-      senderPubkey: senderPubkey,
-      senderName: senderName,
-      message: body,
-    );
+  if (senderPubkey.isEmpty || eventId.isEmpty) return;
+
+  // Ambil private key dari Hive
+  final settingsBox = await Hive.openBox('settings');
+  final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+
+  // Decrypt isi pesan
+  String plaintext = 'Ada pesan baru masuk!';
+  if (ciphertext.isNotEmpty && myPrivkey.isNotEmpty) {
+    try {
+      final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
+      if (decrypted.isNotEmpty) plaintext = decrypted;
+    } catch (_) {}
   }
+
+  // Simpan eventId ke Hive sebagai tanda sudah dinotifikasi
+  await settingsBox.put('notified_$eventId', true);
+
+  await NotificationHandler.showChatNotification(
+    senderPubkey: senderPubkey,
+    senderName: senderName,
+    message: plaintext,
+    showActions: false,
+  );
 }
 
 @pragma('vm:entry-point')
@@ -177,6 +198,7 @@ class NotificationHandler {
     required String senderPubkey,
     required String senderName,
     required String message,
+    bool showActions = true,
   }) async {
     // Simpan pesan ke history untuk stacking
     _messageHistory[senderPubkey] ??= [];
@@ -240,7 +262,7 @@ class NotificationHandler {
       category: AndroidNotificationCategory.message,
       visibility: NotificationVisibility.private,
       styleInformation: messagingStyle,
-      actions: [replyAction, markReadAction],
+      actions: showActions ? [replyAction, markReadAction] : [],
       // Grouping: semua pesan dari kontak yang sama masuk ke satu notifikasi
       groupKey: 'chatme_$senderPubkey',
       setAsGroupSummary: false,

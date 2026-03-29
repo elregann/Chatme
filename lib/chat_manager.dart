@@ -96,7 +96,7 @@ class ChatManager {
           messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
           if (message.senderPubkey != AppSettings.instance.myPubkey) {
-            _triggerNotification(message);
+            Future.microtask(() => _triggerNotification(message));
           }
         }
 
@@ -108,14 +108,30 @@ class ChatManager {
     });
   }
 
-  void _triggerNotification(ChatMessage message) {
-    final contact = Hive.box<Contact>('contacts').get(message.senderPubkey);
-    final senderName = contact?.name ?? "User ${message.senderPubkey.substring(0, 8)}";
-    NotificationHandler.showChatNotification(
-      senderPubkey: message.senderPubkey,
-      senderName: senderName,
-      message: message.plaintext,
-    );
+  void _triggerNotification(ChatMessage message) async {
+    try {
+      final settingsBox = Hive.box('settings');
+      final eventId = message.id;
+
+      // Cek apakah eventId ini sudah dinotifikasi via FCM
+      final alreadyNotified = settingsBox.get('notified_$eventId', defaultValue: false) as bool;
+      if (alreadyNotified) {
+        // Hapus flag, skip show notif
+        await settingsBox.delete('notified_$eventId');
+        return;
+      }
+
+      // Belum dinotifikasi, show notif seperti biasa
+      final contact = Hive.box<Contact>('contacts').get(message.senderPubkey);
+      final senderName = contact?.name ?? AppSettings.formatDisplayName(message.senderPubkey);
+      NotificationHandler.showChatNotification(
+        senderPubkey: message.senderPubkey,
+        senderName: senderName,
+        message: message.plaintext,
+      );
+    } catch (e) {
+      DebugLogger.log('❌ Error _triggerNotification: $e', type: 'ERROR');
+    }
   }
 
   static Future<void> sendReplyFromNotification({
