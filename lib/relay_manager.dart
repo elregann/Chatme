@@ -259,6 +259,12 @@ class RelayManager {
             int.parse(callerPubkey.substring(0, 8), radix: 16) | 0xFF000000
         );
 
+        CallManager.instance.setSessionInfo(
+          finalDisplayName,
+          callerPubkey,
+          incomingPeerColor,
+        );
+
         if (navigatorKey.currentContext != null) {
           Navigator.push(
             navigatorKey.currentContext!,

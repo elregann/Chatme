@@ -574,6 +574,7 @@ class CallManager {
     }
 
     try {
+      _setCallState(CallState.connecting);
       _logCallEvent('setting_remote_description_answer');
       await _peerConnection!.setRemoteDescription(
           rtc.RTCSessionDescription(sdp, 'answer')
