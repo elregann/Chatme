@@ -129,7 +129,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Chats'),
+          title: Text(
+            'Chats',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 22,
+              color: Theme.of(context).iconTheme.color,
+            ),
+          ),
           elevation: 0,
         ),
         body: Column(

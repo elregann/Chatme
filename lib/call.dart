@@ -409,7 +409,7 @@ class _CallScreenState extends State<CallScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF0B0E14) : Colors.white,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Stack(
           children: [
             SafeArea(
@@ -520,11 +520,11 @@ class _CallScreenState extends State<CallScreen> {
 
     final isIncoming = widget.isIncoming;
     switch (_callManager.callState) {
-      case CallState.connecting: return "Connecting...";
+      case CallState.connecting:   return "Connecting";
+      case CallState.ringing:      return isIncoming ? "Incoming Call" : "Ringing";
       case CallState.initializing:
-      case CallState.ringing:
-      case CallState.idle: return isIncoming ? "Incoming Call" : "Calling...";
-      default: return isIncoming ? "Incoming Call" : "Calling...";
+      case CallState.idle:         return isIncoming ? "Incoming Call" : "Calling";
+      default:                     return isIncoming ? "Incoming Call" : "Calling";
     }
   }
 
