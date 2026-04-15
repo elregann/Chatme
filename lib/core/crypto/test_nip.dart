@@ -1,102 +1,136 @@
-import 'package:hex/hex.dart';
+// test_nip.dart
 
-// Direct internal imports
-import 'nip17.dart';
+import 'package:hex/hex.dart';
+import 'package:bip340/bip340.dart' as bip340;
 import 'nip44.dart';
-import 'ecdh_engine.dart';
+import 'nip17.dart';
 import 'crypto_utils.dart';
 
-/// NIP-17 & NIP-44 Integration Test Suite
-///
-/// This script validates the end-to-end cryptographic flow for Chatme,
-/// ensuring that messages are correctly encrypted, wrapped, and recovered
-/// while maintaining metadata privacy.
 void main() async {
-  print('===========================================================');
-  print('🚀 CHATME CRYPTOGRAPHIC INTEGRATION TEST SUITE');
-  print('===========================================================');
+  print('\n========================================');
+  print('NIP-17 & NIP-44 INTEGRATION TEST');
+  print('========================================\n');
 
-  // 1. Participant Setup
-  // Generating secure random keys for Alice (Sender) and Bob (Recipient)
-  final String alicePriv = HEX.encode(CryptoUtils.generateSecureRandomBytes(32));
-  final String alicePub = ECDH.getPublicKey(alicePriv);
+  // Generate keys
+  final alicePriv = HEX.encode(CryptoUtils.generateSecureRandomBytes(32));
+  final alicePub = bip340.getPublicKey(alicePriv);
+  final bobPriv = HEX.encode(CryptoUtils.generateSecureRandomBytes(32));
+  final bobPub = bip340.getPublicKey(bobPriv);
+  const testMessage = "Hello Bob, this is a secret message!";
 
-  final String bobPriv = HEX.encode(CryptoUtils.generateSecureRandomBytes(32));
-  final String bobPub = ECDH.getPublicKey(bobPriv);
+  print('Alice Pubkey: ${alicePub.substring(0, 16)}...');
+  print('Bob Pubkey:   ${bobPub.substring(0, 16)}...');
+  print('Test Message: "$testMessage"\n');
 
-  const String secretMessage = "Hello Bob, this is a secure NIP-17 message from Alice.";
-
-  print('ALICE (Sender)    : $alicePub');
-  print('BOB (Recipient)   : $bobPub');
-  print('-----------------------------------------------------------');
-
+  // TEST 1: NIP-44
+  print('--- TEST 1: NIP-44 ---');
   try {
-    // 2. Foundation Layer: NIP-44 v2 Test
-    // Validates the base encryption used for both Seals and Gift Wraps.
-    print('[STAGE 1] Testing NIP-44 v2 Encryption...');
-
-    final payload = await Nip44.encrypt(secretMessage, alicePriv, bobPub);
-
-    if (!Nip44.isValidPayload(payload)) {
-      throw Exception('Structural validation failed for NIP-44 payload.');
+    final encrypted = await Nip44.encrypt(testMessage, alicePriv, bobPub);
+    print('✓ Encrypted: ${encrypted.substring(0, 32)}...');
+    final decrypted = await Nip44.decrypt(encrypted, bobPriv, alicePub);
+    if (decrypted == testMessage) {
+      print('✓ Decryption matches');
+    } else {
+      print('❌ Decryption mismatch');
+      return;
     }
-
-    final decrypted = await Nip44.decrypt(payload, bobPriv, alicePub);
-    if (decrypted != secretMessage) {
-      throw Exception('Decryption integrity failure: Plaintext mismatch.');
-    }
-
-    print('✅ NIP-44: Authenticated encryption/decryption verified.');
-    print('-----------------------------------------------------------');
-
-    // 3. Privacy Layer: NIP-17 Gift Wrap Test
-    // Validates the triple-wrapping mechanism (Rumor -> Seal -> Gift Wrap).
-    print('[STAGE 2] Testing NIP-17 Gift Wrap (Metadata Resistance)...');
-
-    final giftWrap = await Nip17.createGiftWrap(
-      message: secretMessage,
-      senderPriv: alicePriv,
-      recipientPub: bobPub,
-    );
-
-    // Metadata Privacy Check:
-    // The outer pubkey must be a random "throwaway" key, not Alice's real pubkey.
-    if (giftWrap['kind'] != 1059) throw Exception('Invalid event kind for Gift Wrap.');
-    if (giftWrap['pubkey'] == alicePub) {
-      throw Exception('Security Flaw: Alice\'s identity is exposed in the outer layer.');
-    }
-
-    // Process of unwrapping the layers: Gift Wrap -> Seal -> Rumor
-    final unwrappedMessage = await Nip17.unwrapGiftWrap(giftWrap, bobPriv);
-    if (unwrappedMessage != secretMessage) {
-      throw Exception('NIP-17: Recovered message content is corrupted.');
-    }
-
-    print('✅ NIP-17: Triple-layer wrap/unwrap successful.');
-    print('✅ NIP-17: Sender anonymity preserved (Throwaway key used).');
-    print('-----------------------------------------------------------');
-
-    // 4. Security Bound Test: Unauthorized Access
-    // Ensures that an attacker with a different private key cannot recover the message.
-    print('[STAGE 3] Testing Security Rejection (Malicious Actor)...');
-
-    final evePriv = HEX.encode(CryptoUtils.generateSecureRandomBytes(32));
-
-    try {
-      await Nip17.unwrapGiftWrap(giftWrap, evePriv);
-      throw Exception('Critical Vulnerability: Unauthorized key successfully unwrapped the message.');
-    } catch (e) {
-      // Expected behavior: HMAC verification in NIP-44 should fail.
-      print('✅ Security: Unauthorized decryption correctly rejected.');
-    }
-
-    print('-----------------------------------------------------------');
-    print('🎉 ALL CRYPTOGRAPHIC TESTS PASSED SUCCESSFULLY!');
-    print('Chatme is now secured with NIP-17 metadata resistance.');
-    print('===========================================================');
-
   } catch (e) {
-    print('❌ INTEGRATION TEST FAILED');
-    print('Context: $e');
+    print('❌ NIP-44 failed: $e');
+    return;
   }
+
+  // TEST 2: NIP-17 wrap/unwrap
+  print('\n--- TEST 2: NIP-17 Wrap/Unwrap ---');
+  Map<String, dynamic> giftWrap;
+  Nip17Result result;
+  try {
+    giftWrap = await Nip17.wrap(
+      plaintext: testMessage,
+      senderPrivkey: alicePriv,
+      senderPubkey: alicePub,
+      receiverPubkey: bobPub,
+    );
+    print('✓ Gift Wrap created (kind ${giftWrap['kind']})');
+    print('  Outer pubkey: ${giftWrap['pubkey'].substring(0, 16)}...');
+    result = await Nip17.unwrap(
+      giftWrapEvent: giftWrap,
+      receiverPrivkey: bobPriv,
+      receiverPubkey: bobPub,
+    );
+    print('✓ Unwrapped: "${result.plaintext}"');
+    if (result.plaintext == testMessage && result.senderPubkey == alicePub) {
+      print('✓ Content and sender verified');
+    } else {
+      print('❌ Unwrap verification failed');
+      return;
+    }
+  } catch (e) {
+    print('❌ NIP-17 wrap/unwrap failed: $e');
+    return;
+  }
+
+  // TEST 3: Reply
+  print('\n--- TEST 3: Reply ---');
+  try {
+    final replyWrap = await Nip17.wrap(
+      plaintext: "Thanks Alice!",
+      senderPrivkey: bobPriv,
+      senderPubkey: bobPub,
+      receiverPubkey: alicePub,
+      replyToId: result.rumorId,
+    );
+    final replyResult = await Nip17.unwrap(
+      giftWrapEvent: replyWrap,
+      receiverPrivkey: alicePriv,
+      receiverPubkey: alicePub,
+    );
+    if (replyResult.replyToId == result.rumorId) {
+      print('✓ Reply tracking OK (replyToId matches)');
+    } else {
+      print('❌ Reply tracking failed');
+      return;
+    }
+  } catch (e) {
+    print('❌ Reply test failed: $e');
+    return;
+  }
+
+  // TEST 4: Wrong key
+  print('\n--- TEST 4: Wrong key ---');
+  final evePriv = HEX.encode(CryptoUtils.generateSecureRandomBytes(32));
+  final evePub = bip340.getPublicKey(evePriv);
+  try {
+    await Nip17.unwrap(
+      giftWrapEvent: giftWrap,
+      receiverPrivkey: evePriv,
+      receiverPubkey: evePub,
+    );
+    print('❌ Wrong key should have failed');
+    return;
+  } catch (e) {
+    print('✓ Correctly rejected wrong key: ${e.toString().substring(0, 60)}...');
+  }
+
+  // TEST 5: Ephemeral uniqueness
+  print('\n--- TEST 5: Ephemeral keys ---');
+  final Set<String> outerKeys = {};
+  for (int i = 0; i < 3; i++) {
+    final w = await Nip17.wrap(
+      plaintext: "Message $i",
+      senderPrivkey: alicePriv,
+      senderPubkey: alicePub,
+      receiverPubkey: bobPub,
+    );
+    outerKeys.add(w['pubkey'] as String);
+  }
+  if (outerKeys.length == 3) {
+    print('✓ All 3 messages used different outer pubkeys');
+  } else {
+    print('❌ Ephemeral keys not unique');
+    return;
+  }
+
+  print('\n========================================');
+  print('✅ ALL TESTS PASSED');
+  print('========================================');
 }
