@@ -231,7 +231,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 40,
+        // toolbarHeight: 40,
         title: Text(
           'Profile',
           style: TextStyle(
@@ -602,7 +602,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 leading: Icon(Icons.info_outline_rounded, color: Theme.of(context).iconTheme.color),
                 title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                trailing: const Text('1.6.13', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                trailing: const Text('0.1.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               ),
             ),
             const SizedBox(height: 20),

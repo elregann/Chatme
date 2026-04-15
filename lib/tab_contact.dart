@@ -268,7 +268,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
         appBar: AppBar(
-          toolbarHeight: 40,
+          // toolbarHeight: 40,
           title: Text(
             'Contacts',
             style: TextStyle(

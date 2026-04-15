@@ -98,4 +98,28 @@ class ECDH {
 
   static bool _isValidHex(String hex) =>
       hex.isNotEmpty && RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex);
+
+  /// Derives the x-only public key (Nostr format) from a hexadecimal private key.
+  ///
+  /// This performs scalar multiplication Q = G * d on the secp256k1 curve and
+  /// returns the 32-byte x-coordinate as a 64-character hex string.
+  static String getPublicKey(String privateKeyHex) {
+    try {
+      final d = BigInt.parse(privateKeyHex, radix: 16);
+
+      // Validate that the private key is within the curve order range [1, n-1].
+      if (d <= BigInt.zero || d >= Secp256k1Constants.n) {
+        throw Exception('Private key out of range');
+      }
+
+      // Compute the public point Q = G * d.
+      final Q = _domainParams.G * d;
+
+      // Per BIP-340 (Nostr), only the 32-byte x-coordinate is used as the public key.
+      // We ensure the output is padded to 64 hex characters to maintain 32-byte length.
+      return Q!.x!.toBigInteger()!.toRadixString(16).padLeft(64, '0');
+    } catch (e) {
+      throw Exception('Failed to derive public key: $e');
+    }
+  }
 }
