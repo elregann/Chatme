@@ -396,8 +396,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   Widget _buildReactionPopupContent() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
-    final iconColor = isDark ? Colors.white : Colors.black87;
+
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+    final iconColor = isDark ? Colors.white70 : Colors.black87;
+    final shadowColor = isDark ? Colors.black.withAlpha(100) : Colors.black.withAlpha(30);
 
     return Material(
       color: Colors.transparent,
@@ -405,53 +408,54 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            height: 46,
-            child: Container(
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(isDark ? 80 : 20),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ..._quickReactions.map((emoji) => _buildEmojiButton(emoji)),
-                  _buildMoreButton(iconColor),
-                ],
-              ),
+          Container(
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: borderColor, width: 0.5),
+              boxShadow: [
+                BoxShadow(
+                  color: shadowColor,
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ),
-
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              if (_messageForReaction != null) {
-                Clipboard.setData(ClipboardData(text: _messageForReaction!.plaintext));
-                HapticFeedback.mediumImpact();
-                _removeReactionOverlay();
-              }
-            },
-            child: Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: bgColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(isDark ? 80 : 20),
-                    blurRadius: 10,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ..._quickReactions.map((emoji) => _buildEmojiButton(emoji)),
+                // add separator
+                Container(
+                  width: 1,
+                  height: 30,
+                  color: borderColor,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                ),
+                _buildMoreButton(iconColor),
+                // add separator
+                Container(
+                  width: 1,
+                  height: 30,
+                  color: borderColor,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                ),
+                // button copy
+                GestureDetector(
+                  onTap: () {
+                    if (_messageForReaction != null) {
+                      Clipboard.setData(ClipboardData(text: _messageForReaction!.plaintext));
+                      HapticFeedback.mediumImpact();
+                      _removeReactionOverlay();
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    margin: const EdgeInsets.all(2),
+                    child: Icon(Icons.copy_rounded, size: 20, color: iconColor),
                   ),
-                ],
-              ),
-              child: Icon(Icons.copy_rounded, size: 20, color: iconColor),
+                ),
+              ],
             ),
           ),
         ],
@@ -537,51 +541,146 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _messageForReaction = backupMessage;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
+    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+    final textPrimary = isDark ? Colors.white : Colors.black;
+    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final accentColor = const Color(0xFF1976D2);
 
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (context) {
         return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 300),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(isDark ? 100 : 30),
-                  blurRadius: 20,
+          backgroundColor: bgColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Section
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add Reaction',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Choose an emoji to react',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: accentColor.withAlpha(15),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: accentColor.withAlpha(30), width: 0.5),
+                      ),
+                      child: Icon(
+                        Icons.emoji_emotions_outlined,
+                        size: 18,
+                        color: accentColor.withAlpha(200),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                Divider(height: 0.5, thickness: 0.5, color: borderColor),
+
+                const SizedBox(height: 16),
+
+                // Grid Emoji Section
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 6,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.0,
+                    ),
+                    itemCount: _allReactions.length,
+                    itemBuilder: (context, index) {
+                      final emoji = _allReactions[index];
+                      return GestureDetector(
+                        onTap: () {
+                          _handleReaction(emoji);
+                          Navigator.pop(context);
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(5),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: borderColor,
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              emoji,
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Divider(height: 0.5, thickness: 0.5, color: borderColor),
+
+                const SizedBox(height: 16),
+
+                // Cancel Button
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: borderColor, width: 0.5),
+                          ),
+                          child: Center(
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-            child: GridView.builder(
-              shrinkWrap: true,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 6,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-              ),
-              itemCount: _allReactions.length,
-              itemBuilder: (context, index) {
-                final emoji = _allReactions[index];
-                return GestureDetector(
-                  onTap: () {
-                    _handleReaction(emoji);
-                    Navigator.pop(context);
-                  },
-                  child: Center(
-                    child: Text(
-                      emoji,
-                      style: const TextStyle(fontSize: 20),
-                    ),
-                  ),
-                );
-              },
             ),
           ),
         );
