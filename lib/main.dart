@@ -373,7 +373,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           },
 
           // Footer App
-          indicatorColor: Colors.grey.withAlpha(50),
+          indicatorColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey.shade800
+              : Colors.grey.shade300,
           destinations: [
             NavigationDestination(
               icon: Badge(

@@ -442,7 +442,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ],
         ),
         floatingActionButton: Material(
-          color: Colors.grey.withAlpha(50),
+          color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             onTap: _addContact,
