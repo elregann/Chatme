@@ -53,7 +53,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   bool _isShortText(String text, BuildContext context) {
     const double timeWidth = 55;
-    final maxWidth = MediaQuery.of(context).size.width * 0.70 - 80 - timeWidth;
+    final maxWidth = MediaQuery.of(context).size.width * 0.90 - 80 - timeWidth;
     final textPainter = TextPainter(
       text: TextSpan(text: text, style: const TextStyle(fontSize: 16)),
       maxLines: 1,
@@ -545,7 +545,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final textPrimary = isDark ? Colors.white : Colors.black;
     final textSecondary = isDark ? Colors.white54 : Colors.black45;
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final accentColor = const Color(0xFF1976D2);
+    const accentColor = Color(0xFF1976D2);
+
+    // Ambil ukuran layar HP
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Tentukan tinggi dialog responsif (70% layar)
+    final dialogHeight = screenHeight * 0.7;
+
+    // Tentukan jumlah kolom berdasarkan lebar layar
+    final crossAxisCount = screenWidth < 360 ? 5 : 6;
 
     showDialog(
       context: context,
@@ -554,8 +564,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         return Dialog(
           backgroundColor: bgColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
+          child: Container(
+            width: screenWidth * 0.9, // 90% lebar layar
+            constraints: BoxConstraints(maxHeight: dialogHeight),
+            padding: const EdgeInsets.all(16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -602,21 +614,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   ],
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 Divider(height: 0.5, thickness: 0.5, color: borderColor),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-                // Grid Emoji Section
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 300),
+                // Grid Emoji - Responsif
+                Flexible(
                   child: GridView.builder(
                     shrinkWrap: true,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 6,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
+                    physics: const ClampingScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
                       childAspectRatio: 1.0,
                     ),
                     itemCount: _allReactions.length,
@@ -637,9 +649,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                             ),
                           ),
                           child: Center(
-                            child: Text(
-                              emoji,
-                              style: const TextStyle(fontSize: 24),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                emoji,
+                                style: TextStyle(
+                                  fontSize: screenWidth < 360 ? 20 : 24,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -648,11 +665,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 Divider(height: 0.5, thickness: 0.5, color: borderColor),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 // Cancel Button
                 Row(
@@ -661,7 +678,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       child: GestureDetector(
                         onTap: () => Navigator.pop(context),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: borderColor, width: 0.5),
@@ -894,7 +911,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                             if (showDateDivider) _buildDateDivider(_getDateLabel(message.timestamp)),
                             Padding(
                               padding: EdgeInsets.only(top: topPadding),
-                              child: _wrapWithDismissible(message),
+                              child: message.senderPubkey == AppSettings.instance.myPubkey
+                                  ? _wrapMyDismissible(message)      // pesan sendiri
+                                  : _wrapTheirDismissible(message),
                             ),
                           ],
                         );
@@ -1167,24 +1186,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  Widget _wrapWithDismissible(ChatMessage message) {
+  // (isMe = true)
+  Widget _wrapMyDismissible(ChatMessage message) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
+    final isDragging = _draggingId == message.id;
 
     return GestureDetector(
       onHorizontalDragUpdate: (details) {
-        if (details.delta.dx > 0 || _dragOffset > 0) {
+        if (details.delta.dx < 0 || _dragOffset < 0) {
           setState(() {
             _draggingId = message.id;
             double resistance = 0.6;
-            if (_dragOffset > 30) resistance = 0.3;
+            if (_dragOffset < -30) resistance = 0.3;
             _dragOffset += details.delta.dx * resistance;
-            if (_dragOffset > 70) _dragOffset = 70;
+            if (_dragOffset < -70) _dragOffset = -70;
           });
         }
       },
       onHorizontalDragEnd: (details) {
-        if (_dragOffset >= 45) {
+        if (_dragOffset <= -45) {
           HapticFeedback.mediumImpact();
           setState(() => _replyingTo = message);
           _focusNode.requestFocus();
@@ -1194,53 +1214,125 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           _draggingId = null;
         });
       },
-      child: Container(
-        color: Colors.transparent,
-        transform: Matrix4.translationValues(
-            _draggingId == message.id ? _dragOffset : 0, 0, 0
-        ),
-        child: Row(
-          mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+      child: Transform.translate(
+        offset: Offset(isDragging ? _dragOffset : 0, 0),
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            if (_draggingId == message.id)
-              SizedBox(
-                width: (_dragOffset * 0.6).clamp(0.0, 46.0),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _buildMessageBubble(message),
+            ),
+            if (isDragging)
+              Positioned(
+                top: 0,
+                bottom: 0,
+                right: -32,
                 child: Opacity(
-                  opacity: (_dragOffset / 40).clamp(0.0, 1.0),
-                  child: Center(
-                    child: Transform.scale(
-                      scale: (_dragOffset / 50).clamp(0.0, 1.0),
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isDark ? Colors.white10 : Colors.black12,
-                            width: 0.5,
-                          ),
+                  opacity: ((-_dragOffset) / 40).clamp(0.0, 1.0),
+                  child: Transform.scale(
+                    scale: ((-_dragOffset) / 50).clamp(0.0, 1.0),
+                    child: Container(
+                      width: 26,
+                      height: 26,
+                      margin: const EdgeInsets.only(bottom: 2),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? Colors.white10 : Colors.black12,
+                          width: 0.5,
                         ),
-                        child: Icon(
-                          Icons.reply_rounded,
-                          color: isDark ? Colors.white70 : Colors.black87,
-                          size: 16,
-                        ),
+                      ),
+                      child: Icon(
+                        Icons.reply_rounded,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                        size: 16,
                       ),
                     ),
                   ),
                 ),
               ),
-            Flexible(
-              child: _buildMessageBubble(message),
-            ),
           ],
         ),
       ),
     );
   }
 
-  //Mengatur jarak Bubble Pesan dan ketika ada reaksi pada pesan (FIX)
+  // (isMe = false)
+  Widget _wrapTheirDismissible(ChatMessage message) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDragging = _draggingId == message.id;
+
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        if (details.delta.dx < 0 || _dragOffset < 0) {
+          setState(() {
+            _draggingId = message.id;
+            double resistance = 0.6;
+            if (_dragOffset < -30) resistance = 0.3;
+            _dragOffset += details.delta.dx * resistance;
+            if (_dragOffset < -70) _dragOffset = -70;
+          });
+        }
+      },
+      onHorizontalDragEnd: (details) {
+        if (_dragOffset <= -45) {
+          HapticFeedback.mediumImpact();
+          setState(() => _replyingTo = message);
+          _focusNode.requestFocus();
+        }
+        setState(() {
+          _dragOffset = 0;
+          _draggingId = null;
+        });
+      },
+      child: Transform.translate(
+        offset: Offset(isDragging ? _dragOffset : 0, 0),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _buildMessageBubble(message),
+            ),
+            if (isDragging)
+              Positioned(
+                top: 0,
+                bottom: 0,
+                right: -32,
+                child: Opacity(
+                  opacity: ((-_dragOffset) / 40).clamp(0.0, 1.0),
+                  child: Transform.scale(
+                    scale: ((-_dragOffset) / 50).clamp(0.0, 1.0),
+                    child: Container(
+                      width: 26,
+                      height: 26,
+                      margin: const EdgeInsets.only(bottom: 2),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? Colors.white10 : Colors.black12,
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.reply_rounded,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Adjusting the spacing of message bubbles and when there is a reaction to a message
   Widget _buildMessageBubble(ChatMessage message) {
     final theme = Theme.of(context);
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
@@ -1279,7 +1371,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.70),
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.90),
                   margin: EdgeInsets.only(
                     left: isMe ? 50 : 12,
                     right: isMe ? 12 : 50,
