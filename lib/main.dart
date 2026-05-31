@@ -228,28 +228,42 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     return ValueListenableBuilder(
       valueListenable: Hive.box('settings').listenable(),
       builder: (context, Box box, _) {
-        return MaterialApp(
-          navigatorKey: navigatorKey,
-          debugShowCheckedModeBanner: false,
-          themeMode: AppSettings.instance.themeMode,
-          theme: _buildLightTheme(),
-          darkTheme: _buildDarkTheme(),
-          initialRoute: '/',
-          routes: {
-            '/': (context) => MainScreen(
-              relayManager: _relayManager,
-              onThemeToggle: _toggleTheme,
-              networkManager: _networkManager,
-            ),
-            '/call': (context) => CallScreen(
-              peerName: "Panggilan Masuk",
-              peerPubkey: "",
-              isIncoming: true,
-              relay: _relayManager,
-              peerColor: Colors.blue,
-              onClose: () {},
-            ),
-          },
+        final isDark = AppSettings.instance.themeMode == ThemeMode.dark ||
+            (AppSettings.instance.themeMode == ThemeMode.system &&
+                MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+
+        final navBarColor = isDark ? const Color(0xFF121212) : Colors.white;
+
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            systemNavigationBarColor: navBarColor,
+            systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+          ),
+          child: MaterialApp(
+            navigatorKey: navigatorKey,
+            debugShowCheckedModeBanner: false,
+            themeMode: AppSettings.instance.themeMode,
+            theme: _buildLightTheme(),
+            darkTheme: _buildDarkTheme(),
+            initialRoute: '/',
+            routes: {
+              '/': (context) => MainScreen(
+                relayManager: _relayManager,
+                onThemeToggle: _toggleTheme,
+                networkManager: _networkManager,
+              ),
+              '/call': (context) => CallScreen(
+                peerName: "Panggilan Masuk",
+                peerPubkey: "",
+                isIncoming: true,
+                relay: _relayManager,
+                peerColor: Colors.blue,
+                onClose: () {},
+              ),
+            },
+          ),
         );
       },
     );

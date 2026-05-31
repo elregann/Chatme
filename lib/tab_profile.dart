@@ -13,6 +13,9 @@ import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
 import 'ui/profile/key_converter.dart';
 import 'package:remixicon/remixicon.dart';
+import 'dart:io' show File;
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -32,6 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _nip05Controller = TextEditingController();
   bool _isEditing = true;
   String _currentHandle = "";
+  String? _localPhotoPath;
 
   @override
   void initState() {
@@ -48,6 +52,157 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _nip05Controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+        final textPrimary = isDark ? Colors.white : Colors.black;
+        final textSecondary = isDark ? Colors.white54 : Colors.black45;
+
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Profile photo',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: textPrimary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Choose a source',
+                style: TextStyle(fontSize: 12, color: textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Divider(height: 0.5, thickness: 0.5, color: borderColor),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _processImage(ImageSource.camera);
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: borderColor, width: 0.5),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.camera_alt_outlined, size: 18, color: textPrimary),
+                      const SizedBox(width: 8),
+                      Text('Take a photo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _processImage(ImageSource.gallery);
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: borderColor, width: 0.5),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.photo_library_outlined, size: 18, color: textPrimary),
+                      const SizedBox(width: 8),
+                      Text('Choose from gallery', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    ],
+                  ),
+                ),
+              ),
+              if (_localPhotoPath != null) ...[
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() => _localPhotoPath = null);
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red.withAlpha(40), width: 0.5),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red.withAlpha(200)),
+                        const SizedBox(width: 8),
+                        Text('Remove photo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.red.withAlpha(200))),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _processImage(ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: source,
+      imageQuality: 80,
+    );
+    if (picked == null) return;
+
+    if (!mounted) return;
+
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: picked.path,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      uiSettings: [
+        if (kIsWeb)
+          WebUiSettings(
+            context: context,
+            presentStyle: WebPresentStyle.dialog,
+            size: const CropperSize(width: 420, height: 420),
+          )
+        else
+          AndroidUiSettings(
+            toolbarTitle: 'Crop photo',
+            toolbarColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF121212) : Colors.white,
+            toolbarWidgetColor: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white : Colors.black,
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF121212) : Colors.white,
+            activeControlsWidgetColor: const Color(0xFF1976D2),
+            hideBottomControls: false,
+            lockAspectRatio: true,
+          ),
+      ],
+    );
+
+    if (cropped != null && mounted) {
+      setState(() => _localPhotoPath = cropped.path);
+    }
   }
 
   Color _getAvatarColor(String pubkey) {
@@ -228,14 +383,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Center(
               child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 40,
-                    backgroundColor: _getAvatarColor(settings.myPubkey),
-                    child: Text(
-                      ((!_isEditing && _currentHandle.isNotEmpty)
-                          ? _currentHandle[0].toUpperCase()
-                          : (settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?')),
-                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                  GestureDetector(
+                    onTap: _pickPhoto,
+                    child: Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: _getAvatarColor(settings.myPubkey),
+                          backgroundImage: _localPhotoPath != null
+                              ? (kIsWeb
+                              ? NetworkImage(_localPhotoPath!)
+                              : FileImage(File(_localPhotoPath!)))
+                              : null,
+                          child: _localPhotoPath == null
+                              ? Text(
+                            ((!_isEditing && _currentHandle.isNotEmpty)
+                                ? _currentHandle[0].toUpperCase()
+                                : (settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?')),
+                            style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                          )
+                              : null,
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1976D2),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF121212) : Colors.white,
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(Icons.edit_rounded, size: 12, color: Colors.white),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -512,7 +698,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.1.3-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.2.4-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),
