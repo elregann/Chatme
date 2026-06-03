@@ -48,6 +48,7 @@ class RelayManager {
   bool _isInitialized = false;
   bool _isConnecting = false;
   bool _isProcessingQueue = false;
+  final Map<String, int> _lastKind0Timestamp = {};
 
   Function(Map<String, dynamic>)? onMessageReceivedWithData;
   Function(String)? onMessageDelivered;
@@ -155,6 +156,14 @@ class RelayManager {
       channel.sink.add(subToMe);
       channel.sink.add(subFromMe);
 
+      // Permanent subscription to the profile metadata of all users (real-time)
+      final profileSince = nowTimestamp - 86400; // the past 24 hours
+      final subProfiles = jsonEncode(["REQ", "${_subscriptionId!}_profiles", {
+        "kinds": [0],
+        "since": profileSince
+      }]);
+      channel.sink.add(subProfiles);
+
       _startPingTimer(relayUrl, channel);
 
       channel.stream.listen(
@@ -204,23 +213,27 @@ class RelayManager {
     final kind = event['kind'] as int? ?? 0;
     final createdAt = event['created_at'] as int? ?? 0;
 
-    // Cache profile picture from kind 0 events
+    // Cache profile picture from kind 0 events (only if it's newer)
     if (kind == 0) {
       final pubkey = event['pubkey'] as String?;
       if (pubkey != null) {
         try {
           final content = jsonDecode(event['content'] as String);
           final picture = content['picture'] as String?;
-          if (picture != null && picture.isNotEmpty) {
-            _profilePics.put(pubkey, picture);
-          } else {
-            // Hapus cache jika foto dihapus
-            _profilePics.delete(pubkey);
+
+          final lastProcessed = _lastKind0Timestamp[pubkey] ?? 0;
+          if (createdAt >= lastProcessed) {
+            _lastKind0Timestamp[pubkey] = createdAt;
+
+            if (picture != null && picture.isNotEmpty) {
+              _profilePics.put(pubkey, picture);
+            } else {
+              _profilePics.delete(pubkey);
+            }
+            onMessageReceived?.call();
           }
-          // Beri tahu UI untuk rebuild
-          onMessageReceived?.call();
         } catch (e) {
-          // Ignore parsing errors
+          DebugLogger.log('❌ Error caching profile picture: $e');
         }
       }
     }

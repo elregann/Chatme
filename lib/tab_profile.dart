@@ -140,6 +140,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: () {
                     Navigator.pop(context);
                     setState(() => _localPhotoPath = null);
+                    AppSettings.instance.savePhotoPath(''); // Delete path from storage
+                    // Broadcast to the relay that the photo has been deleted
+                    widget.relayManager.broadcastProfileKind0(photoUrl: null);
                   },
                   child: Container(
                     width: double.infinity,
@@ -708,7 +711,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.3.4-beta-bug', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.3.4-1-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),
