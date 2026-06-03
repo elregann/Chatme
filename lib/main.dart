@@ -62,6 +62,7 @@ void main() async {
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
+    await Hive.openBox<String>('profile_pictures');
 
     await AppSettings.instance.load();
 

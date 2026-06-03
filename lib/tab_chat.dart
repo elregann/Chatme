@@ -369,13 +369,22 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListTile(
-      leading: CircleAvatar(
-        radius: 26,
-        backgroundColor: _getAvatarColor(contact.pubkey),
-        child: Text(
-          _getInitials(displayName),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-        ),
+      leading: FutureBuilder<String?>(
+        future: widget.relayManager.fetchProfilePicture(contact.pubkey),
+        builder: (context, snapshot) {
+          final photoUrl = snapshot.data;
+          return CircleAvatar(
+            radius: 26,
+            backgroundColor: _getAvatarColor(contact.pubkey),
+            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+            child: photoUrl == null
+                ? Text(
+              _getInitials(displayName),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+            )
+                : null,
+          );
+        },
       ),
       title: Text(
         displayName,

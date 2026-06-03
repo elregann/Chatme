@@ -42,6 +42,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
 
     _currentHandle = AppSettings.instance.myNip05;
+    _localPhotoPath = AppSettings.instance.myPhotoPath.isNotEmpty
+        ? AppSettings.instance.myPhotoPath
+        : null;
     if (_currentHandle.isNotEmpty) {
       _isEditing = false;
       _nip05Controller.text = _currentHandle.split('@')[0];
@@ -89,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               GestureDetector(
                 onTap: () async {
                   Navigator.pop(context);
-                  await _processImage(ImageSource.camera);
+                  await _processImage(ImageSource.camera, widget.relayManager);
                 },
                 child: Container(
                   width: double.infinity,
@@ -112,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               GestureDetector(
                 onTap: () async {
                   Navigator.pop(context);
-                  await _processImage(ImageSource.gallery);
+                  await _processImage(ImageSource.gallery, widget.relayManager);
                 },
                 child: Container(
                   width: double.infinity,
@@ -164,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _processImage(ImageSource source) async {
+  Future<void> _processImage(ImageSource source, RelayManager relayManager) async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: source,
@@ -202,6 +205,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (cropped != null && mounted) {
       setState(() => _localPhotoPath = cropped.path);
+      await AppSettings.instance.savePhotoPath(cropped.path);
+
+      // Upload dan broadcast ke relay
+      final url = await widget.relayManager.uploadPhotoToNostrBuild(cropped.path);
+      if (url != null) {
+        await widget.relayManager.broadcastProfileKind0(photoUrl: url);
+      }
     }
   }
 
@@ -698,7 +708,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.2.4-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.3.4-beta-bug', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),

@@ -36,6 +36,7 @@ class AppSettings {
       myPrivkey = settingsBox.get('my_privkey', defaultValue: '');
       myMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
       myNip05 = settingsBox.get('my_nip05', defaultValue: '');
+      myPhotoPath = settingsBox.get('my_photo_path', defaultValue: '');
       isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
 
       // Ambil nama yang sudah tersimpan
@@ -130,6 +131,17 @@ class AppSettings {
     themeMode = mode;
     String themeString = (mode == ThemeMode.dark) ? 'dark' : (mode == ThemeMode.light ? 'light' : 'system');
     await Hive.box('settings').put('theme_mode', themeString);
+  }
+
+  String myPhotoPath = '';
+
+  Future<void> savePhotoPath(String path) async {
+    myPhotoPath = path;
+    await Hive.box('settings').put('my_photo_path', path);
+  }
+
+  Future<void> loadPhotoPath() async {
+    myPhotoPath = Hive.box('settings').get('my_photo_path', defaultValue: '');
   }
 
   Future<void> updateNip05(String newNip05, bool verified) async {

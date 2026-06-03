@@ -31,6 +31,7 @@ class RelayManager {
     'wss://nos.lol',
     'wss://nostr.mom',
     'wss://relay.primal.net',
+    'wss://relay.mostr.pub',
   ];
 
   final Map<String, WebSocketChannel> _connections = {};
@@ -182,14 +183,14 @@ class RelayManager {
     }
   }
 
-  void _handleData(dynamic data, String url) {
+  Future<void> _handleData(dynamic data, String url) async {
     try {
       final message = data.toString();
       if (message.contains('"EOSE"') || message.contains('"PONG"')) return;
 
       final decoded = jsonDecode(message);
       if (decoded is List && decoded.length > 2) {
-        if (decoded[0] == "EVENT") _handleEvent(decoded, url);
+        if (decoded[0] == "EVENT") await _handleEvent(decoded, url);
         if (decoded[0] == "OK") _handleOk(decoded, url);
       }
     } catch (e) {
@@ -197,11 +198,32 @@ class RelayManager {
     }
   }
 
-  void _handleEvent(List<dynamic> decoded, String url) {
+  Future<void> _handleEvent(List<dynamic> decoded, String url) async {
     final event = decoded[2] as Map<String, dynamic>;
     final eventId = event['id']?.toString() ?? '';
     final kind = event['kind'] as int? ?? 0;
     final createdAt = event['created_at'] as int? ?? 0;
+
+    // Cache profile picture from kind 0 events
+    if (kind == 0) {
+      final pubkey = event['pubkey'] as String?;
+      if (pubkey != null) {
+        try {
+          final content = jsonDecode(event['content'] as String);
+          final picture = content['picture'] as String?;
+          if (picture != null && picture.isNotEmpty) {
+            _profilePics.put(pubkey, picture);
+          } else {
+            // Hapus cache jika foto dihapus
+            _profilePics.delete(pubkey);
+          }
+          // Beri tahu UI untuk rebuild
+          onMessageReceived?.call();
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+    }
 
     if (eventId.isEmpty || _processedEventIds.contains(eventId)) return;
 
@@ -210,7 +232,9 @@ class RelayManager {
     final senderPubkey = event['pubkey']?.toString() ?? '';
 
     if (kind == 1000) {
-      try { if (onSignalReceived != null) onSignalReceived!(event); } catch (e) {
+      try {
+        if (onSignalReceived != null) onSignalReceived!(event);
+      } catch (e) {
         DebugLogger.log('❌ Error onSignalReceived: $e');
       }
       if (senderPubkey == myPubkey) return;
@@ -222,7 +246,6 @@ class RelayManager {
     }
 
     if (kind == 1 || kind == 4 || kind == 7) {
-
       if (kind == 7) {
         if (senderPubkey == myPubkey) return;
         if (now - createdAt > 60) return;
@@ -569,6 +592,222 @@ class RelayManager {
       DebugLogger.log('📦 Cloudflare Response: ${response.body}');
     } catch (e) {
       DebugLogger.log('⚠️ Cloudflare error: $e');
+    }
+  }
+
+  // Persistent cache using Hive
+  Box<String>? _profilePictureBox;
+
+  Box<String> get _profilePics {
+    _profilePictureBox ??= Hive.box<String>('profile_pictures');
+    return _profilePictureBox!;
+  }
+
+  Future<String?> fetchProfilePicture(String pubkey) async {
+    // Return from persistent cache if available
+    if (_profilePics.containsKey(pubkey)) {
+      final cachedUrl = _profilePics.get(pubkey);
+      if (cachedUrl != null && cachedUrl.isNotEmpty) {
+        return cachedUrl;
+      }
+    }
+
+    // Wait for relays to connect (max 5 seconds)
+    int waitAttempts = 0;
+    while (_connectionStatus.values.where((s) => s == true).isEmpty && waitAttempts < 50) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waitAttempts++;
+    }
+
+    if (_connectionStatus.values.where((s) => s == true).isEmpty) {
+      return null;
+    }
+
+    final completer = Completer<String?>();
+    final tempSubId = 'profile_${pubkey.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Send REQ to all connected relays
+    for (final entry in _connections.entries) {
+      if (_connectionStatus[entry.key] == true) {
+        try {
+          final req = jsonEncode(["REQ", tempSubId, {
+            "kinds": [0],
+            "authors": [pubkey],
+            "limit": 1,
+          }]);
+          entry.value.sink.add(req);
+        } catch (e) {
+          // Skip failed sends
+        }
+      }
+    }
+
+    // Listen for responses from all relays
+    final List<StreamSubscription> subscriptions = [];
+
+    for (final entry in _connections.entries) {
+      if (_connectionStatus[entry.key] == true) {
+        final sub = entry.value.stream.listen((data) {
+          try {
+            final decoded = jsonDecode(data.toString());
+            if (decoded is List && decoded[0] == "EVENT") {
+              final event = decoded[2] as Map<String, dynamic>;
+              if (event['kind'] == 0 && event['pubkey'] == pubkey) {
+                final content = jsonDecode(event['content'] as String);
+                final picture = content['picture'] as String?;
+
+                if (picture != null && picture.isNotEmpty && !completer.isCompleted) {
+                  // Simpan ke Hive tanpa await (fire-and-forget)
+                  _profilePics.put(pubkey, picture).then((_) {
+                    if (!completer.isCompleted) {
+                      completer.complete(picture);
+                    }
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        });
+        subscriptions.add(sub);
+      }
+    }
+
+    // Timeout after 8 seconds
+    final timeout = Timer(const Duration(seconds: 8), () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+
+    final result = await completer.future;
+    timeout.cancel();
+
+    // Cleanup
+    for (final sub in subscriptions) {
+      sub.cancel();
+    }
+
+    for (final entry in _connections.entries) {
+      if (_connectionStatus[entry.key] == true) {
+        try {
+          entry.value.sink.add(jsonEncode(["CLOSE", tempSubId]));
+        } catch (_) {}
+      }
+    }
+
+    return result;
+  }
+
+  /// Generate NIP-98 authentication token for nostr.build
+  String _generateNip98Token(String url, String method) {
+    final myPubkey = AppSettings.instance.myPubkey;
+    final myPrivkey = AppSettings.instance.myPrivkey;
+    if (myPubkey.isEmpty || myPrivkey.isEmpty) {
+      DebugLogger.log('❌ Cannot generate NIP-98 token: missing keys');
+      return '';
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final unsignedEvent = {
+      'kind': 27235,
+      'pubkey': myPubkey,
+      'created_at': now,
+      'tags': [
+        ['u', url],
+        ['method', method],
+      ],
+      'content': '',
+    };
+
+    final eventId = NostrHelpers.generateEventId(unsignedEvent);
+    final signature = NostrSigner.sign(eventId, myPrivkey);
+    final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+    final token = base64Url.encode(utf8.encode(jsonEncode(signedEvent)));
+
+    DebugLogger.log('🔑 Generated NIP-98 token (length: ${token.length})');
+
+    return 'Nostr $token';
+  }
+
+  Future<String?> uploadPhotoToNostrBuild(String filePath) async {
+    if (kIsWeb) {
+      DebugLogger.log('❌ Photo upload not supported in web environment');
+      return null;
+    }
+
+    try {
+      final uploadUrl = Uri.parse('https://nostr.build/api/v2/upload/files');
+      final token = _generateNip98Token(uploadUrl.toString(), 'POST');
+      if (token.isEmpty) {
+        DebugLogger.log('❌ NIP-98 token empty, upload aborted');
+        return null;
+      }
+
+      final request = http.MultipartRequest('POST', uploadUrl);
+      request.headers['Authorization'] = token;
+      request.files.add(await http.MultipartFile.fromPath('file', filePath));
+
+      final response = await request.send().timeout(const Duration(seconds: 30));
+      final body = jsonDecode(await response.stream.bytesToString());
+
+      if (response.statusCode == 200) {
+        final url = body['data']?[0]?['url'] as String?;
+        DebugLogger.log('✅ Photo uploaded: $url');
+        return url;
+      }
+      DebugLogger.log('❌ Upload failed: $body');
+      return null;
+    } catch (e) {
+      DebugLogger.log('❌ Upload error: $e');
+      return null;
+    }
+  }
+
+  Future<void> broadcastProfileKind0({String? photoUrl}) async {
+    try {
+      final myPubkey = AppSettings.instance.myPubkey;
+      final myPrivkey = AppSettings.instance.myPrivkey;
+      final myName = AppSettings.instance.myNip05.isNotEmpty
+          ? AppSettings.instance.myNip05.split('@')[0]
+          : AppSettings.formatDisplayName(myPubkey);
+
+      final content = jsonEncode({
+        'name': myName,
+        if (AppSettings.instance.myNip05.isNotEmpty)
+          'nip05': AppSettings.instance.myNip05,
+        if (photoUrl != null) 'picture': photoUrl,
+      });
+
+      final unsignedEvent = {
+        'pubkey': myPubkey,
+        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'kind': 0,
+        'tags': [],
+        'content': content,
+      };
+
+      final eventId = NostrHelpers.generateEventId(unsignedEvent);
+      final signature = NostrSigner.sign(eventId, myPrivkey);
+      final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+
+      for (final entry in _connections.entries) {
+        if (_connectionStatus[entry.key] == true) {
+          entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
+        }
+      }
+
+      // Perbarui cache lokal untuk diri sendiri
+      if (photoUrl != null && photoUrl.isNotEmpty) {
+        _profilePics.put(myPubkey, photoUrl);
+      } else {
+        _profilePics.delete(myPubkey);
+      }
+      // Trigger pembaruan UI
+      onMessageReceived?.call();
+
+      DebugLogger.log('✅ Kind 0 broadcasted');
+    } catch (e) {
+      DebugLogger.log('❌ Error broadcasting kind 0: $e');
     }
   }
 
