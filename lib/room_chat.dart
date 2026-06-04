@@ -782,12 +782,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           },
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: _getAvatarColor(widget.contact.pubkey),
-                child: Text(_getInitials(displayName),
-                    style: const TextStyle(color: Colors.white,
-                        fontSize: 14, fontWeight: FontWeight.bold)),
+              // profile picture
+              FutureBuilder<String?>(
+                future: widget.relayManager.fetchProfilePicture(widget.contact.pubkey),
+                builder: (context, snapshot) {
+                  final photoUrl = snapshot.data;
+                  return CircleAvatar(
+                    radius: 20,
+                    backgroundColor: _getAvatarColor(widget.contact.pubkey),
+                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                    child: photoUrl == null
+                        ? Text(_getInitials(displayName),
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))
+                        : null,
+                  );
+                },
               ),
               const SizedBox(width: 12),
               Expanded(

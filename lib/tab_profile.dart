@@ -400,6 +400,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: _pickPhoto,
                     child: Stack(
                       children: [
+                        // profile picture
                         CircleAvatar(
                           radius: 40,
                           backgroundColor: _getAvatarColor(settings.myPubkey),

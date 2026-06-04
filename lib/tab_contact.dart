@@ -366,16 +366,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         // Tampilkan hasil jika data ditemukan
                         else if (_globalSearchResults.isNotEmpty)
                           ..._globalSearchResults.map((res) => ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: UIUtils.getAvatarColor(res['pubkey'] ?? ''),
-                              child: Text(
-                                UIUtils.getInitials(res['username'] ?? '?'),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
+                            // profile picture
+                            leading: FutureBuilder<String?>(
+                              future: widget.relayManager.fetchProfilePicture(res['pubkey'] ?? ''),
+                              builder: (context, snapshot) {
+                                final photoUrl = snapshot.data;
+                                return CircleAvatar(
+                                  backgroundColor: UIUtils.getAvatarColor(res['pubkey'] ?? ''),
+                                  backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                                  child: photoUrl == null
+                                      ? Text(
+                                    UIUtils.getInitials(res['username'] ?? '?'),
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                  )
+                                      : null,
+                                );
+                              },
                             ),
                             title: Text(res['username'] ?? ''),
                             subtitle: Text('${res['pubkey']?.substring(0, 16)}...',
@@ -465,12 +471,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
   // Widget tile kontak
   Widget _buildContactTile(Contact contact) {
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: UIUtils.getAvatarColor(contact.pubkey),
-        child: Text(
-          UIUtils.getInitials(contact.name),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+      // profile picture
+      leading: FutureBuilder<String?>(
+        future: widget.relayManager.fetchProfilePicture(contact.pubkey),
+        builder: (context, snapshot) {
+          final photoUrl = snapshot.data;
+          return CircleAvatar(
+            backgroundColor: UIUtils.getAvatarColor(contact.pubkey),
+            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+            child: photoUrl == null
+                ? Text(
+              UIUtils.getInitials(contact.name),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            )
+                : null,
+          );
+        },
       ),
       title: Text(contact.name),
       subtitle: Text(
