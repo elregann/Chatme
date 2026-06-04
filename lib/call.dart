@@ -460,14 +460,29 @@ class _CallScreenState extends State<CallScreen> {
     return Center(
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 50,
-            backgroundColor: widget.peerColor.withAlpha(25),
-            child: Icon(
-              Icons.person,
-              size: 55,
-              color: widget.peerColor,
-            ),
+          // profile picture
+          FutureBuilder<String?>(
+            future: widget.relay.fetchProfilePicture(widget.peerPubkey),
+            builder: (context, snapshot) {
+              final photoUrl = snapshot.data;
+              return CircleAvatar(
+                radius: 50,
+                backgroundColor: widget.peerColor.withAlpha(25),
+                backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                child: photoUrl == null
+                    ? Text(
+                  widget.peerName.isNotEmpty
+                      ? widget.peerName[0].toUpperCase()
+                      : '?',
+                  style: TextStyle(
+                    fontSize: 40,
+                    color: widget.peerColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+                    : null,
+              );
+            },
           ),
           const SizedBox(height: 25),
           Text(
