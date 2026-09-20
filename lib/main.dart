@@ -12,6 +12,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'models/contact.dart';
 import 'models/chat_message.dart';
@@ -69,7 +70,18 @@ void main() async {
     if (!kIsWeb) {
       final myPubkey = AppSettings.instance.myPubkey;
       if (myPubkey.isNotEmpty) {
-        await FirebaseMessaging.instance.subscribeToTopic(myPubkey);
+        final connectivityResult = await Connectivity().checkConnectivity();
+        final isOnline = connectivityResult.any((r) =>
+          r == ConnectivityResult.mobile ||
+          r == ConnectivityResult.wifi ||
+          r == ConnectivityResult.ethernet
+        );
+        if (isOnline) {
+          FirebaseMessaging.instance
+              .subscribeToTopic(myPubkey)
+              .timeout(const Duration(seconds: 8))
+              .catchError((_) {});
+        }
       }
     }
 
@@ -101,6 +113,7 @@ class ChatMeApp extends StatefulWidget {
 class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   final RelayManager _relayManager = RelayManager();
   final NetworkManager _networkManager = NetworkManager();
+  ReceivePort? _notificationPort;
 
   @override
   void initState() {
@@ -109,9 +122,9 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     // Notification bar
     if (!kIsWeb) {
       IsolateNameServer.removePortNameMapping('chatme_notification_port');
-      final ReceivePort port = ReceivePort();
-      IsolateNameServer.registerPortWithName(port.sendPort, 'chatme_notification_port');
-      port.listen((dynamic data) async {
+      _notificationPort = ReceivePort();
+      IsolateNameServer.registerPortWithName(_notificationPort!.sendPort, 'chatme_notification_port');
+      _notificationPort!.listen((dynamic data) async {
         if (data is Map) {
           final actionId = data['actionId'];
           final input = data['input'];
@@ -168,6 +181,14 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       _relayManager.connect();
       _networkManager.onReconnect = () {
         _relayManager.connectIfNeeded();
+        if (!kIsWeb) {
+          final myPubkey = AppSettings.instance.myPubkey;
+          if (myPubkey.isNotEmpty) {
+            FirebaseMessaging.instance
+                .subscribeToTopic(myPubkey)
+                .catchError((_) {});
+          }
+        }
       };
       _networkManager.initialize();
     });
@@ -205,14 +226,8 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _relayManager.connect();
-    }
-  }
-
-  @override
   void dispose() {
+    _notificationPort?.close();
     WidgetsBinding.instance.removeObserver(this);
     _relayManager.dispose();
     _networkManager.dispose();

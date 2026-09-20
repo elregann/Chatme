@@ -73,12 +73,12 @@ class NotificationHandler {
 
   static Future<void> init({dynamic relayManager}) async {
     if (kIsWeb) {
-      debugPrint('🌐 Running on Web: Mobile notification initialization skipped.');
+      debugPrint('Running on Web: Mobile notification initialization skipped.');
       return;
     }
 
     try {
-      await Firebase.initializeApp();
+      if (Firebase.apps.isEmpty) await Firebase.initializeApp();
       final FirebaseMessaging messaging = FirebaseMessaging.instance;
 
       await _notificationsPlugin
@@ -166,10 +166,10 @@ class NotificationHandler {
       }
 
       final String? token = await messaging.getToken();
-      debugPrint('🚀 FCM Token: $token');
-      debugPrint('✅ NotificationHandler successfully initialized');
+      debugPrint('FCM Token: $token');
+      debugPrint('NotificationHandler successfully initialized');
     } catch (e) {
-      debugPrint('❌ Failed to initialize NotificationHandler: $e');
+      debugPrint('Failed to initialize NotificationHandler: $e');
     }
   }
 
