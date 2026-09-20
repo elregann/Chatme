@@ -312,10 +312,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (mounted) {
-      setState(() {
-        _currentHandle = AppSettings.instance.myNip05;
-        _isEditing = _currentHandle.isEmpty;
-      });
+      final newPubkey = AppSettings.instance.myPubkey;
+      final photoUrl = await widget.relayManager.fetchProfilePicture(newPubkey);
+      
+      if (photoUrl != null && photoUrl.isNotEmpty) {
+        await AppSettings.instance.savePhotoUrl(photoUrl);
+      } else {
+        await AppSettings.instance.savePhotoUrl('');
+      }
+      await AppSettings.instance.savePhotoPath('');
+
+      if (mounted) {
+        setState(() {
+          _currentHandle = AppSettings.instance.myNip05;
+          _isEditing = _currentHandle.isEmpty;
+          _remotePhotoUrl = AppSettings.instance.myPhotoUrl.isNotEmpty
+              ? AppSettings.instance.myPhotoUrl
+              : null;
+          _localPhotoPath = null;
+        });
+      }
     }
   }
 
@@ -727,7 +743,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.4.5-3-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.4.5-4-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),
