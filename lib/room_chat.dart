@@ -17,6 +17,7 @@ import 'models/chat_message.dart';
 import 'notification_handler.dart';
 import 'package:remixicon/remixicon.dart';
 import 'core/utils/debug_logger.dart';
+import 'widgets/user_avatar.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -735,11 +736,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         : AppSettings.formatDisplayName(senderPubkey);
   }
 
-  Color _getAvatarColor(String pubkey) =>
-      Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
 
-  String _getInitials(String name) =>
-      name.isEmpty ? "?" : name.substring(0, 1).toUpperCase();
 
   @override
   Widget build(BuildContext context) {
@@ -783,20 +780,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           child: Row(
             children: [
               // profile picture
-              FutureBuilder<String?>(
-                future: widget.relayManager.fetchProfilePicture(widget.contact.pubkey),
-                builder: (context, snapshot) {
-                  final photoUrl = snapshot.data;
-                  return CircleAvatar(
-                    radius: 20,
-                    backgroundColor: _getAvatarColor(widget.contact.pubkey),
-                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                    child: photoUrl == null
-                        ? Text(_getInitials(displayName),
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))
-                        : null,
-                  );
-                },
+              UserAvatar(
+                pubkey: widget.contact.pubkey,
+                name: displayName,
+                radius: 20,
+                relayManager: widget.relayManager,
               ),
               const SizedBox(width: 12),
               Expanded(

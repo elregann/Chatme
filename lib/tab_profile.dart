@@ -16,6 +16,7 @@ import 'package:remixicon/remixicon.dart';
 import 'dart:io' show File;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -436,7 +437,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           radius: 40,
                           backgroundColor: _getAvatarColor(settings.myPubkey),
                           backgroundImage: _remotePhotoUrl != null
-                              ? NetworkImage(_remotePhotoUrl!)
+                              ? CachedNetworkImageProvider(_remotePhotoUrl!)
                               : (_localPhotoPath != null && !kIsWeb
                                   ? FileImage(File(_localPhotoPath!)) as ImageProvider
                                   : null),
@@ -743,7 +744,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.4.5-4-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.4.6-4-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),

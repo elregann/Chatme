@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:proximity_sensor/proximity_sensor.dart';
 import 'call_manager.dart';
+import 'widgets/user_avatar.dart';
 
 class CallScreen extends StatefulWidget {
   final String peerName;
@@ -461,28 +462,11 @@ class _CallScreenState extends State<CallScreen> {
       child: Column(
         children: [
           // profile picture
-          FutureBuilder<String?>(
-            future: widget.relay.fetchProfilePicture(widget.peerPubkey),
-            builder: (context, snapshot) {
-              final photoUrl = snapshot.data;
-              return CircleAvatar(
-                radius: 50,
-                backgroundColor: widget.peerColor.withAlpha(25),
-                backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                child: photoUrl == null
-                    ? Text(
-                  widget.peerName.isNotEmpty
-                      ? widget.peerName[0].toUpperCase()
-                      : '?',
-                  style: TextStyle(
-                    fontSize: 40,
-                    color: widget.peerColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-                    : null,
-              );
-            },
+          UserAvatar(
+            pubkey: widget.peerPubkey,
+            name: widget.peerName,
+            radius: 50,
+            relayManager: widget.relay,
           ),
           const SizedBox(height: 25),
           Text(

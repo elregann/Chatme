@@ -10,8 +10,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
-import 'core/utils/ui_utils.dart';
 import 'ui/contacts/add_contact.dart';
+import 'widgets/user_avatar.dart';
 import 'package:remixicon/remixicon.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -367,21 +367,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         else if (_globalSearchResults.isNotEmpty)
                           ..._globalSearchResults.map((res) => ListTile(
                             // profile picture
-                            leading: FutureBuilder<String?>(
-                              future: widget.relayManager.fetchProfilePicture(res['pubkey'] ?? ''),
-                              builder: (context, snapshot) {
-                                final photoUrl = snapshot.data;
-                                return CircleAvatar(
-                                  backgroundColor: UIUtils.getAvatarColor(res['pubkey'] ?? ''),
-                                  backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                                  child: photoUrl == null
-                                      ? Text(
-                                    UIUtils.getInitials(res['username'] ?? '?'),
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                                  )
-                                      : null,
-                                );
-                              },
+                            leading: UserAvatar(
+                              pubkey: res['pubkey'] ?? '',
+                              name: res['username'],
+                              relayManager: widget.relayManager,
                             ),
                             title: Text(res['username'] ?? ''),
                             subtitle: Text('${res['pubkey']?.substring(0, 16)}...',
@@ -472,21 +461,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget _buildContactTile(Contact contact) {
     return ListTile(
       // profile picture
-      leading: FutureBuilder<String?>(
-        future: widget.relayManager.fetchProfilePicture(contact.pubkey),
-        builder: (context, snapshot) {
-          final photoUrl = snapshot.data;
-          return CircleAvatar(
-            backgroundColor: UIUtils.getAvatarColor(contact.pubkey),
-            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-            child: photoUrl == null
-                ? Text(
-              UIUtils.getInitials(contact.name),
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            )
-                : null,
-          );
-        },
+      leading: UserAvatar(
+        pubkey: contact.pubkey,
+        name: contact.name,
+        relayManager: widget.relayManager,
       ),
       title: Text(contact.name),
       subtitle: Text(

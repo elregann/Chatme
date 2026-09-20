@@ -12,6 +12,7 @@ import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'core/utils/time_utils.dart';
+import 'widgets/user_avatar.dart';
 
 class ChatsScreen extends StatefulWidget {
   final RelayManager relayManager;
@@ -46,14 +47,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
     super.dispose();
   }
 
-  Color _getAvatarColor(String pubkey) {
-    return Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
-  }
 
-  String _getInitials(String name) {
-    if (name.trim().isEmpty) return "?";
-    return name.trim().substring(0, 1).toUpperCase();
-  }
 
   Widget _buildHighlightedText(String text, String query, bool isDark) {
     if (query.isEmpty || !text.toLowerCase().contains(query.toLowerCase())) {
@@ -369,22 +363,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListTile(
-      leading: FutureBuilder<String?>(
-        future: widget.relayManager.fetchProfilePicture(contact.pubkey),
-        builder: (context, snapshot) {
-          final photoUrl = snapshot.data;
-          return CircleAvatar(
-            radius: 26,
-            backgroundColor: _getAvatarColor(contact.pubkey),
-            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-            child: photoUrl == null
-                ? Text(
-              _getInitials(displayName),
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-            )
-                : null,
-          );
-        },
+      leading: UserAvatar(
+        pubkey: contact.pubkey,
+        name: displayName,
+        radius: 26,
+        relayManager: widget.relayManager,
       ),
       title: Text(
         displayName,
