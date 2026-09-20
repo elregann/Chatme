@@ -37,6 +37,7 @@ class AppSettings {
       myMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
       myNip05 = settingsBox.get('my_nip05', defaultValue: '');
       myPhotoPath = settingsBox.get('my_photo_path', defaultValue: '');
+      myPhotoUrl  = settingsBox.get('my_photo_url', defaultValue: '');
       isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
 
       // Ambil nama yang sudah tersimpan
@@ -134,10 +135,16 @@ class AppSettings {
   }
 
   String myPhotoPath = '';
+  String myPhotoUrl = '';
 
   Future<void> savePhotoPath(String path) async {
     myPhotoPath = path;
     await Hive.box('settings').put('my_photo_path', path);
+  }
+
+  Future<void> savePhotoUrl(String url) async {
+    myPhotoUrl = url;
+    await Hive.box('settings').put('my_photo_url', url);
   }
 
   Future<void> loadPhotoPath() async {

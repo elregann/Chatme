@@ -36,6 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isEditing = true;
   String _currentHandle = "";
   String? _localPhotoPath;
+  String? _remotePhotoUrl;
 
   @override
   void initState() {
@@ -44,6 +45,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _currentHandle = AppSettings.instance.myNip05;
     _localPhotoPath = AppSettings.instance.myPhotoPath.isNotEmpty
         ? AppSettings.instance.myPhotoPath
+        : null;
+    _remotePhotoUrl = AppSettings.instance.myPhotoUrl.isNotEmpty
+        ? AppSettings.instance.myPhotoUrl
         : null;
     if (_currentHandle.isNotEmpty) {
       _isEditing = false;
@@ -134,13 +138,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              if (_localPhotoPath != null) ...[
+              if (_localPhotoPath != null || _remotePhotoUrl != null) ...[
                 const SizedBox(height: 10),
                 GestureDetector(
                   onTap: () {
                     Navigator.pop(context);
-                    setState(() => _localPhotoPath = null);
-                    AppSettings.instance.savePhotoPath(''); // Delete path from storage
+                    setState(() {
+                      _localPhotoPath = null;
+                      _remotePhotoUrl = null;
+                    });
+                    AppSettings.instance.savePhotoPath('');
+                    AppSettings.instance.savePhotoUrl('');
                     // Broadcast to the relay that the photo has been deleted
                     widget.relayManager.broadcastProfileKind0(photoUrl: null);
                   },
@@ -214,6 +222,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final url = await widget.relayManager.uploadPhotoToNostrBuild(cropped.path);
       if (url != null) {
         await widget.relayManager.broadcastProfileKind0(photoUrl: url);
+        await AppSettings.instance.savePhotoUrl(url);
+        if (mounted) {
+          setState(() {
+            _remotePhotoUrl = url;
+            _localPhotoPath = null;
+          });
+        }
       }
     }
   }
@@ -404,12 +419,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         CircleAvatar(
                           radius: 40,
                           backgroundColor: _getAvatarColor(settings.myPubkey),
-                          backgroundImage: _localPhotoPath != null
-                              ? (kIsWeb
-                              ? NetworkImage(_localPhotoPath!)
-                              : FileImage(File(_localPhotoPath!)))
-                              : null,
-                          child: _localPhotoPath == null
+                          backgroundImage: _remotePhotoUrl != null
+                              ? NetworkImage(_remotePhotoUrl!)
+                              : (_localPhotoPath != null && !kIsWeb
+                                  ? FileImage(File(_localPhotoPath!)) as ImageProvider
+                                  : null),
+                          child: (_remotePhotoUrl == null && _localPhotoPath == null)
                               ? Text(
                             ((!_isEditing && _currentHandle.isNotEmpty)
                                 ? _currentHandle[0].toUpperCase()
@@ -712,7 +727,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.3.4-3-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.3.5-3-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),
