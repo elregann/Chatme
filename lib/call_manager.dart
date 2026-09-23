@@ -405,7 +405,9 @@ class CallManager {
         return;
       }
 
-      final data = jsonDecode(event['content']);
+      final rawContent = event['content'] as String?;
+      if (rawContent == null || !rawContent.trim().startsWith('{')) return;
+      final data = jsonDecode(rawContent);
       if (data is! Map) return;
 
       switch (data['type']) {

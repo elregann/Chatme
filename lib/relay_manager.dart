@@ -218,19 +218,22 @@ class RelayManager {
       final pubkey = event['pubkey'] as String?;
       if (pubkey != null) {
         try {
-          final content = jsonDecode(event['content'] as String);
-          final picture = content['picture'] as String?;
+          final rawContent = event['content'] as String?;
+          if (rawContent != null && rawContent.trim().startsWith('{')) {
+            final content = jsonDecode(rawContent) as Map<String, dynamic>?;
+            final picture = content?['picture'] as String?;
 
-          final lastProcessed = _lastKind0Timestamp[pubkey] ?? 0;
-          if (createdAt >= lastProcessed) {
-            _lastKind0Timestamp[pubkey] = createdAt;
+            final lastProcessed = _lastKind0Timestamp[pubkey] ?? 0;
+            if (createdAt >= lastProcessed) {
+              _lastKind0Timestamp[pubkey] = createdAt;
 
-            if (picture != null && picture.isNotEmpty) {
-              _profilePics.put(pubkey, picture);
-            } else {
-              _profilePics.delete(pubkey);
+              if (picture != null && picture.isNotEmpty) {
+                _profilePics.put(pubkey, picture);
+              } else {
+                _profilePics.delete(pubkey);
+              }
+              onMessageReceived?.call();
             }
-            onMessageReceived?.call();
           }
         } catch (e) {
           DebugLogger.log('❌ Error caching profile picture: $e');
@@ -276,7 +279,9 @@ class RelayManager {
 
   void _processCallSignal(Map<String, dynamic> event) {
     try {
-      final signalData = jsonDecode(event['content']);
+      final rawContent = event['content'] as String?;
+      if (rawContent == null || !rawContent.trim().startsWith('{')) return;
+      final signalData = jsonDecode(rawContent);
       final callerPubkey = event['pubkey'];
 
       if (signalData['type'] == 'offer') {
@@ -666,16 +671,19 @@ class RelayManager {
             if (decoded is List && decoded[0] == "EVENT") {
               final event = decoded[2] as Map<String, dynamic>;
               if (event['kind'] == 0 && event['pubkey'] == pubkey) {
-                final content = jsonDecode(event['content'] as String);
-                final picture = content['picture'] as String?;
+                final rawContent = event['content'] as String?;
+                if (rawContent != null && rawContent.trim().startsWith('{')) {
+                  final content = jsonDecode(rawContent) as Map<String, dynamic>?;
+                  final picture = content?['picture'] as String?;
 
-                if (picture != null && picture.isNotEmpty && !completer.isCompleted) {
-                  // Simpan ke Hive tanpa await (fire-and-forget)
-                  _profilePics.put(pubkey, picture).then((_) {
-                    if (!completer.isCompleted) {
-                      completer.complete(picture);
-                    }
-                  });
+                  if (picture != null && picture.isNotEmpty && !completer.isCompleted) {
+                    // Simpan ke Hive tanpa await (fire-and-forget)
+                    _profilePics.put(pubkey, picture).then((_) {
+                      if (!completer.isCompleted) {
+                        completer.complete(picture);
+                      }
+                    });
+                  }
                 }
               }
             }
