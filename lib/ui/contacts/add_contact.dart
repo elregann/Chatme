@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../models/contact.dart';
 import '../../core/utils/debug_logger.dart';
+import '../../core/utils/key_utils.dart';
 import 'package:remixicon/remixicon.dart';
 
 class AddContactPage extends StatefulWidget {
@@ -79,7 +80,7 @@ class _AddContactPageState extends State<AddContactPage> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Add a new friend using their Nostr public key.',
+                        'Add a new friend using their Nostr public key or npub.',
                         style: TextStyle(fontSize: 13, color: Colors.blue.withAlpha(200), height: 1.5),
                       ),
                     ),
@@ -123,7 +124,7 @@ class _AddContactPageState extends State<AddContactPage> {
 
               // Pubkey field
               Text(
-                'PUBLIC KEY',
+                'PUBLIC KEY OR NPUB',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
               ),
               const SizedBox(height: 8),
@@ -135,7 +136,7 @@ class _AddContactPageState extends State<AddContactPage> {
                 onTap: _resetSubmitted,
                 onChanged: (_) => _resetSubmitted(),
                 decoration: InputDecoration(
-                  hintText: 'Paste public key here',
+                  hintText: 'Paste here',
                   hintStyle: TextStyle(fontSize: 13, color: textSecondary, fontFamily: 'sans-serif'),
                   contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
                   filled: true,
@@ -163,7 +164,8 @@ class _AddContactPageState extends State<AddContactPage> {
                 validator: (value) {
                   if (!_submitted) return null;
                   if (value == null || value.isEmpty) return 'Public key is required';
-                  if (value.trim().length != 64) return 'Must be 64 characters';
+                  final normalized = KeyUtils.normalizeToHex(value);
+                  if (normalized.length != 64) return 'Must be 64-character hex or valid npub';
                   return null;
                 },
               ),
@@ -183,7 +185,8 @@ class _AddContactPageState extends State<AddContactPage> {
 
                   try {
                     final name = _nameController.text.trim();
-                    final pubkey = _pubkeyController.text.trim().toLowerCase();
+                    final pubkeyInput = _pubkeyController.text.trim();
+                    final pubkey = KeyUtils.normalizeToHex(pubkeyInput);
 
                     final contactsBox = Hive.box<Contact>('contacts');
                     final existing = contactsBox.get(pubkey);

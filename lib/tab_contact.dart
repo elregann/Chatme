@@ -10,6 +10,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
+import 'core/utils/key_utils.dart';
+import 'services/app_settings.dart';
 import 'ui/contacts/add_contact.dart';
 import 'widgets/user_avatar.dart';
 import 'call_overlay.dart';
@@ -85,15 +87,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _quickAddFromGlobal(String name, String pubkey) async {
     try {
       final contactsBox = Hive.box<Contact>('contacts');
+      final normalizedPubkey = KeyUtils.normalizeToHex(pubkey);
       final contact = Contact(
-        pubkey: pubkey,
+        pubkey: normalizedPubkey,
         name: name,
         isSaved: true,
         lastChatTime: 0,
         lastMessage: '',
         unreadCount: 0,
       );
-      await contactsBox.put(pubkey, contact);
+      await contactsBox.put(normalizedPubkey, contact);
       HapticFeedback.mediumImpact();
 
       if (mounted) {
@@ -389,8 +392,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               relayManager: widget.relayManager,
                             ),
                             title: Text(res['username'] ?? ''),
-                            subtitle: Text('${res['pubkey']?.substring(0, 16)}...',
-                                style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                            subtitle: Text(
+                              AppSettings.formatDisplayName(res['pubkey'] ?? ''),
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                            ),
 
                             // SEBELAH KANAN: Jadi Button terpisah
                             trailing: IconButton(
@@ -405,8 +410,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             onTap: () {
                               _searchFocusNode.unfocus();
 
+                              final normalizedPubkey = KeyUtils.normalizeToHex(res['pubkey']!);
                               final tempContact = Contact(
-                                pubkey: res['pubkey']!,
+                                pubkey: normalizedPubkey,
                                 name: res['username']!,
                                 isSaved: false,
                                 lastChatTime: 0,
@@ -484,7 +490,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
       title: Text(contact.name),
       subtitle: Text(
-        '${contact.pubkey.substring(0, 16)}...',
+        AppSettings.formatDisplayName(contact.pubkey),
         style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
       ),
       onTap: () {

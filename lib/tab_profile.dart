@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'relay_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'services/app_settings.dart';
+import 'core/utils/key_utils.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
 import 'ui/profile/restore_account.dart';
@@ -513,7 +514,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Your Public Key', textSecondary),
+            _buildSectionTitle('Your Npub', textSecondary),
             Card(
               elevation: 0,
               color: cardColor,
@@ -524,14 +525,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 title: SelectableText(
-                  settings.myPubkey,
+                  KeyUtils.toNpub(settings.myPubkey),
                   style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textSecondary),
                 ),
                 trailing: Material(
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: () {
-                      Clipboard.setData(ClipboardData(text: settings.myPubkey));
+                      Clipboard.setData(ClipboardData(text: KeyUtils.toNpub(settings.myPubkey)));
                       HapticFeedback.lightImpact();
                     },
                     borderRadius: BorderRadius.circular(50),
@@ -724,7 +725,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   children: [
                     _buildGuideStep(context, 1, 'Set your handle in Global ID to be searchable', textPrimary),
-                    _buildGuideStep(context, 2, 'Or copy your Public Key to share privately', textPrimary),
+                    _buildGuideStep(context, 2, 'Or copy your Npub to share privately', textPrimary),
                     _buildGuideStep(context, 3, 'Go to Contacts to search name or paste key', textPrimary),
                     _buildGuideStep(context, 4, 'Add them to your verified contact list', textPrimary),
                     _buildGuideStep(context, 5, 'Start chatting securely in Chats tab', textPrimary),
@@ -744,7 +745,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.4.7-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.4.8-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),

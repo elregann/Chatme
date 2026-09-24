@@ -79,7 +79,7 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
             const SizedBox(height: 28),
 
             Text(
-              'PRIVATE KEY OR RECOVERY PHRASE',
+              'NSEC, PRIVATE KEY OR RECOVERY PHRASE',
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
             ),
             const SizedBox(height: 8),
@@ -95,7 +95,7 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
                 maxLines: 5,
                 style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textPrimary),
                 decoration: InputDecoration(
-                  hintText: 'Paste your hex key or 12-word phrase...',
+                  hintText: 'Paste your nsec, hex private key or 12-word phrase...',
                   hintStyle: TextStyle(fontSize: 12, color: textSecondary, fontFamily: 'sans-serif'),
                   contentPadding: const EdgeInsets.all(16),
                   border: InputBorder.none,

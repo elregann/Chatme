@@ -86,16 +86,23 @@ class AppSettings {
   Future<void> importAccount(String input) async {
     try {
       final settingsBox = Hive.box('settings');
-      final cleaned = input.trim().replaceAll(RegExp(r'\s+'), ' ');
+      final cleaned = input.trim();
 
-      if (cleaned.split(' ').length >= 12) {
+      if (cleaned.startsWith('nsec')) {
+        myPrivkey = KeyUtils.fromNsec(cleaned);
+        myMnemonic = '';
+      } else if (cleaned.split(' ').length >= 12) {
         myPrivkey = await ChatMeVault.deriveNostrPrivateKey(cleaned);
         myMnemonic = cleaned;
       } else if (cleaned.length == 64) {
         myPrivkey = cleaned;
         myMnemonic = '';
       } else {
-        throw 'Invalid input format. Use 64-char hex or 12 words.';
+        throw 'Invalid input format. Use nsec, 64-char hex, or 12 words.';
+      }
+
+      if (myPrivkey.length != 64) {
+        throw 'Invalid private key format.';
       }
 
       myPubkey = bip340.getPublicKey(myPrivkey);
