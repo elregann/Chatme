@@ -7,6 +7,8 @@ import 'package:remixicon/remixicon.dart';
 import 'room_chat.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
+import 'call_overlay.dart';
+import 'call_manager.dart';
 import 'package:flutter/services.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
@@ -174,6 +176,20 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   ),
                 ),
               ),
+            ),
+            ValueListenableBuilder<CallState>(
+              valueListenable: CallManager.instance.callStateNotifier,
+              builder: (context, callState, _) {
+                if (callState == CallState.idle ||
+                    callState == CallState.ending ||
+                    callState == CallState.error) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: CallFloatingBar(relay: widget.relayManager),
+                );
+              },
             ),
             Expanded(
               child: ValueListenableBuilder<Box<Contact>>(

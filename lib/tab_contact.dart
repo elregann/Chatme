@@ -12,6 +12,8 @@ import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
 import 'ui/contacts/add_contact.dart';
 import 'widgets/user_avatar.dart';
+import 'call_overlay.dart';
+import 'call_manager.dart';
 import 'package:remixicon/remixicon.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -326,6 +328,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   ),
                 ),
               ),
+            ),
+            ValueListenableBuilder<CallState>(
+              valueListenable: CallManager.instance.callStateNotifier,
+              builder: (context, callState, _) {
+                if (callState == CallState.idle ||
+                    callState == CallState.ending ||
+                    callState == CallState.error) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: CallFloatingBar(relay: widget.relayManager),
+                );
+              },
             ),
 
             // --- LIST AREA ---

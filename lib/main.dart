@@ -29,8 +29,6 @@ import 'chat_manager.dart';
 import 'tab_contact.dart';
 import 'tab_profile.dart';
 import 'tab_chat.dart';
-import 'call_overlay.dart';
-import 'call_manager.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -363,30 +361,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<CallState>(
-      valueListenable: CallManager.instance.callStateNotifier,
-      builder: (context, callState, _) {
-        return Scaffold(
-          body: Column(
-            children: [
-              if (callState == CallState.active)
-                CallFloatingBar(relay: widget.relayManager),
-              Expanded(
-                child: PageView(
-                  controller: _pageController,
-                  onPageChanged: (index) => setState(() => _selectedIndex = index),
-                  children: [
-                    ChatsScreen(relayManager: widget.relayManager),
-                    ContactsScreen(relayManager: widget.relayManager),
-                    ProfileScreen(onThemeToggle: widget.onThemeToggle, relayManager: widget.relayManager),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          bottomNavigationBar: _buildBottomNav(),
-        );
-      },
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) => setState(() => _selectedIndex = index),
+        children: [
+          ChatsScreen(relayManager: widget.relayManager),
+          ContactsScreen(relayManager: widget.relayManager),
+          ProfileScreen(onThemeToggle: widget.onThemeToggle, relayManager: widget.relayManager),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomNav(),
     );
   }
 

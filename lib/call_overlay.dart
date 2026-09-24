@@ -20,7 +20,6 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
   @override
   void initState() {
     super.initState();
-    // Ticker tiap detik buat update durasi
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -36,6 +35,25 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
     final m = (seconds ~/ 60).toString().padLeft(2, '0');
     final s = (seconds % 60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  String _getStatusText(CallManager manager) {
+    if (manager.callState == CallState.active) {
+      return _formatDuration(manager.currentDuration);
+    }
+    switch (manager.callState) {
+      case CallState.connecting:
+        return 'Connecting';
+      case CallState.ringing:
+        return 'Ringing';
+      case CallState.initializing:
+      case CallState.idle:
+        return 'Calling';
+      case CallState.reconnecting:
+        return 'Reconnecting';
+      default:
+        return 'Calling';
+    }
   }
 
   @override
@@ -62,34 +80,24 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
         );
       },
       child: Container(
-        width: double.infinity,
-        // Tambah padding atas buat status bar
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top,
-        ),
+        height: 48,
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(30),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10),
+          borderRadius: BorderRadius.circular(24),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(
             children: [
-              // ── Tombol Mute (sekarang ada lingkaran) ──
+              // Mute Button
               GestureDetector(
                 onTap: () {
                   manager.toggleMute();
                   setState(() {});
                 },
                 child: Container(
-                  width: 36,
-                  height: 36,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isDark
@@ -99,16 +107,16 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                   child: Icon(
                     manager.isMuted ? Icons.mic_off : Icons.mic,
                     color: isDark ? Colors.white : Colors.black,
-                    size: 18,
+                    size: 16,
                   ),
                 ),
               ),
               const SizedBox(width: 12),
 
-              // ── Nama + Durasi ──
+              // Name + Status/Duration
               Expanded(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
@@ -123,10 +131,10 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      _formatDuration(manager.currentDuration),
+                      _getStatusText(manager),
                       style: const TextStyle(
                         fontSize: 11,
-                        color: Colors.green,
+                        color: Colors.grey,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -136,29 +144,26 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
 
               const SizedBox(width: 12),
 
-              // ── Tombol End Call ──
+              // End Call Button
               GestureDetector(
                 onTap: () async {
-                  // Kirim hangup signal dulu, baru stop
                   widget.relay.sendCallSignal(
                     manager.activePeerPubkey ?? '',
                     {'type': 'hangup'},
                   );
                   await manager.stopCall(sendHangupSignal: false);
-                  // Overlay hilang otomatis karena callState → idle
-                  // dan ValueListenableBuilder di MainScreen akan rebuild
                 },
                 child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withAlpha(229),
+                  width: 32,
+                  height: 32,
+                  decoration: const BoxDecoration(
+                    color: Colors.redAccent,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.call_end,
                     color: Colors.white,
-                    size: 18,
+                    size: 16,
                   ),
                 ),
               ),
