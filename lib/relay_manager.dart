@@ -443,6 +443,7 @@ class RelayManager {
 
       await ChatManager.instance.saveMessage(chatMessage);
       await ChatManager.instance.repairReplyContent(eventId, decrypted, chatKey);
+      await ChatManager.instance.repairPendingReplies(chatKey);
       await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExists);
 
       if (onMessageReceived != null) onMessageReceived!();
@@ -1085,7 +1086,12 @@ class RelayManager {
     DebugLogger.log('[Queue] Processing ${pendingMessages.length} pending message(s)');
 
     try {
-      for (var msg in pendingMessages) {
+      for (var snapshot in pendingMessages) {
+        // Re-fetch from Hive — replyToId may have been updated by a previous iteration
+        final msg = await ChatManager.instance.getMessageById(snapshot.id, snapshot.chatKey);
+        if (msg == null) continue;
+        if (msg.status == 'sent' || msg.status == 'read') continue;
+
         String ciphertext = msg.content;
 
         if (ciphertext.isEmpty) {
