@@ -1,6 +1,7 @@
 // chat_manager.dart
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'notification_handler.dart';
 import 'services/app_settings.dart';
@@ -109,6 +110,8 @@ class ChatManager {
   }
 
   void _triggerNotification(ChatMessage message) async {
+    if (kIsWeb) return;
+
     try {
       final settingsBox = Hive.box('settings');
       final eventId = message.id;
@@ -265,6 +268,14 @@ class ChatManager {
                   ? newContent
                   : messages[index].content,
             );
+
+            // Repair: any message that replied to oldId now points to newId
+            for (int i = 0; i < messages.length; i++) {
+              if (i != index && messages[i].replyToId == oldId) {
+                messages[i] = messages[i].copyWith(replyToId: newId);
+              }
+            }
+
             await chatsBox.put(chatKey, messages);
             DebugLogger.log('[Message] ID updated: $oldId -> $newId ($finalStatus)');
           }
@@ -273,6 +284,56 @@ class ChatManager {
         DebugLogger.log('[Message] ID & status update failed | $e', type: 'ERROR');
       }
     });
+  }
+
+  /// Scan all messages in a chat and repair any replyToContent
+  /// that is still empty. Called after each new message arrives,
+  /// to handle out-of-order event delivery from relays.
+  Future<void> repairPendingReplies(String chatKey) async {
+    try {
+      final chatsBox = Hive.box('chats');
+      final dynamic rawData = chatsBox.get(chatKey);
+      if (rawData is! List) return;
+
+      List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
+      bool changed = false;
+
+      for (int i = 0; i < messages.length; i++) {
+        final m = messages[i];
+        final needsRepair = (m.replyToId != null && m.replyToId!.isNotEmpty) &&
+            (m.replyToContent == null || m.replyToContent!.isEmpty);
+        if (!needsRepair) continue;
+
+        final original = messages.firstWhere(
+              (x) => x.id == m.replyToId,
+          orElse: () => ChatMessage(
+            id: '',
+            senderPubkey: '',
+            receiverPubkey: '',
+            content: '',
+            plaintext: '',
+            timestamp: 0,
+            status: '',
+            chatKey: '',
+          ),
+        );
+
+        if (original.id.isNotEmpty) {
+          messages[i] = m.copyWith(
+            replyToContent: original.plaintext,
+            replyToSenderPubkey: original.senderPubkey,
+          );
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        await chatsBox.put(chatKey, messages);
+        DebugLogger.log('[Message] Repaired pending replies in $chatKey');
+      }
+    } catch (e) {
+      DebugLogger.log('[Message] Repair pending replies failed | $e', type: 'ERROR');
+    }
   }
 
   Future<void> _updateContactPreview(ChatMessage message) async {

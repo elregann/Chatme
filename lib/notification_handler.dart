@@ -1,34 +1,36 @@
 // notification_handler.dart
 
-import 'dart:ui';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
-import 'chat_manager.dart';
+import 'dart:ui' show IsolateNameServer;
+import 'package:crypto/crypto.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'core/crypto/nip04.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'chat_manager.dart';
+import 'core/crypto/nip04.dart';
 
+/// Background FCM handler (runs in separate isolate).
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   await Hive.initFlutter();
 
   final senderPubkey = message.data['senderPubkey'] ?? '';
-  final senderName = message.data['senderName'] ?? 'Pesan Baru';
+  final senderName = message.data['senderName'] ?? 'New Message';
   final ciphertext = message.data['ciphertext'] ?? '';
   final eventId = message.data['eventId'] ?? '';
 
   if (senderPubkey.isEmpty || eventId.isEmpty) return;
 
-  // Ambil private key dari Hive
   final settingsBox = await Hive.openBox('settings');
   final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
 
-  // Decrypt isi pesan
-  String plaintext = 'Ada pesan baru masuk!';
+  String plaintext = 'You have a new message';
   if (ciphertext.isNotEmpty && myPrivkey.isNotEmpty) {
     try {
       final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
@@ -36,7 +38,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     } catch (_) {}
   }
 
-  // Simpan eventId ke Hive sebagai tanda sudah dinotifikasi
+  // Mark as notified so the foreground handler does not duplicate
   await settingsBox.put('notified_$eventId', true);
 
   await NotificationHandler.showChatNotification(
@@ -49,31 +51,58 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 @pragma('vm:entry-point')
 class NotificationHandler {
-  static final FlutterLocalNotificationsPlugin _notificationsPlugin =
-  FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
 
-  // Stream untuk navigasi saat notifikasi di-tap
+  // Streams
   static final StreamController<String?> onNotificationClick =
   StreamController<String?>.broadcast();
 
-  // Stream untuk inline reply dari notification bar
   static final StreamController<Map<String, String>> onNotificationReply =
   StreamController<Map<String, String>>.broadcast();
 
-  // Cache riwayat pesan per kontak (untuk MessagingStyle stacking)
-  // Key: senderPubkey, Value: list of {sender, message}
+  // In-memory message history per contact (for MessagingStyle stacking)
   static final Map<String, List<Map<String, String>>> _messageHistory = {};
 
-  // Channel & action constants
+  // Callback registry
   static void Function(String senderPubkey, String replyText)? onReplyCallback;
+
+  // Channel & action constants
   static const String _channelId = 'chat_me_urgent_channel';
-  static const String _channelName = 'Pesan & Panggilan';
+  static const String _channelName = 'Messages & Calls';
+  static const String _channelDescription = 'Notifications for chats and calls';
   static const String _replyActionId = 'REPLY_ACTION';
   static const String _markReadActionId = 'MARK_READ_ACTION';
 
+  // Notification grouping (all chat notifications share a single group)
+  static const String _groupKey = 'chatme_chat_group';
+  static const int _summaryNotificationId = 999999;
+
+  // Track FCM subscriptions and init state
+  static final List<StreamSubscription> _fcmSubscriptions = [];
+  static bool _initialized = false;
+
+  /// Pubkey of the chat room currently open. Used to suppress notifications
+  /// for messages from that peer when the app is in foreground.
+  static String? activeChatPubkey;
+
+  /// Returns true if a notification from this sender should be suppressed
+  /// because the user is already viewing the chat in foreground.
+  static bool _shouldSuppressNotification(String senderPubkey) {
+    if (activeChatPubkey == null) return false;
+    if (senderPubkey != activeChatPubkey) return false;
+    final state = WidgetsBinding.instance.lifecycleState;
+    return state == AppLifecycleState.resumed;
+  }
+
+  /// Initialize notification handler. Safe to call multiple times.
   static Future<void> init({dynamic relayManager}) async {
     if (kIsWeb) {
-      debugPrint('Running on Web: Mobile notification initialization skipped.');
+      debugPrint('[Notification] Web platform: mobile notifications skipped');
+      return;
+    }
+
+    if (_initialized) {
+      debugPrint('[Notification] Already initialized, skipping');
       return;
     }
 
@@ -81,9 +110,9 @@ class NotificationHandler {
       if (Firebase.apps.isEmpty) await Firebase.initializeApp();
       final FirebaseMessaging messaging = FirebaseMessaging.instance;
 
-      await _notificationsPlugin
-          .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
+      // Request permissions
+      await _plugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
 
       await messaging.requestPermission(
@@ -93,58 +122,56 @@ class NotificationHandler {
         provisional: false,
       );
 
-      const AndroidInitializationSettings initializationSettingsAndroid =
+      // iOS: show banner + sound while app is in foreground
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      // Setup local notification plugin
+      const AndroidInitializationSettings androidSettings =
       AndroidInitializationSettings('@mipmap/ic_launcher');
+      const InitializationSettings initSettings =
+      InitializationSettings(android: androidSettings);
 
-      const InitializationSettings initializationSettings =
-      InitializationSettings(android: initializationSettingsAndroid);
+      await _plugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _onNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationResponse,
+      );
 
-      // Buat notification channel dengan priority tinggi
+      // Create notification channel
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         _channelId,
         _channelName,
-        description: 'Notifikasi untuk pesan dan panggilan chat',
+        description: _channelDescription,
         importance: Importance.high,
         playSound: true,
         enableVibration: true,
         showBadge: true,
       );
 
-      await _notificationsPlugin.initialize(
-        initializationSettings,
-        onDidReceiveNotificationResponse: _onNotificationResponse,
-        onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationResponse,
-      );
-
-      await _notificationsPlugin
-          .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
+      await _plugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(channel);
 
-      // Foreground FCM: tampilkan sebagai notifikasi lokal
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        final senderPubkey = message.data['senderPubkey'] ?? '';
-        final senderName = message.data['senderName'] ?? 'Pesan Baru';
-        final body = message.notification?.body ?? message.data['body'] ?? '';
+      // Foreground FCM: display as local notification
+      _fcmSubscriptions.add(
+        FirebaseMessaging.onMessage.listen(_handleForegroundMessage),
+      );
 
-        if (senderPubkey.isNotEmpty && body.isNotEmpty) {
-          showChatNotification(
-            senderPubkey: senderPubkey,
-            senderName: senderName,
-            message: body,
-          );
-        }
-      });
+      // App resumed from background via notification tap
+      _fcmSubscriptions.add(
+        FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+          final senderPubkey = message.data['senderPubkey'] ?? '';
+          if (senderPubkey.isNotEmpty) {
+            onNotificationClick.add(senderPubkey);
+          }
+        }),
+      );
 
-      // App dibuka dari notifikasi (background → foreground)
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        final senderPubkey = message.data['senderPubkey'] ?? '';
-        if (senderPubkey.isNotEmpty) {
-          onNotificationClick.add(senderPubkey);
-        }
-      });
-
-      // App dibuka dari killed state via notifikasi
+      // App launched from killed state via notification tap
       final RemoteMessage? initialMessage = await messaging.getInitialMessage();
       if (initialMessage != null) {
         final senderPubkey = initialMessage.data['senderPubkey'] ?? '';
@@ -153,6 +180,7 @@ class NotificationHandler {
         }
       }
 
+      // Wire up reply callback
       if (relayManager != null) {
         onReplyCallback = (senderPubkey, replyText) async {
           relayManager.connectIfNeeded();
@@ -166,14 +194,29 @@ class NotificationHandler {
       }
 
       final String? token = await messaging.getToken();
-      debugPrint('FCM Token: $token');
-      debugPrint('NotificationHandler successfully initialized');
+      _initialized = true;
+      debugPrint('[Notification] Initialized. FCM token: ${token != null ? "OK" : "MISSING"}');
     } catch (e) {
-      debugPrint('Failed to initialize NotificationHandler: $e');
+      debugPrint('[Notification] Init failed | $e');
     }
   }
 
-  /// Handler saat notifikasi di-tap atau action button ditekan (foreground)
+  /// Handle foreground FCM message.
+  static void _handleForegroundMessage(RemoteMessage message) {
+    final senderPubkey = message.data['senderPubkey'] ?? '';
+    final senderName = message.data['senderName'] ?? 'New Message';
+    final body = message.notification?.body ?? message.data['body'] ?? '';
+
+    if (senderPubkey.isNotEmpty && body.isNotEmpty) {
+      showChatNotification(
+        senderPubkey: senderPubkey,
+        senderName: senderName,
+        message: body,
+      );
+    }
+  }
+
+  /// Notification tap or action button pressed (foreground).
   @pragma('vm:entry-point')
   static void _onNotificationResponse(NotificationResponse response) {
     final SendPort? sendPort = IsolateNameServer.lookupPortByName('chatme_notification_port');
@@ -186,129 +229,158 @@ class NotificationHandler {
     }
   }
 
-  /// Handler untuk action button di background
+  /// Background action button handler.
   @pragma('vm:entry-point')
   static void _onBackgroundNotificationResponse(NotificationResponse response) {
-    // Background reply handling — diteruskan saat app aktif kembali
     _onNotificationResponse(response);
   }
 
-  /// Tampilkan notifikasi bergaya chat (MessagingStyle) dengan stacking per kontak
+  /// Stable notification ID derived from pubkey (survives app restarts).
+  static int _notificationId(String pubkey) {
+    final digest = sha256.convert(utf8.encode(pubkey)).bytes;
+    return ((digest[0] << 24) | (digest[1] << 16) | (digest[2] << 8) | digest[3]).abs() % 1000000;
+  }
+
+  /// Show a chat notification with MessagingStyle stacking.
   static Future<void> showChatNotification({
     required String senderPubkey,
     required String senderName,
     required String message,
     bool showActions = true,
   }) async {
-    // Simpan pesan ke history untuk stacking
-    _messageHistory[senderPubkey] ??= [];
-    _messageHistory[senderPubkey]!.add({
+    // Mobile-only feature: skip on web (plugin not supported)
+    if (kIsWeb) return;
+
+    // Suppress if user is already viewing this chat in foreground
+    if (_shouldSuppressNotification(senderPubkey)) {
+      return;
+    }
+
+    // Append to history for this contact
+    final history = _messageHistory.putIfAbsent(senderPubkey, () => []);
+    history.add({
       'sender': senderName,
       'message': message,
       'time': DateTime.now().millisecondsSinceEpoch.toString(),
     });
 
-    // Batasi history maksimal 10 pesan per kontak
-    if (_messageHistory[senderPubkey]!.length > 10) {
-      _messageHistory[senderPubkey]!.removeAt(0);
+    // Cap history at 10 messages per contact
+    if (history.length > 10) {
+      history.removeAt(0);
     }
 
-    // Bangun MessagingStyle dari history
-    final List<Message> styleMessages = _messageHistory[senderPubkey]!
+    // Build MessagingStyle messages
+    final List<Message> styleMessages = history
         .map((m) => Message(
       m['message']!,
       DateTime.fromMillisecondsSinceEpoch(int.parse(m['time']!)),
-      Person(
-        name: m['sender']!,
-        key: senderPubkey,
-        important: false,
-      ),
+      Person(name: m['sender']!, key: senderPubkey, important: false),
     ))
         .toList();
 
     final MessagingStyleInformation messagingStyle = MessagingStyleInformation(
-      const Person(name: 'Saya', key: 'me'),
+      const Person(name: 'You', key: 'me'),
       conversationTitle: senderName,
       groupConversation: false,
       messages: styleMessages,
     );
 
-    // Action: Reply langsung dari notification bar
+    // Action: inline reply
     const AndroidNotificationAction replyAction = AndroidNotificationAction(
       _replyActionId,
-      'Balas',
-      inputs: [
-        AndroidNotificationActionInput(
-          label: 'Tulis pesan...',
-        ),
-      ],
+      'Reply',
+      inputs: [AndroidNotificationActionInput(label: 'Type a message...')],
       showsUserInterface: false,
       cancelNotification: false,
     );
 
-    // Action: Tandai Dibaca
+    // Action: mark as read
     const AndroidNotificationAction markReadAction = AndroidNotificationAction(
       _markReadActionId,
-      'Tandai Dibaca',
+      'Mark as Read',
       cancelNotification: true,
     );
 
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
-      channelDescription: 'Notifikasi untuk pesan chat',
+      channelDescription: _channelDescription,
       importance: Importance.high,
       priority: Priority.high,
       category: AndroidNotificationCategory.message,
       visibility: NotificationVisibility.private,
       styleInformation: messagingStyle,
       actions: showActions ? [replyAction, markReadAction] : [],
-      // Grouping: semua pesan dari kontak yang sama masuk ke satu notifikasi
-      groupKey: 'chatme_$senderPubkey',
-      setAsGroupSummary: false,
+      groupKey: _groupKey,
       icon: '@mipmap/ic_launcher',
-      largeIcon: null,
       autoCancel: true,
       ongoing: false,
+      onlyAlertOnce: false,
     );
 
-    final NotificationDetails notificationDetails = NotificationDetails(
-      android: androidDetails,
-    );
-
-    // ID notifikasi konsisten per kontak (bukan random)
-    final int notifId = senderPubkey.hashCode.abs() % 2147483647;
+    final NotificationDetails details = NotificationDetails(android: androidDetails);
+    final int notifId = _notificationId(senderPubkey);
 
     try {
-      await _notificationsPlugin.show(
-        notifId,
-        senderName,
-        message,
-        notificationDetails,
-        payload: senderPubkey, // payload = senderPubkey untuk navigasi
-      );
-      debugPrint('✅ Notifikasi ditampilkan untuk: $senderName');
+      await _plugin.show(notifId, senderName, message, details, payload: senderPubkey);
+      await _showSummaryIfNeeded();
     } catch (e) {
-      debugPrint('❌ Failed to display notification: $e');
+      debugPrint('[Notification] Show failed | $e');
     }
   }
 
-  /// Hapus notifikasi spesifik satu kontak (setelah chat dibuka / mark as read)
+  /// Show or update the group summary notification.
+  static Future<void> _showSummaryIfNeeded() async {
+    final activeCount = _messageHistory.length;
+    if (activeCount < 2) return;
+
+    final total = _messageHistory.values.fold<int>(0, (sum, list) => sum + list.length);
+
+    const AndroidNotificationDetails summaryDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: _channelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      category: AndroidNotificationCategory.message,
+      groupKey: _groupKey,
+      setAsGroupSummary: true,
+      icon: '@mipmap/ic_launcher',
+      autoCancel: true,
+    );
+
+    try {
+      await _plugin.show(
+        _summaryNotificationId,
+        'ChatMe',
+        '$total new messages from $activeCount conversation${activeCount > 1 ? "s" : ""}',
+        const NotificationDetails(android: summaryDetails),
+      );
+    } catch (e) {
+      debugPrint('[Notification] Summary show failed | $e');
+    }
+  }
+
+  /// Dismiss notification for a specific contact.
   static Future<void> clearNotification(String senderPubkey) async {
-    final int notifId = senderPubkey.hashCode.abs() % 2147483647;
-    await _notificationsPlugin.cancel(notifId);
+    final int notifId = _notificationId(senderPubkey);
+    await _plugin.cancel(notifId);
     _messageHistory.remove(senderPubkey);
-    debugPrint('🧹 Notifikasi dihapus untuk: $senderPubkey');
+
+    if (_messageHistory.length < 2) {
+      await _plugin.cancel(_summaryNotificationId);
+    } else {
+      await _showSummaryIfNeeded();
+    }
   }
 
-  /// Hapus semua notifikasi (misal saat user buka app)
+  /// Dismiss all chat notifications.
   static Future<void> clearAllNotifications() async {
-    await _notificationsPlugin.cancelAll();
+    await _plugin.cancelAll();
     _messageHistory.clear();
-    debugPrint('🧹 Semua notifikasi dihapus');
   }
 
-  /// Fallback: tampilkan notifikasi sederhana (untuk non-chat, misal panggilan)
+  /// Simple notification for calls / non-chat events.
   static Future<void> showNotification({
     required int id,
     required String title,
@@ -318,30 +390,26 @@ class NotificationHandler {
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
-      channelDescription: 'Notifikasi untuk pesan chat',
+      channelDescription: _channelDescription,
       importance: Importance.high,
-      icon: '@mipmap/ic_launcher',
       priority: Priority.high,
       category: AndroidNotificationCategory.call,
       visibility: NotificationVisibility.public,
       fullScreenIntent: true,
       autoCancel: true,
-    );
-
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidDetails,
+      icon: '@mipmap/ic_launcher',
     );
 
     try {
-      await _notificationsPlugin.show(
+      await _plugin.show(
         id,
         title,
         body,
-        notificationDetails,
+        const NotificationDetails(android: androidDetails),
         payload: payload,
       );
     } catch (e) {
-      debugPrint('❌ Failed to display notification: $e');
+      debugPrint('[Notification] Show simple failed | $e');
     }
   }
 }

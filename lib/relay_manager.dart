@@ -30,14 +30,15 @@ class RelayManager {
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://nostr.mom',
-    'wss://relay.primal.net',
     'wss://relay.mostr.pub',
+    'wss://relay.primal.net',
   ];
 
   final Map<String, WebSocketChannel> _connections = {};
   final Map<String, bool> _connectionStatus = {};
   final Map<String, Timer> _pingTimers = {};
   final Map<String, int> _reconnectAttempts = {};
+  final Set<String> _reconnectScheduled = {};
   final Set<String> _processedEventIds = {};
   Timer? _cleanupTimer;
   Timer? _queueTimer;
@@ -100,6 +101,8 @@ class RelayManager {
 
     _connections.clear();
     _connectionStatus.clear();
+    _reconnectAttempts.clear();
+    _reconnectScheduled.clear();
     _isInitialized = false;
     _isConnecting = false;
     _isConnected.value = false;
@@ -112,10 +115,11 @@ class RelayManager {
 
       final channel = WebSocketChannel.connect(Uri.parse(relayUrl));
       _connections[relayUrl] = channel;
-      _reconnectAttempts[relayUrl] = 0;
 
       channel.ready.then((_) {}, onError: (e) {
-        _handleError(relayUrl, e);
+        if (_connections[relayUrl] == channel) {
+          _handleError(relayUrl, e);
+        }
       });
 
       final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -171,14 +175,29 @@ class RelayManager {
           _updateConnectionStatus();
           _handleData(data, relayUrl);
         },
-        onError: (e) => _handleError(relayUrl, e),
-        onDone: () => _handleDisconnect(relayUrl),
+        onError: (e) {
+          if (_connections[relayUrl] == channel) {
+            _handleError(relayUrl, e);
+          }
+        },
+        onDone: () {
+          if (_connections[relayUrl] == channel) {
+            _handleDisconnect(relayUrl);
+          }
+        },
         cancelOnError: true,
       );
 
       _connectionStatus[relayUrl] = true;
       _updateConnectionStatus();
       DebugLogger.log('[Relay] Connected: $relayUrl');
+
+      Future.delayed(const Duration(seconds: 10), () {
+        if (_connections[relayUrl] == channel &&
+            _connectionStatus[relayUrl] == true) {
+          _reconnectAttempts[relayUrl] = 0;
+        }
+      });
 
       Future.delayed(const Duration(milliseconds: 800), () {
         if (_isConnected.value) _processOfflineQueue();
@@ -217,31 +236,40 @@ class RelayManager {
   }
 
   Future<void> _handleEvent(List<dynamic> decoded, String url) async {
-    final event = decoded[2] as Map<String, dynamic>;
+    if (decoded.length <= 2) return;
+
+    final rawEvent = decoded[2];
+    if (rawEvent is! Map) return;
+    final event = rawEvent as Map<String, dynamic>;
+
     final eventId = event['id']?.toString() ?? '';
-    final kind = event['kind'] as int? ?? 0;
-    final createdAt = event['created_at'] as int? ?? 0;
+    final kind = event['kind'] is int ? event['kind'] as int : 0;
+    final createdAt = event['created_at'] is int ? event['created_at'] as int : 0;
 
     // Cache profile picture from kind 0 events (only if it's newer)
     if (kind == 0) {
-      final pubkey = event['pubkey'] as String?;
+      final pubkey = event['pubkey'] is String ? event['pubkey'] as String : null;
       if (pubkey != null) {
         try {
-          final rawContent = event['content'] as String?;
-          if (rawContent != null && rawContent.trim().startsWith('{')) {
-            final content = jsonDecode(rawContent) as Map<String, dynamic>?;
-            final picture = content?['picture'] as String?;
+          final rawContent = event['content'];
+          if (rawContent is String && rawContent.trim().startsWith('{')) {
+            final content = jsonDecode(rawContent);
+            if (content is Map<String, dynamic>) {
+              final picture = content['picture'] is String ? content['picture'] as String : null;
 
-            final lastProcessed = _lastKind0Timestamp[pubkey] ?? 0;
-            if (createdAt >= lastProcessed) {
-              _lastKind0Timestamp[pubkey] = createdAt;
+              final lastProcessed = _lastKind0Timestamp[pubkey] ?? 0;
+              if (createdAt >= lastProcessed) {
+                _lastKind0Timestamp[pubkey] = createdAt;
 
-              if (picture != null && picture.isNotEmpty) {
-                _profilePics.put(pubkey, picture);
-              } else {
-                _profilePics.delete(pubkey);
+                if (picture != null && picture.isNotEmpty) {
+                  _profilePics.put(pubkey, picture);
+                } else {
+                  _profilePics.delete(pubkey);
+                }
+                try {
+                  onMessageReceived?.call();
+                } catch (_) {}
               }
-              onMessageReceived?.call();
             }
           }
         } catch (e) {
@@ -443,6 +471,7 @@ class RelayManager {
 
       await ChatManager.instance.saveMessage(chatMessage);
       await ChatManager.instance.repairReplyContent(eventId, decrypted, chatKey);
+      await ChatManager.instance.repairPendingReplies(chatKey);
       await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExists);
 
       if (onMessageReceived != null) onMessageReceived!();
@@ -596,7 +625,7 @@ class RelayManager {
     required String senderName,
     required String ciphertext,
   }) async {
-    const workerUrl = 'https://chatme-notifier.ismaelurzaizaranda.workers.dev/';
+    const workerUrl = 'https://chatme-notifier.cintanyanessa.workers.dev/';
     const secretKey = 'chatme2026secret';
 
     try {
@@ -676,21 +705,25 @@ class RelayManager {
         final sub = entry.value.stream.listen((data) {
           try {
             final decoded = jsonDecode(data.toString());
-            if (decoded is List && decoded[0] == "EVENT") {
-              final event = decoded[2] as Map<String, dynamic>;
+            if (decoded is List && decoded.length > 2 && decoded[0] == "EVENT") {
+              final rawEvent = decoded[2];
+              if (rawEvent is! Map) return;
+              final event = rawEvent as Map<String, dynamic>;
               if (event['kind'] == 0 && event['pubkey'] == pubkey) {
-                final rawContent = event['content'] as String?;
-                if (rawContent != null && rawContent.trim().startsWith('{')) {
-                  final content = jsonDecode(rawContent) as Map<String, dynamic>?;
-                  final picture = content?['picture'] as String?;
+                final rawContent = event['content'];
+                if (rawContent is String && rawContent.trim().startsWith('{')) {
+                  final content = jsonDecode(rawContent);
+                  if (content is Map<String, dynamic>) {
+                    final picture = content['picture'] is String ? content['picture'] as String : null;
 
-                  if (picture != null && picture.isNotEmpty && !completer.isCompleted) {
-                    // Simpan ke Hive tanpa await (fire-and-forget)
-                    _profilePics.put(pubkey, picture).then((_) {
-                      if (!completer.isCompleted) {
-                        completer.complete(picture);
-                      }
-                    });
+                    if (picture != null && picture.isNotEmpty && !completer.isCompleted) {
+                      // Simpan ke Hive tanpa await (fire-and-forget)
+                      _profilePics.put(pubkey, picture).then((_) {
+                        if (!completer.isCompleted) {
+                          completer.complete(picture);
+                        }
+                      });
+                    }
                   }
                 }
               }
@@ -1046,11 +1079,17 @@ class RelayManager {
   }
 
   void _scheduleReconnect(String url) {
+    if (_reconnectScheduled.contains(url)) return;
+
     final attempts = _reconnectAttempts[url] ?? 0;
     if (attempts > 10) return;
 
+    _reconnectScheduled.add(url);
+
     final delay = Duration(seconds: min(5 * (1 << attempts), 60));
     Future.delayed(delay, () {
+      _reconnectScheduled.remove(url);
+
       if (_connections.containsKey(url) && _connectionStatus[url] == false) {
         _reconnectAttempts[url] = attempts + 1;
         _connectToRelay(url, AppSettings.instance.myPubkey);
@@ -1085,7 +1124,12 @@ class RelayManager {
     DebugLogger.log('[Queue] Processing ${pendingMessages.length} pending message(s)');
 
     try {
-      for (var msg in pendingMessages) {
+      for (var snapshot in pendingMessages) {
+        // Re-fetch from Hive — replyToId may have been updated by a previous iteration
+        final msg = await ChatManager.instance.getMessageById(snapshot.id, snapshot.chatKey);
+        if (msg == null) continue;
+        if (msg.status == 'sent' || msg.status == 'read') continue;
+
         String ciphertext = msg.content;
 
         if (ciphertext.isEmpty) {

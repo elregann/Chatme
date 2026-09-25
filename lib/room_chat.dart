@@ -89,6 +89,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     WidgetsBinding.instance.addObserver(this);
     NotificationHandler.clearNotification(widget.contact.pubkey);
     widget.relayManager.currentlyChattingWith = widget.contact.pubkey;
+    NotificationHandler.activeChatPubkey = widget.contact.pubkey;
     widget.relayManager.onMessageReceived = () async {
       if (!mounted) return;
 
@@ -121,6 +122,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _removeReactionOverlay();
 
     widget.relayManager.currentlyChattingWith = null;
+    NotificationHandler.activeChatPubkey = null;
     widget.relayManager.onMessageReceived = null;
 
     _floatingDateTimer?.cancel();
