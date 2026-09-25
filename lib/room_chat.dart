@@ -18,6 +18,7 @@ import 'notification_handler.dart';
 import 'package:remixicon/remixicon.dart';
 import 'core/utils/debug_logger.dart';
 import 'widgets/user_avatar.dart';
+import 'core/utils/key_utils.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -143,9 +144,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     });
 
     final offset = _scrollController.offset;
-
     final nearBottom = offset < 120;
-
     final showButton = offset > 600;
 
     if (nearBottom != _userIsNearBottom || showButton != _showScrollButton) {
@@ -181,7 +180,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final double scrollOffset = _scrollController.offset;
     final double viewportHeight = _scrollController.position.viewportDimension;
-
     final double targetPoint = scrollOffset + (viewportHeight * 0.2);
 
     int index = (targetPoint / ( _scrollController.position.maxScrollExtent / messages.length )).floor();
@@ -236,7 +234,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   void _scrollToBottom({bool force = false}) {
     if (!_scrollController.hasClients) return;
-    setState(() => _newMessagesCount = 0); // Reset badge
+    setState(() => _newMessagesCount = 0);
     _scrollController.animateTo(
       0.0,
       duration: const Duration(milliseconds: 300),
@@ -244,15 +242,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  // =============================
-  // MESSAGE STATE
-  // =============================
-
   Future<void> _markAllAsRead() async {
     if (!mounted) return;
 
     final peerPubkey = widget.contact.pubkey;
-
     final messages = await ChatManager.instance.getMessages(peerPubkey);
 
     bool updated = false;
@@ -279,7 +272,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
 
-    // New Logic: Auto-Save for Global Users ---------
+    // Auto-register unknown contacts so they appear in Chats tab
     final contactsBox = Hive.box<Contact>('contacts');
     if (!contactsBox.containsKey(widget.contact.pubkey)) {
       final newContact = Contact(
@@ -291,9 +284,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         unreadCount: 0,
       );
       await contactsBox.put(widget.contact.pubkey, newContact);
-      DebugLogger.log('New temporary contact registered for Tab Chats', type: 'DATABASE');
+      DebugLogger.log('[Chat] Temporary contact registered: ${widget.contact.name}', type: 'DATABASE');
     }
-    // -----------------------------------------------
 
     final replyId = _replyingTo?.id;
     final replyContent = _replyingTo?.plaintext;
@@ -336,14 +328,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       );
 
       await ChatManager.instance.updateMessageIdAndStatus(
-          tempId,
-          event['id'].toString(),
-          'sending',
-          chatKey
+        tempId,
+        event['id'].toString(),
+        'sending',
+        chatKey,
+        newContent: event['content'].toString(),
       );
 
       _maybeAutoScroll(force: true);
     } catch (e) {
+      // Offline fallback: encrypt now and queue as pending
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
       final myPrivkey = AppSettings.instance.myPrivkey;
 
@@ -358,7 +352,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       await ChatManager.instance.saveMessage(pendingMessage);
       await ChatManager.instance.deleteMessage(tempId, chatKey);
 
-      debugPrint('Messages are saved to the pending queue because they are offline.');
+      DebugLogger.log('[Chat] Message queued for offline delivery', type: 'INFO');
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -426,7 +420,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               mainAxisSize: MainAxisSize.min,
               children: [
                 ..._quickReactions.map((emoji) => _buildEmojiButton(emoji)),
-                // add separator
                 Container(
                   width: 1,
                   height: 30,
@@ -434,14 +427,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                 ),
                 _buildMoreButton(iconColor),
-                // add separator
                 Container(
                   width: 1,
                   height: 30,
                   color: borderColor,
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                 ),
-                // button copy
                 GestureDetector(
                   onTap: () {
                     if (_messageForReaction != null) {
@@ -521,7 +512,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       }
 
       await widget.relayManager.sendReaction(
-        messageId: targetId, // targetEventId: targetId,
+        messageId: targetId,
         receiverPubkey: widget.contact.pubkey,
         emoji: emoji,
       );
@@ -529,7 +520,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       _messageForReaction = null;
 
     } catch (e) {
-      debugPrint('❌ Error in _handleReaction: $e');
+      DebugLogger.log('[Reaction] Handle failed | $e', type: 'ERROR');
       _messageForReaction = null;
     }
   }
@@ -548,14 +539,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     const accentColor = Color(0xFF1976D2);
 
-    // Ambil ukuran layar HP
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-
-    // Tentukan tinggi dialog responsif (70% layar)
     final dialogHeight = screenHeight * 0.7;
-
-    // Tentukan jumlah kolom berdasarkan lebar layar
     final crossAxisCount = screenWidth < 360 ? 5 : 6;
 
     showDialog(
@@ -566,14 +552,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           backgroundColor: bgColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Container(
-            width: screenWidth * 0.9, // 90% lebar layar
+            width: screenWidth * 0.9,
             constraints: BoxConstraints(maxHeight: dialogHeight),
             padding: const EdgeInsets.all(16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header Section
                 Row(
                   children: [
                     Expanded(
@@ -616,12 +601,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                 ),
 
                 const SizedBox(height: 12),
-
                 Divider(height: 0.5, thickness: 0.5, color: borderColor),
-
                 const SizedBox(height: 12),
 
-                // Grid Emoji - Responsif
                 Flexible(
                   child: GridView.builder(
                     shrinkWrap: true,
@@ -667,12 +649,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                 ),
 
                 const SizedBox(height: 12),
-
                 Divider(height: 0.5, thickness: 0.5, color: borderColor),
-
                 const SizedBox(height: 12),
 
-                // Cancel Button
                 Row(
                   children: [
                     Expanded(
@@ -736,8 +715,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         : AppSettings.formatDisplayName(senderPubkey);
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -749,14 +726,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final chatKey = ChatManager.instance.getChatKey(AppSettings.instance.myPubkey, widget.contact.pubkey);
 
-    // Warna Header & Divider
     final headerColor = isDark ? const Color(0xFF121212) : Colors.white;
     final accentColor = isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2);
     final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
 
     return Scaffold(
       backgroundColor: isDark
-          // Background Roomchat
           ? const Color(0xFF121212)
           : const Color(0xFFE5DDD5),
       resizeToAvoidBottomInset: true,
@@ -774,12 +749,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         ),
         title: GestureDetector(
           onTap: () {
-            Clipboard.setData(ClipboardData(text: widget.contact.pubkey));
+            // Copy npub to clipboard when header tapped
+            Clipboard.setData(ClipboardData(text: KeyUtils.toNpub(widget.contact.pubkey)));
             HapticFeedback.lightImpact();
           },
           child: Row(
             children: [
-              // profile picture
               UserAvatar(
                 pubkey: widget.contact.pubkey,
                 name: displayName,
@@ -795,7 +770,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                         fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black),
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text('${widget.contact.pubkey.substring(0, 16)}...',
+                    // Show short npub instead of raw hex
+                    Text(AppSettings.formatDisplayName(widget.contact.pubkey),
                         style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54)),
                   ],
                 ),
@@ -909,7 +885,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                             Padding(
                               padding: EdgeInsets.only(top: topPadding),
                               child: message.senderPubkey == AppSettings.instance.myPubkey
-                                  ? _wrapMyDismissible(message)      // pesan sendiri
+                                  ? _wrapMyDismissible(message)
                                   : _wrapTheirDismissible(message),
                             ),
                           ],
@@ -937,15 +913,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     ),
                     if (_showScrollButton)
                       Positioned(
-                        bottom: 20, // Sedikit lebih tinggi agar tidak menumpuk
-                        right: 16, // Jarak ideal dari pinggir kanan
+                        bottom: 20,
+                        right: 16,
                         child: GestureDetector(
                           onTap: () => _scrollToBottom(),
                           child: Container(
-                            width: 38, // Ukuran lingkaran kecil yang pas
+                            width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              // Mengikuti tema minimalis Abu-abu/Hitam
                               color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
                               shape: BoxShape.circle,
                               border: Border.all(
@@ -961,7 +936,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                               ],
                             ),
                             child: Icon(
-                              Icons.keyboard_arrow_down_rounded, // Icon "v" halus
+                              Icons.keyboard_arrow_down_rounded,
                               color: isDark ? Colors.white70 : Colors.black87,
                               size: 24,
                             ),
@@ -1078,7 +1053,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       ),
                     ),
                   ),
-                  // Tombol Send
                   Container(
                     height: containerHeight,
                     alignment: Alignment.center,
@@ -1119,14 +1093,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Nama tetap Biru sesuai permintaan
     final nameColor = isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2);
-
-    // Background Kotak
     final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);
-
     final previewTextColor = isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153);
-
     final iconThemeColor = isDark ? Colors.white70 : Colors.black87;
 
     return Container(
@@ -1135,13 +1104,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(18), // Kiri kanan atas bagian reply dalam
+            top: Radius.circular(18),
             bottom: Radius.circular(8)
         ),
       ),
       child: Row(
         children: [
-          // Ikon Reply warna tema flat
           Icon(Icons.reply, color: iconThemeColor, size: 20),
           const SizedBox(width: 10),
           Expanded(
@@ -1151,7 +1119,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                 Text(
                     _getReplyName(_replyingTo!.senderPubkey),
                     style: TextStyle(
-                        color: nameColor, // Tetap Biru
+                        color: nameColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 12
                     )
@@ -1183,7 +1151,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  // (isMe = true)
   Widget _wrapMyDismissible(ChatMessage message) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDragging = _draggingId == message.id;
@@ -1256,7 +1223,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  // (isMe = false)
   Widget _wrapTheirDismissible(ChatMessage message) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDragging = _draggingId == message.id;
@@ -1329,24 +1295,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  // Adjusting the spacing of message bubbles and when there is a reaction to a message
   Widget _buildMessageBubble(ChatMessage message) {
     final theme = Theme.of(context);
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
     final isDark = theme.brightness == Brightness.dark;
 
-    // LOGIKA JAM
     final is24Hour = MediaQuery.of(context).alwaysUse24HourFormat;
     final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a').format(
         DateTime.fromMillisecondsSinceEpoch(message.timestamp)
     );
 
-    // Tema Bubble
     final bubbleColor = isMe
         ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
         : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF));
 
-    // Teks: Terang (Hitam), Gelap (Putih)
     final textColor = isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
 
     final hasReactions = message.reactions.isNotEmpty;
@@ -1477,51 +1439,50 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final contentColor = isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153);
 
     return GestureDetector(
-        onTap: () => _scrollToMessage(message.replyToId),
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(0, 10, 0, 0),
-      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(10),
-            bottom: Radius.circular(10)
-        ),
-        border: const Border(
-          left: BorderSide(
-              color: nameColor,
-              width: 4
+      onTap: () => _scrollToMessage(message.replyToId),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(0, 10, 0, 0),
+        padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(10),
+              bottom: Radius.circular(10)
           ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            senderName,
-            style: const TextStyle(
-              color: nameColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
+          border: const Border(
+            left: BorderSide(
+                color: nameColor,
+                width: 4
             ),
           ),
-          Text(
-            message.replyToContent ?? "",
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: contentColor,
-              fontSize: 12,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              senderName,
+              style: const TextStyle(
+                color: nameColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
             ),
-          ),
-        ],
+            Text(
+              message.replyToContent ?? "",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: contentColor,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 
-  // display reactions
   Widget _buildReactionsDisplay(ChatMessage message, bool isMe, Color textColor) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -1530,12 +1491,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF202C33) : const Color(0xFFF0F0F0),
         borderRadius: BorderRadius.circular(12),
-
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.black12,
           width: 0.5,
         ),
-
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(25),
@@ -1608,8 +1567,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
-              // Header
               Row(
                 children: [
                   Expanded(
@@ -1649,12 +1606,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               ),
 
               const SizedBox(height: 16),
-
               Divider(height: 0.5, thickness: 0.5, color: borderColor),
-
               const SizedBox(height: 16),
 
-              // Input
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,
@@ -1676,7 +1630,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
               const SizedBox(height: 20),
 
-              // Buttons
               Row(
                 children: [
                   Expanded(

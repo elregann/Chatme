@@ -6,24 +6,24 @@ import 'ecdh_engine.dart';
 import 'crypto_utils.dart';
 
 class Nip04 {
-  /// Enkripsi plaintext sesuai standar NIP-04.
+  /// Encrypt plaintext per NIP-04 spec.
   ///
-  /// [plaintext]  : pesan asli yang akan dienkripsi
-  /// [myPriv]     : private key pengirim (hex, 32 byte)
-  /// [peerPub]    : public key penerima (hex, 32 byte x-only atau 33 byte compressed)
+  /// [plaintext] : message to encrypt
+  /// [myPriv]    : sender private key (hex, 32 bytes)
+  /// [peerPub]   : recipient public key (hex, 32-byte x-only or 33-byte compressed)
   ///
-  /// Returns string dengan format: "<ciphertext_base64>?iv=<iv_base64>"
+  /// Returns "<ciphertext_base64>?iv=<iv_base64>".
   static String encrypt(String plaintext, String myPriv, String peerPub) {
     try {
-      if (plaintext.isEmpty) throw Exception('Plaintext kosong');
+      if (plaintext.isEmpty) throw Exception('Empty plaintext');
 
-      // 1. Hitung shared secret: koordinat x mentah (tanpa hash)
+      // 1. Compute shared secret: raw x coordinate (no hash)
       final sharedX = ECDH.computeSharedSecretRaw(myPriv, peerPub);
 
-      // 2. Generate IV random 16 byte (CBC membutuhkan block size 16)
+      // 2. Generate random 16-byte IV (CBC block size)
       final ivBytes = CryptoUtils.generateSecureRandomBytes(16);
 
-      // 3. Enkripsi dengan AES-256-CBC
+      // 3. Encrypt with AES-256-CBC
       final key = encrypt_lib.Key(sharedX);
       final iv = encrypt_lib.IV(ivBytes);
       final encrypter = encrypt_lib.Encrypter(
@@ -32,38 +32,38 @@ class Nip04 {
 
       final encrypted = encrypter.encrypt(plaintext, iv: iv);
 
-      // 4. Format output NIP-04: "ciphertext?iv=ivBase64"
+      // 4. Format NIP-04 output: "ciphertext?iv=ivBase64"
       final ivBase64 = base64.encode(ivBytes);
       return '${encrypted.base64}?iv=$ivBase64';
     } catch (e) {
-      throw Exception('NIP-04 enkripsi gagal: $e');
+      throw Exception('NIP-04 encrypt failed: $e');
     }
   }
 
-  /// Dekripsi payload NIP-04.
+  /// Decrypt NIP-04 payload.
   ///
-  /// [payload]  : string format "<ciphertext_base64>?iv=<iv_base64>"
-  /// [myPriv]   : private key penerima (hex)
-  /// [peerPub]  : public key pengirim (hex)
+  /// [payload] : string in "<ciphertext_base64>?iv=<iv_base64>" format
+  /// [myPriv]  : recipient private key (hex)
+  /// [peerPub] : sender public key (hex)
   ///
-  /// Returns plaintext asli.
+  /// Returns the original plaintext.
   static String decrypt(String payload, String myPriv, String peerPub) {
     try {
-      if (payload.isEmpty) throw Exception('Payload kosong');
+      if (payload.isEmpty) throw Exception('Empty payload');
 
-      // 1. Parse format "ciphertext?iv=..."
+      // 1. Parse "ciphertext?iv=..." format
       final parts = payload.split('?iv=');
       if (parts.length != 2) {
-        throw Exception('Format NIP-04 tidak valid, harus "ciphertext?iv=..."');
+        throw Exception('Invalid NIP-04 format, expected "ciphertext?iv=..."');
       }
 
       final ciphertextBase64 = parts[0];
       final ivBase64 = parts[1];
 
-      // 2. Hitung shared secret yang sama
+      // 2. Compute the same shared secret
       final sharedX = ECDH.computeSharedSecretRaw(myPriv, peerPub);
 
-      // 3. Dekripsi AES-256-CBC
+      // 3. Decrypt with AES-256-CBC
       final key = encrypt_lib.Key(sharedX);
       final iv = encrypt_lib.IV.fromBase64(ivBase64);
       final encrypter = encrypt_lib.Encrypter(
@@ -72,11 +72,11 @@ class Nip04 {
 
       return encrypter.decrypt64(ciphertextBase64, iv: iv);
     } catch (e) {
-      throw Exception('NIP-04 dekripsi gagal: $e');
+      throw Exception('NIP-04 decrypt failed: $e');
     }
   }
 
-  /// Cek apakah sebuah string adalah format NIP-04 yang valid.
+  /// Check if a string is a valid NIP-04 payload format.
   static bool isValidPayload(String payload) {
     final parts = payload.split('?iv=');
     if (parts.length != 2) return false;

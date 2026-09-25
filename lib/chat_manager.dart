@@ -103,7 +103,7 @@ class ChatManager {
         await chatsBox.put(chatKey, messages);
         await _updateContactPreview(message);
       } catch (e) {
-        DebugLogger.log('❌ Error saving message: $e', type: 'ERROR');
+        DebugLogger.log('[Message] Save failed | $e', type: 'ERROR');
       }
     });
   }
@@ -113,15 +113,12 @@ class ChatManager {
       final settingsBox = Hive.box('settings');
       final eventId = message.id;
 
-      // Cek apakah eventId ini sudah dinotifikasi via FCM
       final alreadyNotified = settingsBox.get('notified_$eventId', defaultValue: false) as bool;
       if (alreadyNotified) {
-        // Hapus flag, skip show notif
         await settingsBox.delete('notified_$eventId');
         return;
       }
 
-      // Belum dinotifikasi, show notif seperti biasa
       final contact = Hive.box<Contact>('contacts').get(message.senderPubkey);
       final senderName = contact?.name ?? AppSettings.formatDisplayName(message.senderPubkey);
       NotificationHandler.showChatNotification(
@@ -130,7 +127,7 @@ class ChatManager {
         message: message.plaintext,
       );
     } catch (e) {
-      DebugLogger.log('❌ Error _triggerNotification: $e', type: 'ERROR');
+      DebugLogger.log('[Notification] Trigger failed | $e', type: 'ERROR');
     }
   }
 
@@ -173,7 +170,7 @@ class ChatManager {
       NotificationHandler.clearNotification(receiverPubkey);
 
     } catch (e) {
-      DebugLogger.log('❌ sendReplyFromNotification error: $e', type: 'ERROR');
+      DebugLogger.log('[Notification] Reply send failed | $e', type: 'ERROR');
     }
   }
 
@@ -189,7 +186,7 @@ class ChatManager {
           }
         }
       } catch (e) {
-        DebugLogger.log('❌ Error updateMessageStatus: $e');
+        DebugLogger.log('[Message] Status update failed | $e', type: 'ERROR');
       }
     });
   }
@@ -223,7 +220,11 @@ class ChatManager {
         final dynamic rawData = chatsBox.get(key);
         if (rawData is List) {
           for (var m in rawData.cast<ChatMessage>()) {
-            if (m.status == 'pending' || (m.status == 'sending' && (now - m.timestamp) > 10000)) {
+            final bool isPending = m.status == 'pending';
+            final bool isError = m.status == 'error';
+            final bool isStuckSending = m.status == 'sending' && (now - m.timestamp) > 10000;
+
+            if (isPending || isError || isStuckSending) {
               pendingQueue.add(m);
             }
           }
@@ -231,12 +232,18 @@ class ChatManager {
       }
       pendingQueue.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     } catch (e) {
-      DebugLogger.log('❌ Error getPendingMessages: $e');
+      DebugLogger.log('[Queue] Load pending failed | $e', type: 'ERROR');
     }
     return pendingQueue;
   }
 
-  Future<void> updateMessageIdAndStatus(String oldId, String newId, String status, String chatKey) async {
+  Future<void> updateMessageIdAndStatus(
+      String oldId,
+      String newId,
+      String status,
+      String chatKey, {
+        String? newContent,
+      }) async {
     await _lock.synchronized(() async {
       try {
         final chatsBox = Hive.box('chats');
@@ -245,13 +252,25 @@ class ChatManager {
           List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
           final index = messages.indexWhere((m) => m.id == oldId);
           if (index != -1) {
-            messages[index] = messages[index].copyWith(id: newId, status: status);
+            final currentStatus = messages[index].status;
+            String finalStatus = status;
+            if (currentStatus == 'read' &&
+                (status == 'sent' || status == 'pending' || status == 'sending')) {
+              finalStatus = 'read';
+            }
+            messages[index] = messages[index].copyWith(
+              id: newId,
+              status: finalStatus,
+              content: (newContent != null && newContent.isNotEmpty)
+                  ? newContent
+                  : messages[index].content,
+            );
             await chatsBox.put(chatKey, messages);
-            DebugLogger.log('🆔 ID Updated: $oldId -> $newId ($status)');
+            DebugLogger.log('[Message] ID updated: $oldId -> $newId ($finalStatus)');
           }
         }
       } catch (e) {
-        DebugLogger.log('❌ Error updateMessageIdAndStatus: $e');
+        DebugLogger.log('[Message] ID & status update failed | $e', type: 'ERROR');
       }
     });
   }
@@ -269,7 +288,7 @@ class ChatManager {
         await contactsBox.put(peerPubkey, contact);
       }
     } catch (e) {
-      DebugLogger.log('❌ Error updating contact preview: $e');
+      DebugLogger.log('[Contact] Preview update failed | $e', type: 'ERROR');
     }
   }
 
@@ -309,7 +328,7 @@ class ChatManager {
           List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
           messages.removeWhere((m) => m.id == messageId);
           await chatsBox.put(chatKey, messages);
-          DebugLogger.log('🗑️ Message deleted: $messageId');
+          DebugLogger.log('[Message] Deleted: $messageId');
         }
       } catch (_) {}
     });
@@ -336,7 +355,7 @@ class ChatManager {
         }
       }
     } catch (e) {
-      DebugLogger.log('❌ Error deleteChatHistory: $e');
+      DebugLogger.log('[Chat] Delete history failed | $e', type: 'ERROR');
     }
   }
 

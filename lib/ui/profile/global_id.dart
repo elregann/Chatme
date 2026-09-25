@@ -1,3 +1,5 @@
+// global_id.dart
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -34,12 +36,12 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
       const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
       final db = FirebaseDatabase.instanceFor(app: Firebase.app(), databaseURL: rtdbUrl);
 
-      // Cek nama baru
+      // Check if new name is available
       final newRef = db.ref("usernames/$newName");
       final snapshot = await newRef.get().timeout(const Duration(seconds: 10));
       if (snapshot.exists && snapshot.value != pubkey) return false;
 
-      // Hapus nama lama dulu
+      // Remove previous username mapping
       final oldNip05 = AppSettings.instance.myNip05;
       if (oldNip05.isNotEmpty) {
         final oldName = oldNip05.split('@')[0];
@@ -49,15 +51,15 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
         }
       }
 
-      // Daftarkan nama baru
+      // Register new username
       await newRef.set(pubkey);
 
-      // ✅ Reverse lookup
+      // Reverse lookup: pubkey -> username
       await db.ref("users/$pubkey").set(newName);
 
       return true;
     } catch (e) {
-      debugPrint('❌ claimUsername error: $e');
+      debugPrint('[GlobalID] claimUsername failed | $e');
       return false;
     }
   }
@@ -95,8 +97,7 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // Info
+            // Info banner
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -122,7 +123,7 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
 
             const SizedBox(height: 28),
 
-            // Current handle
+            // Current handle display
             if (hasHandle) ...[
               Text(
                 'CURRENT ID',
@@ -155,7 +156,7 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
               const SizedBox(height: 20),
             ],
 
-            // Input nama baru
+            // Username input
             Text(
               hasHandle ? 'CHANGE TO' : 'CLAIM USERNAME',
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
@@ -195,7 +196,7 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
 
             const SizedBox(height: 28),
 
-            // Claim button
+            // Claim / Update button
             GestureDetector(
               onTap: _isLoading ? null : () async {
                 final input = _controller.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '');

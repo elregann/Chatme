@@ -54,7 +54,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     setState(() => _isSearchingGlobal = true);
 
     try {
-      // Panggil Database
       final url = Uri.parse('https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app/usernames.json');
       final response = await http.get(url);
 
@@ -79,7 +78,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         });
       }
     } catch (e) {
-      DebugLogger.log('❌ Global Search Error: $e', type: 'ERROR');
+      DebugLogger.log('[Search] Global search failed | $e', type: 'ERROR');
       setState(() => _isSearchingGlobal = false);
     }
   }
@@ -114,11 +113,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
         setState(() => _searchQuery = "");
       }
     } catch (e) {
-      DebugLogger.log('❌ Quick Add Error: $e', type: 'ERROR');
+      DebugLogger.log('[Contact] Quick add failed | $e', type: 'ERROR');
     }
   }
 
-  // Add Contact
   Future<void> _addContact() async {
     await Navigator.push(
       context,
@@ -126,7 +124,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  // Hapus kontak
   Future<void> _deleteContact(Contact contact) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
@@ -145,8 +142,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
-              // Header
               Row(
                 children: [
                   Expanded(
@@ -186,13 +181,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
 
               const SizedBox(height: 16),
-
-              // Divider
               Divider(height: 0.5, thickness: 0.5, color: borderColor),
-
               const SizedBox(height: 16),
 
-              // Info
               Text(
                 'Chat history will remain after removal.',
                 style: TextStyle(fontSize: 13, color: textSecondary, height: 1.5),
@@ -200,7 +191,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
               const SizedBox(height: 20),
 
-              // Buttons
               Row(
                 children: [
                   Expanded(
@@ -261,7 +251,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       } else {
         await contactsBox.delete(contact.pubkey);
       }
-      DebugLogger.log('Contact removed from list: ${contact.name}', type: 'UI');
+      DebugLogger.log('[Contact] Removed: ${contact.name}', type: 'UI');
     }
   }
 
@@ -273,7 +263,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
         appBar: AppBar(
-          // toolbarHeight: 40,
           title: Text(
             'Contacts',
             style: TextStyle(
@@ -286,7 +275,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
         body: Column(
           children: [
-            // --- UI SEARCH BAR ---
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Container(
@@ -303,7 +291,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       _searchQuery = val.toLowerCase();
                     });
 
-                    // Debouncing: Tunggu user berhenti ngetik selama 500ms baru cari ke Firebase
+                    // Debounce 500ms before querying Firebase
                     if (_debounce?.isActive ?? false) _debounce!.cancel();
                     _debounce = Timer(const Duration(milliseconds: 500), () {
                       _searchGlobalUser(_searchQuery);
@@ -332,6 +320,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ),
               ),
             ),
+
             ValueListenableBuilder<CallState>(
               valueListenable: CallManager.instance.callStateNotifier,
               builder: (context, callState, _) {
@@ -347,12 +336,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
               },
             ),
 
-            // --- LIST AREA ---
             Expanded(
               child: ValueListenableBuilder<Box<Contact>>(
                 valueListenable: Hive.box<Contact>('contacts').listenable(),
                 builder: (context, box, _) {
-                  // Filter lokal berdasarkan search query
+                  // Local filter by search query
                   final contacts = box.values
                       .where((c) => c.isSaved == true)
                       .where((c) => _searchQuery.isEmpty || c.name.toLowerCase().contains(_searchQuery))
@@ -367,14 +355,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   return ListView(
                     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
-                      // SEKSI "GLOBAL SEARCH" (Hasil dari Firebase)
+                      // Global search results from Firebase
                       if (_searchQuery.length >= 2) ...[
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                           child: Text("GLOBAL SEARCH", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
                         ),
 
-                        // Tampilkan Loading jika sedang mencari
                         if (_isSearchingGlobal)
                           const Center(
                             child: Padding(
@@ -382,10 +369,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                             ),
                           )
-                        // Tampilkan hasil jika data ditemukan
                         else if (_globalSearchResults.isNotEmpty)
                           ..._globalSearchResults.map((res) => ListTile(
-                            // profile picture
                             leading: UserAvatar(
                               pubkey: res['pubkey'] ?? '',
                               name: res['username'],
@@ -396,17 +381,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               AppSettings.formatDisplayName(res['pubkey'] ?? ''),
                               style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
                             ),
-
-                            // SEBELAH KANAN: Jadi Button terpisah
                             trailing: IconButton(
                               icon: Icon(Remix.user_add_line, color: Theme.of(context).iconTheme.color),
                               onPressed: () {
-                                // Klik logonya baru beneran Add
                                 _quickAddFromGlobal(res['username']!, res['pubkey']!);
                               },
                             ),
-
-                            // AREA UTAMA: Klik masuk ke RoomChat (Tanpa Add)
                             onTap: () {
                               _searchFocusNode.unfocus();
 
@@ -431,7 +411,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               );
                             },
                           ))
-                        // Tampilkan pesan jika tidak ada hasil
                         else if (!_isSearchingGlobal && _globalSearchResults.isEmpty && _searchQuery.length > 1)
                             const Padding(
                               padding: EdgeInsets.all(16.0),
@@ -445,7 +424,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         ),
                       ],
 
-                      // SEKSI DAFTAR KONTAK SAYA
                       const Padding(
                         padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                         child: Text("MY CONTACTS", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
@@ -479,10 +457,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  // Widget tile kontak
   Widget _buildContactTile(Contact contact) {
     return ListTile(
-      // profile picture
       leading: UserAvatar(
         pubkey: contact.pubkey,
         name: contact.name,
@@ -511,7 +487,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  // Widget state kosong
   Widget _buildEmptyState() {
     return Center(
       child: Column(

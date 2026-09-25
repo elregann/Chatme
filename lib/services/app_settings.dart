@@ -25,47 +25,45 @@ class AppSettings {
   String myName = '';
   String myMnemonic = '';
   String myNip05 = '';
+  String myPhotoPath = '';
+  String myPhotoUrl = '';
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> load() async {
     try {
       final settingsBox = Hive.box('settings');
 
-      // 1. Ambil data yang sudah ada
+      // Load persisted values
       myPubkey = settingsBox.get('my_pubkey', defaultValue: '');
       myPrivkey = settingsBox.get('my_privkey', defaultValue: '');
       myMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
       myNip05 = settingsBox.get('my_nip05', defaultValue: '');
       myPhotoPath = settingsBox.get('my_photo_path', defaultValue: '');
-      myPhotoUrl  = settingsBox.get('my_photo_url', defaultValue: '');
+      myPhotoUrl = settingsBox.get('my_photo_url', defaultValue: '');
       isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
-
-      // Ambil nama yang sudah tersimpan
       myName = settingsBox.get('my_name', defaultValue: '');
 
-      // 2. Cek kalau User Baru (Pubkey masih kosong)
+      // Generate new identity if first launch
       if (myPubkey.isEmpty) {
         final keypair = _generateNostrKeypair();
         myPubkey = keypair['public']!;
         myPrivkey = keypair['private']!;
-
-        // BARU DI SINI KITA BUAT NAMANYA pakai Pubkey yang baru jadi
         myName = formatDisplayName(myPubkey);
 
         await settingsBox.put('my_pubkey', myPubkey);
         await settingsBox.put('my_privkey', myPrivkey);
         await settingsBox.put('my_name', myName);
 
-        DebugLogger.log('Generated new Nostr identity: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
+        DebugLogger.log('[Settings] Generated new Nostr identity: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
       }
 
-      // 3. Logika Tema (tetap sama)
+      // Load theme
       final savedTheme = settingsBox.get('theme_mode', defaultValue: 'system');
       themeMode = savedTheme == 'dark' ? ThemeMode.dark : (savedTheme == 'light' ? ThemeMode.light : ThemeMode.system);
 
-      DebugLogger.log('Settings loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
+      DebugLogger.log('[Settings] Loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
     } catch (e) {
-      DebugLogger.log('Error loading settings: $e', type: 'ERROR');
+      DebugLogger.log('[Settings] Load failed | $e', type: 'ERROR');
       rethrow;
     }
   }
@@ -78,7 +76,7 @@ class AppSettings {
       if (snapshot.exists) return snapshot.value as String?;
       return null;
     } catch (e) {
-      DebugLogger.log('Failed to fetch name from Firebase: $e', type: 'ERROR');
+      DebugLogger.log('[Settings] Fetch name from Firebase failed | $e', type: 'ERROR');
       return null;
     }
   }
@@ -107,9 +105,9 @@ class AppSettings {
 
       myPubkey = bip340.getPublicKey(myPrivkey);
 
-      // Coba ambil nama dari Firebase
+      // Try to fetch existing display name from Firebase
       final fetchedName = await _fetchNameFromFirebase(myPubkey);
-      myName = fetchedName ?? formatDisplayName(myPubkey); // fallback ke default
+      myName = fetchedName ?? formatDisplayName(myPubkey);
 
       if (fetchedName != null) {
         myNip05 = '$fetchedName@chatme';
@@ -128,9 +126,9 @@ class AppSettings {
         'is_nip05_verified': isNip05Verified,
       });
 
-      DebugLogger.log('✅ Account restored: $myPubkey', type: 'SETUP');
+      DebugLogger.log('[Settings] Account restored: $myPubkey', type: 'SETUP');
     } catch (e) {
-      DebugLogger.log('❌ Failed to import account: $e', type: 'ERROR');
+      DebugLogger.log('[Settings] Import account failed | $e', type: 'ERROR');
       rethrow;
     }
   }
@@ -140,9 +138,6 @@ class AppSettings {
     String themeString = (mode == ThemeMode.dark) ? 'dark' : (mode == ThemeMode.light ? 'light' : 'system');
     await Hive.box('settings').put('theme_mode', themeString);
   }
-
-  String myPhotoPath = '';
-  String myPhotoUrl = '';
 
   Future<void> savePhotoPath(String path) async {
     myPhotoPath = path;
@@ -163,7 +158,7 @@ class AppSettings {
     isNip05Verified = verified;
     await Hive.box('settings').put('my_nip05', newNip05);
     await Hive.box('settings').put('is_nip05_verified', verified);
-    DebugLogger.log('Identity updated: $newNip05 (Verified: $verified)', type: 'SETUP');
+    DebugLogger.log('[Settings] Identity updated: $newNip05 (verified: $verified)', type: 'SETUP');
   }
 
   Future<Map<String, dynamic>> backupKeys() async {
@@ -179,10 +174,10 @@ class AppSettings {
 
       final backupString = jsonEncode(backupData);
       await Clipboard.setData(ClipboardData(text: backupString));
-      DebugLogger.log('Keys backed up to clipboard', type: 'SETUP');
+      DebugLogger.log('[Settings] Keys copied to clipboard', type: 'SETUP');
       return backupData;
     } catch (e) {
-      DebugLogger.log('Error backing up keys: $e', type: 'ERROR');
+      DebugLogger.log('[Settings] Backup keys failed | $e', type: 'ERROR');
       rethrow;
     }
   }
@@ -214,12 +209,12 @@ Backup Date: ${DateTime.now().toString()}
 
       return {'private': privateKey, 'public': publicKey};
     } catch (e) {
-      DebugLogger.log('Error generating keypair: $e', type: 'ERROR');
+      DebugLogger.log('[Settings] Generate keypair failed | $e', type: 'ERROR');
       rethrow;
     }
   }
 
-  //Default name for new user
+  /// Default display name for a pubkey (fallback when no username is set)
   static String formatDisplayName(String pubkey) {
     if (pubkey.isEmpty) return "User";
 

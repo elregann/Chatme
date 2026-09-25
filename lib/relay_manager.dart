@@ -66,7 +66,7 @@ class RelayManager {
       _startCleanupTimer();
 
       if (_queueTimer == null || !_queueTimer!.isActive) {
-        _queueTimer = Timer.periodic(const Duration(seconds: 60), (t) {
+        _queueTimer = Timer.periodic(const Duration(seconds: 15), (t) {
           if (_isConnected.value) {
             _processOfflineQueue();
           }
@@ -114,10 +114,11 @@ class RelayManager {
       _connections[relayUrl] = channel;
       _reconnectAttempts[relayUrl] = 0;
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      channel.ready.then((_) {}, onError: (e) {
+        _handleError(relayUrl, e);
+      });
 
       final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
       int syncSince = nowTimestamp - 2592000;
 
       try {
@@ -129,14 +130,13 @@ class RelayManager {
               latestTime = contact.lastChatTime;
             }
           }
-
           if (latestTime > 0) {
             syncSince = (latestTime ~/ 1000) - 3600;
-            DebugLogger.log('🔄 Sync dinamis aktif: Menarik sejak ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}');
+            DebugLogger.log('[Sync] Fetching since ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}');
           }
         }
       } catch (e) {
-        DebugLogger.log('⚠️ Gagal hitung syncSince, gunakan default 30 hari.');
+        DebugLogger.log('[Sync] Failed to compute syncSince, using 30 days default', type: 'WARN');
       }
 
       final List<int> neededKinds = [1, 4, 7, 1000];
@@ -156,8 +156,7 @@ class RelayManager {
       channel.sink.add(subToMe);
       channel.sink.add(subFromMe);
 
-      // Permanent subscription to the profile metadata of all users (real-time)
-      final profileSince = nowTimestamp - 86400; // the past 24 hours
+      final profileSince = nowTimestamp - 86400;
       final subProfiles = jsonEncode(["REQ", "${_subscriptionId!}_profiles", {
         "kinds": [0],
         "since": profileSince
@@ -176,7 +175,17 @@ class RelayManager {
         onDone: () => _handleDisconnect(relayUrl),
         cancelOnError: true,
       );
+
+      _connectionStatus[relayUrl] = true;
+      _updateConnectionStatus();
+      DebugLogger.log('[Relay] Connected: $relayUrl');
+
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (_isConnected.value) _processOfflineQueue();
+      });
+
     } catch (e) {
+      DebugLogger.log('[Relay] Connection failed: $relayUrl | $e', type: 'ERROR');
       _handleError(relayUrl, e);
     }
   }
@@ -188,7 +197,7 @@ class RelayManager {
       _connections.remove(url);
       _connectionStatus.remove(url);
     } catch (e) {
-      DebugLogger.log('❌ Error closing connection: $e');
+      DebugLogger.log('[Relay] Close connection error | $e', type: 'ERROR');
     }
   }
 
@@ -203,7 +212,7 @@ class RelayManager {
         if (decoded[0] == "OK") _handleOk(decoded, url);
       }
     } catch (e) {
-      DebugLogger.log('❌ Error handling data: $e');
+      DebugLogger.log('[Relay] Data handling error | $e', type: 'ERROR');
     }
   }
 
@@ -236,7 +245,7 @@ class RelayManager {
             }
           }
         } catch (e) {
-          DebugLogger.log('❌ Error caching profile picture: $e');
+          DebugLogger.log('[Profile] Cache error | $e', type: 'ERROR');
         }
       }
     }
@@ -251,7 +260,7 @@ class RelayManager {
       try {
         if (onSignalReceived != null) onSignalReceived!(event);
       } catch (e) {
-        DebugLogger.log('❌ Error onSignalReceived: $e');
+        DebugLogger.log('[Call] onSignalReceived error | $e', type: 'ERROR');
       }
       if (senderPubkey == myPubkey) return;
       if (now - createdAt > 30) return;
@@ -293,7 +302,7 @@ class RelayManager {
             finalDisplayName = savedContact.name;
           }
         } catch (e) {
-          DebugLogger.log('❌ Gagal memuat kontak: $e');
+          DebugLogger.log('[Call] Failed to load contact | $e', type: 'ERROR');
         }
 
         final Color incomingPeerColor = Color(
@@ -330,7 +339,7 @@ class RelayManager {
         CallManager.instance.stopCall();
       }
     } catch (e) {
-      DebugLogger.log('❌ Gagal proses sinyal: $e');
+      DebugLogger.log('[Call] Signal processing failed | $e', type: 'ERROR');
     }
   }
 
@@ -438,7 +447,7 @@ class RelayManager {
 
       if (onMessageReceived != null) onMessageReceived!();
     } catch (e) {
-      DebugLogger.log('❌ Error processing incoming event: $e');
+      DebugLogger.log('[Message] Incoming event error | $e', type: 'ERROR');
     }
   }
 
@@ -479,7 +488,7 @@ class RelayManager {
 
       onMessageReceived?.call();
     } catch (e) {
-      DebugLogger.log('❌ Error in _handleReceiptEvent: $e');
+      DebugLogger.log('[Receipt] Handle error | $e', type: 'ERROR');
     }
   }
 
@@ -493,7 +502,7 @@ class RelayManager {
         if (onMessageDelivered != null) onMessageDelivered!(messageId);
       }
     } catch (e) {
-      DebugLogger.log('❌ Error in _handleOk: $e');
+      DebugLogger.log('[Relay] OK handler error | $e', type: 'ERROR');
     }
   }
 
@@ -508,7 +517,7 @@ class RelayManager {
       final myPrivkey = AppSettings.instance.myPrivkey;
 
       if (myPubkey.isEmpty || myPrivkey.isEmpty) {
-        DebugLogger.log('❌ ERROR: Missing keys in sendMessage', type: 'ERROR');
+        DebugLogger.log('[Message] Missing keys in sendMessage', type: 'ERROR');
         throw Exception('Missing pubkey or privkey');
       }
 
@@ -575,7 +584,7 @@ class RelayManager {
       return signedEvent;
 
     } catch (e) {
-      DebugLogger.log('❌ ERROR in sendMessage: $e', type: 'ERROR');
+      DebugLogger.log('[Message] Send failed | $e', type: 'ERROR');
       rethrow;
     }
   }
@@ -606,10 +615,9 @@ class RelayManager {
         }),
       ).timeout(const Duration(seconds: 10));
 
-      DebugLogger.log('🚀 Cloudflare Status: ${response.statusCode}');
-      DebugLogger.log('📦 Cloudflare Response: ${response.body}');
+      DebugLogger.log('[Cloudflare] Status ${response.statusCode}');
     } catch (e) {
-      DebugLogger.log('⚠️ Cloudflare error: $e');
+      DebugLogger.log('[Cloudflare] Error | $e', type: 'WARN');
     }
   }
 
@@ -724,7 +732,7 @@ class RelayManager {
     final myPubkey = AppSettings.instance.myPubkey;
     final myPrivkey = AppSettings.instance.myPrivkey;
     if (myPubkey.isEmpty || myPrivkey.isEmpty) {
-      DebugLogger.log('❌ Cannot generate NIP-98 token: missing keys');
+      DebugLogger.log('[NIP98] Cannot generate token: missing keys', type: 'ERROR');
       return '';
     }
 
@@ -745,14 +753,12 @@ class RelayManager {
     final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
     final token = base64Url.encode(utf8.encode(jsonEncode(signedEvent)));
 
-    DebugLogger.log('🔑 Generated NIP-98 token (length: ${token.length})');
-
     return 'Nostr $token';
   }
 
   Future<String?> uploadPhotoToNostrBuild(String filePath) async {
     if (kIsWeb) {
-      DebugLogger.log('❌ Photo upload not supported in web environment');
+      DebugLogger.log('[Upload] Photo upload not supported on web', type: 'WARN');
       return null;
     }
 
@@ -760,7 +766,7 @@ class RelayManager {
       final uploadUrl = Uri.parse('https://nostr.build/api/v2/upload/files');
       final token = _generateNip98Token(uploadUrl.toString(), 'POST');
       if (token.isEmpty) {
-        DebugLogger.log('❌ NIP-98 token empty, upload aborted');
+        DebugLogger.log('[Upload] NIP-98 token empty, upload aborted', type: 'ERROR');
         return null;
       }
 
@@ -773,13 +779,12 @@ class RelayManager {
 
       if (response.statusCode == 200) {
         final url = body['data']?[0]?['url'] as String?;
-        DebugLogger.log('✅ Photo uploaded: $url');
         return url;
       }
-      DebugLogger.log('❌ Upload failed: $body');
+      DebugLogger.log('[Upload] Failed: $body', type: 'ERROR');
       return null;
     } catch (e) {
-      DebugLogger.log('❌ Upload error: $e');
+      DebugLogger.log('[Upload] Error | $e', type: 'ERROR');
       return null;
     }
   }
@@ -825,10 +830,8 @@ class RelayManager {
       }
       // Trigger pembaruan UI
       onMessageReceived?.call();
-
-      DebugLogger.log('✅ Kind 0 broadcasted');
     } catch (e) {
-      DebugLogger.log('❌ Error broadcasting kind 0: $e');
+      DebugLogger.log('[Profile] Broadcast kind 0 failed | $e', type: 'ERROR');
     }
   }
 
@@ -853,7 +856,7 @@ class RelayManager {
         conn.sink.add(jsonEncode(["EVENT", signedEvent]));
       }
     } catch (e) {
-      DebugLogger.log('❌ Error sendReceipt: $e');
+      DebugLogger.log('[Receipt] Send failed | $e', type: 'ERROR');
     }
   }
 
@@ -897,10 +900,8 @@ class RelayManager {
           entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
         }
       }
-
-      DebugLogger.log('✅ Reaction sent to relay: $emoji');
     } catch (e) {
-      DebugLogger.log('❌ Error sendReaction: $e');
+      DebugLogger.log('[Reaction] Send failed | $e', type: 'ERROR');
     }
   }
 
@@ -929,7 +930,7 @@ class RelayManager {
         }
       }
     } catch (e) {
-      DebugLogger.log('❌ Error sendCallSignal: $e');
+      DebugLogger.log('[Call] Send signal failed | $e', type: 'ERROR');
     }
   }
 
@@ -959,7 +960,7 @@ class RelayManager {
       }
       await contactsBox.put(peerPubkey, contact);
     } catch (e) {
-      DebugLogger.log('❌ Error updating contact: $e');
+      DebugLogger.log('[Contact] Update failed | $e', type: 'ERROR');
     }
   }
 
@@ -989,15 +990,13 @@ class RelayManager {
         messages[index] = updatedMessage;
         await box.put(chatKey, messages);
 
-        DebugLogger.log('✅ Reaction received: $emoji from $reactorPubkey on message $messageId');
-
         // Notify UI
         if (onMessageReceived != null) onMessageReceived!();
       } else {
-        DebugLogger.log('⚠️ Original message not found for reaction: $messageId');
+        DebugLogger.log('[Reaction] Target message not found: $messageId', type: 'WARN');
       }
     } catch (e) {
-      DebugLogger.log('❌ Error updating message reaction: $e');
+      DebugLogger.log('[Reaction] Update failed | $e', type: 'ERROR');
     }
   }
 
@@ -1083,51 +1082,79 @@ class RelayManager {
     if (pendingMessages.isEmpty) return;
 
     _isProcessingQueue = true;
-    DebugLogger.log('🚀 Memproses ${pendingMessages.length} pesan antrean...');
+    DebugLogger.log('[Queue] Processing ${pendingMessages.length} pending message(s)');
 
     try {
       for (var msg in pendingMessages) {
+        String ciphertext = msg.content;
+
+        if (ciphertext.isEmpty) {
+          if (msg.plaintext.isEmpty) {
+            DebugLogger.log('[Queue] Skip ${msg.id}: empty plaintext & content', type: 'WARN');
+            continue;
+          }
+          ciphertext = Nip04.encrypt(
+            msg.plaintext,
+            AppSettings.instance.myPrivkey,
+            msg.receiverPubkey,
+          );
+          if (ciphertext.isEmpty) {
+            DebugLogger.log('[Queue] Re-encrypt failed for ${msg.id}', type: 'ERROR');
+            continue;
+          }
+          DebugLogger.log('[Queue] Re-encrypted ${msg.id} from plaintext');
+        }
+
         final List<List<String>> tags = [['p', msg.receiverPubkey]];
-        if (msg.replyToId != null) {
+        if (msg.replyToId != null && msg.replyToId!.isNotEmpty) {
           tags.add(['e', msg.replyToId!]);
         }
 
-        final int createdAt = msg.timestamp ~/ 1000;
-
-        final event = {
+        final unsignedEvent = {
           'pubkey': msg.senderPubkey,
-          'created_at': createdAt,
+          'created_at': msg.timestamp ~/ 1000,
           'kind': 4,
           'tags': tags,
-          'content': msg.content,
+          'content': ciphertext,
         };
 
-        final String finalId = NostrSigner.calculateEventId(event);
-        event['id'] = finalId;
-        event['sig'] = NostrSigner.sign(finalId, AppSettings.instance.myPrivkey);
+        final String finalId = NostrHelpers.generateEventId(unsignedEvent);
+        if (finalId.isEmpty) continue;
+
+        final String sig = NostrSigner.sign(finalId, AppSettings.instance.myPrivkey);
+        if (sig.isEmpty) continue;
+
+        final signedEvent = {...unsignedEvent, 'id': finalId, 'sig': sig};
 
         bool sentToAtLeastOne = false;
         for (final entry in _connections.entries) {
           if (_connectionStatus[entry.key] == true) {
-            entry.value.sink.add(jsonEncode(["EVENT", event]));
-            sentToAtLeastOne = true;
+            try {
+              entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
+              sentToAtLeastOne = true;
+            } catch (e) {
+              DebugLogger.log('[Queue] Send to ${entry.key} failed | $e', type: 'ERROR');
+            }
           }
         }
 
         if (sentToAtLeastOne) {
           await ChatManager.instance.updateMessageIdAndStatus(
-              msg.id,
-              finalId,
-              'sent',
-              msg.chatKey
+            msg.id,
+            finalId,
+            'sending',
+            msg.chatKey,
+            newContent: ciphertext,
           );
-          DebugLogger.log('✅ Berhasil kirim antrean & Update ID: $finalId');
+          DebugLogger.log('[Queue] Sent, awaiting OK: $finalId');
+        } else {
+          DebugLogger.log('[Queue] No relay connected, deferring ${msg.id}', type: 'WARN');
         }
 
-        await Future.delayed(const Duration(milliseconds: 800));
+        await Future.delayed(const Duration(milliseconds: 150));
       }
     } catch (e) {
-      DebugLogger.log('❌ Gagal di antrean: $e');
+      DebugLogger.log('[Queue] Process failed | $e', type: 'ERROR');
     } finally {
       _isProcessingQueue = false;
     }

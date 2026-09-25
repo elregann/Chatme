@@ -60,7 +60,6 @@ class CallConstants {
   };
 }
 
-// ==================== ENUMS & MODELS ====================
 enum CallState {
   idle,
   initializing,
@@ -88,13 +87,12 @@ class CallEvent {
   String toString() => '$event - ${timestamp.toIso8601String()} ${data != null ? '- $data' : ''}';
 }
 
-// ==================== CALL MANAGER ====================
 class CallManager {
-  // ========== SINGLETON PATTERN ==========
+  // Singleton
   static final CallManager instance = CallManager._internal();
   CallManager._internal();
 
-  // ========== STATE VARIABLES ==========
+  // WebRTC state
   rtc.RTCPeerConnection? _peerConnection;
   rtc.MediaStream? _localStream;
   rtc.RTCVideoRenderer? _remoteRenderer;
@@ -130,7 +128,7 @@ class CallManager {
 
   final List<CallEvent> _callLog = [];
 
-  // ========== PUBLIC GETTERS ==========
+  // Public getters
   bool get isMuted => _isMuted;
   bool get isSpeakerOn => _isSpeakerOn;
   rtc.RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
@@ -138,7 +136,7 @@ class CallManager {
   CallState get callState => _sharedCallState;
   ValueNotifier<CallState> get callStateNotifier => _sharedNotifier;
 
-  // ========== CALLBACK MANAGEMENT ==========
+  // Callback management
   String addConnectionCallback(VoidCallback callback) {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     _connectionCallbacks[id] = callback;
@@ -192,7 +190,7 @@ class CallManager {
     activePeerColor = color;
   }
 
-  // ========== STATE MANAGEMENT ==========
+  // State management
   void _setCallState(CallState newState) {
     if (_sharedCallState == newState) return;
     _sharedCallState = newState;
@@ -220,21 +218,21 @@ class CallManager {
       try {
         callback(newState);
       } catch (e) {
-        debugPrint('Error in state change callback: $e');
+        debugPrint('[Call] State change callback error | $e');
       }
     }
   }
 
   int get currentDuration => _actualSeconds;
 
-  // ========== EVENT LOGGING ==========
+  // Event logging
   void _logCallEvent(String event, [Map<String, dynamic>? data]) {
     final callEvent = CallEvent(event, data: data);
     _callLog.add(callEvent);
-    debugPrint('📞 CallEvent: $callEvent');
+    debugPrint('[Call] Event: $callEvent');
   }
 
-  // ========== PUBLIC INTERFACE ==========
+  // Public interface
   void startCallFlow({
     required BuildContext context,
     required String peerName,
@@ -256,7 +254,7 @@ class CallManager {
           isIncoming: false,
           peerColor: activePeerColor ?? peerColor,
           onClose: () {
-            debugPrint('Call screen closed');
+            debugPrint('[Call] Screen closed');
           },
         ),
       ),
@@ -264,12 +262,12 @@ class CallManager {
 
     if (_sharedCallState == CallState.idle) {
       Future.delayed(const Duration(milliseconds: 500), () {
-        makeOffer(peerPubkey, relay, () => debugPrint("✅ Connected"));
+        makeOffer(peerPubkey, relay, () => debugPrint('[Call] Connected'));
       });
     }
   }
 
-  // ========== AUDIO DEVICE MANAGEMENT ==========
+  // Audio device management
   Future<void> initAudio() async {
     try {
       _logCallEvent('init_audio_started');
@@ -302,7 +300,7 @@ class CallManager {
         try {
           _localStream!.getAudioTracks()[0].enableSpeakerphone(false);
         } catch (e) {
-          debugPrint('Cannot set speakerphone: $e');
+          debugPrint('[Call] Cannot set speakerphone | $e');
         }
       }
 
@@ -316,7 +314,7 @@ class CallManager {
         try {
           callback('Tidak dapat mengakses mikrofon.');
         } catch (e) {
-          debugPrint('Error in error callback: $e');
+          debugPrint('[Call] Error callback error | $e');
         }
       }
       rethrow;
@@ -331,7 +329,7 @@ class CallManager {
       track.enabled = !_isMuted;
       _logCallEvent('mute_toggled', {'isMuted': _isMuted});
     } catch (e) {
-      debugPrint('Error toggling mute: $e');
+      debugPrint('[Call] Toggle mute failed | $e');
     }
   }
 
@@ -344,15 +342,15 @@ class CallManager {
       if (!kIsWeb) {
         track.enableSpeakerphone(_isSpeakerOn);
       } else {
-        debugPrint('Web: Speaker mode $_isSpeakerOn');
+        debugPrint('[Call] Web speaker mode: $_isSpeakerOn');
       }
       _logCallEvent('speaker_toggled', {'isSpeakerOn': _isSpeakerOn});
     } catch (e) {
-      debugPrint('Error toggling speaker: $e');
+      debugPrint('[Call] Toggle speaker failed | $e');
     }
   }
 
-  // ========== WEBRTC PEER CONNECTION ==========
+  // WebRTC peer connection
   Future<void> setupPeerConnection(String targetPubkey, dynamic relay, VoidCallback onConnected) async {
     if (_peerConnection != null) return;
     try {
@@ -389,7 +387,7 @@ class CallManager {
         try {
           callback('Gagal menyiapkan koneksi.');
         } catch (e) {
-          debugPrint('Error in error callback: $e');
+          debugPrint('[Call] Error callback error | $e');
         }
       }
       rethrow;
@@ -400,8 +398,9 @@ class CallManager {
     try {
       final int? msgTimestamp = event['created_at'];
 
+      // Ignore stale signals (prevent ghost call from old events)
       if (msgTimestamp != null && (msgTimestamp * 1000) < _lastProcessedTimestamp) {
-        debugPrint("⚠️ Sinyal basi diabaikan: Ghost Call dari masa lalu terdeteksi.");
+        debugPrint('[Call] Stale signal ignored (ghost call)');
         return;
       }
 
@@ -429,7 +428,7 @@ class CallManager {
           break;
       }
     } catch (e) {
-      debugPrint('Manager signal error: $e');
+      debugPrint('[Call] Signal handling error | $e');
     }
   }
 
@@ -449,7 +448,7 @@ class CallManager {
               try {
                 callback();
               } catch (e) {
-                debugPrint('Error in connection callback: $e');
+                debugPrint('[Call] Connection callback error | $e');
               }
             }
           }
@@ -484,7 +483,7 @@ class CallManager {
     };
   }
 
-  // ========== SIGNALING HANDLERS ==========
+  // Signaling handlers
   Future<void> makeOffer(String targetPubkey, dynamic relay, VoidCallback onConnected) async {
     if (_sharedCallState != CallState.idle || _isMakingOffer) {
       return;
@@ -525,7 +524,7 @@ class CallManager {
         try {
           callback('Gagal memulai panggilan.');
         } catch (e) {
-          debugPrint('Error in error callback: $e');
+          debugPrint('[Call] Error callback error | $e');
         }
       }
     } finally {
@@ -562,7 +561,7 @@ class CallManager {
       });
       _setCallState(CallState.connecting);
     } catch (e) {
-      debugPrint('Error handling offer: $e');
+      debugPrint('[Call] Handle offer failed | $e');
       await stopCall();
     }
   }
@@ -571,7 +570,7 @@ class CallManager {
     if (_peerConnection == null || _isDisposing) return;
 
     if (_peerConnection!.signalingState == rtc.RTCSignalingState.RTCSignalingStateStable) {
-      debugPrint('ℹ️ Connection already stable, skipping duplicate answer');
+      debugPrint('[Call] Connection already stable, skipping duplicate answer');
       return;
     }
 
@@ -606,6 +605,7 @@ class CallManager {
           mLineIndex
       );
 
+      // On web, wait until signaling state is ready
       if (kIsWeb) {
         int retry = 0;
         while (_peerConnection != null &&
@@ -617,13 +617,13 @@ class CallManager {
       }
 
       await _peerConnection!.addCandidate(iceCandidate);
-      debugPrint('✅ Candidate added successfully');
+      debugPrint('[Call] Candidate added');
     } catch (e) {
-      debugPrint('⚠️ Candidate error ignored: $e');
+      debugPrint('[Call] Candidate error ignored | $e');
     }
   }
 
-  // ========== CONNECTION MANAGEMENT ==========
+  // Connection management
   void _startConnectionTimeout() {
     _connectionTimeoutTimer?.cancel();
     _connectionTimeoutTimer = Timer(const Duration(seconds: 30), () async {
@@ -670,7 +670,7 @@ class CallManager {
     });
   }
 
-  // ========== CALL LIFECYCLE ==========
+  // Call lifecycle
   Future<void> stopCall({bool sendHangupSignal = false, String? targetPubkey, dynamic relay}) async {
     if (_isDisposing) return;
     _isDisposing = true;
@@ -705,7 +705,7 @@ class CallManager {
         try {
           callback();
         } catch (e) {
-          debugPrint('Error in call ended callback: $e');
+          debugPrint('[Call] Ended callback error | $e');
         }
       }
     } finally {

@@ -49,8 +49,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
     super.dispose();
   }
 
-
-
   Widget _buildHighlightedText(String text, String query, bool isDark) {
     if (query.isEmpty || !text.toLowerCase().contains(query.toLowerCase())) {
       return Text(text,
@@ -68,16 +66,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
     int indexOfHighlight;
 
     while ((indexOfHighlight = lowercaseText.indexOf(lowercaseQuery, start)) != -1) {
-      // Teks sebelum bagian yang di-highlight
+      // Text before highlighted segment
       if (indexOfHighlight > start) {
         spans.add(TextSpan(text: text.substring(start, indexOfHighlight)));
       }
 
-      // Bagian yang di-highlight (kasih background biru)
+      // Highlighted segment (bold)
       spans.add(TextSpan(
         text: text.substring(indexOfHighlight, indexOfHighlight + query.length),
         style: TextStyle(
-          /// backgroundColor: Colors.blue.withAlpha(100), // Background biru transparan
           color: isDark ? Colors.white : Colors.black,
           fontWeight: FontWeight.bold,
         ),
@@ -86,7 +83,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       start = indexOfHighlight + query.length;
     }
 
-    // Sisa teks setelah highlight terakhir
+    // Remaining text after last highlight
     if (start < text.length) {
       spans.add(TextSpan(text: text.substring(start)));
     }
@@ -125,7 +122,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
         appBar: AppBar(
-          // toolbarHeight: 40,
           title: Text(
             'Chats',
             style: TextStyle(
@@ -177,6 +173,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 ),
               ),
             ),
+
             ValueListenableBuilder<CallState>(
               valueListenable: CallManager.instance.callStateNotifier,
               builder: (context, callState, _) {
@@ -191,6 +188,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 );
               },
             ),
+
             Expanded(
               child: ValueListenableBuilder<Box<Contact>>(
                 valueListenable: Hive.box<Contact>('contacts').listenable(),
@@ -202,7 +200,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       final isDark = Theme.of(context).brightness == Brightness.dark;
                       final contactList = contactBox.values.toList();
 
-                      // --- 1. LOGIKA FILTER CONTACTS (Hanya yang di-save) ---
+                      // 1. Filter saved contacts by name (only during search)
                       List<Contact> filteredSavedContacts = [];
                       if (_searchQuery.isNotEmpty) {
                         filteredSavedContacts = contactList.where((c) {
@@ -210,9 +208,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         }).toList();
                       }
 
-                      // --- 2. LOGIKA FILTER CHATS (Berdasarkan Nama/Pubkey) ---
+                      // 2. Chat previews (name or pubkey match)
                       List<Map<String, dynamic>> chatPreviews = [];
-                      // --- 3. LOGIKA FILTER MESSAGES (Scan isi pesan) ---
+
+                      // 3. Message body matches
                       List<Map<String, dynamic>> messageResults = [];
 
                       for (var contact in contactList) {
@@ -220,17 +219,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             ? contact.name
                             : AppSettings.formatDisplayName(contact.pubkey);
 
-                        // Ambil pesan dari box
                         final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
                         final dynamic rawData = chatBox.get(chatKey);
                         List<ChatMessage> messages = rawData is List ? rawData.cast<ChatMessage>().toList() : [];
 
-                        // Cek apakah nama cocok untuk kategori CHATS
                         bool nameMatches = _searchQuery.isNotEmpty &&
                             (displayName.toLowerCase().contains(_searchQuery) ||
                                 contact.pubkey.toLowerCase().contains(_searchQuery));
 
-                        // Cek isi pesan untuk kategori MESSAGES (minimal 3 huruf biar ringan)
+                        // Scan message bodies (min 2 chars to keep it lightweight)
                         if (_searchQuery.length >= 2) {
                           for (var m in messages) {
                             if (m.plaintext.toLowerCase().contains(_searchQuery)) {
@@ -242,7 +239,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           }
                         }
 
-                        // Logika untuk menyusun Preview Chat (seperti biasa)
+                        // Build chat preview entry
                         int latestTime = contact.lastChatTime;
                         ChatMessage? lastMessage;
 
@@ -252,7 +249,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           latestTime = lastMessage.timestamp;
                         }
 
-                        // Masukkan ke daftar Chat jika ada pesan atau nama cocok saat dicari
                         if ((messages.isNotEmpty || contact.lastChatTime > 0) &&
                             (_searchQuery.isEmpty || nameMatches)) {
                           chatPreviews.add({
@@ -263,10 +259,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         }
                       }
 
-                      // Urutkan chat berdasarkan waktu terbaru
+                      // Sort chats by most recent
                       chatPreviews.sort((a, b) => (b['time'] as int).compareTo(a['time'] as int));
 
-                      // Jika semua kosong
                       if (chatPreviews.isEmpty && filteredSavedContacts.isEmpty && messageResults.isEmpty) {
                         return _searchQuery.isEmpty ? _buildEmptyState() : _buildNoResultState();
                       }
@@ -274,7 +269,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       return ListView(
                         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         children: [
-                          // ================= SEKSI CONTACTS =================
+                          // Contacts section (search only)
                           if (_searchQuery.isNotEmpty && filteredSavedContacts.isNotEmpty) ...[
                             const Padding(
                               padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -284,7 +279,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
                           ],
 
-                          // ================= SEKSI CHATS =================
+                          // Chats section
                           if (chatPreviews.isNotEmpty) ...[
                             if (_searchQuery.isNotEmpty)
                               const Padding(
@@ -299,7 +294,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                               const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
                           ],
 
-                          // ================= SEKSI MESSAGES (Tanpa Ikon) =================
+                          // Messages section (search only)
                           if (_searchQuery.isNotEmpty && messageResults.isNotEmpty) ...[
                             const Padding(
                               padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -317,7 +312,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                 ),
                                 subtitle: Row(
                                   children: [
-                                    if (msg.senderPubkey == myPubkey) // Cek kalau itu pesan kita
+                                    if (msg.senderPubkey == myPubkey)
                                       Text(
                                           "You: ",
                                           style: TextStyle(
@@ -486,8 +481,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
-              // Header
               Row(
                 children: [
                   Expanded(
@@ -527,12 +520,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
               ),
 
               const SizedBox(height: 16),
-
               Divider(height: 0.5, thickness: 0.5, color: borderColor),
-
               const SizedBox(height: 16),
 
-              // Info
               Text(
                 'All messages will be permanently deleted. This action cannot be undone.',
                 style: TextStyle(fontSize: 13, color: textSecondary, height: 1.5),
@@ -540,7 +530,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
               const SizedBox(height: 20),
 
-              // Buttons
               Row(
                 children: [
                   Expanded(

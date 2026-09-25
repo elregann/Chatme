@@ -14,8 +14,8 @@ class Secp256k1Constants {
 class ECDH {
   static final _domainParams = ecc.ECDomainParameters('secp256k1');
 
-  /// Shared secret untuk skema custom Chatme.
-  /// Output: SHA-256(x) — lebih aman, dipakai di EncryptionManager.
+  /// Shared secret for ChatMe custom scheme.
+  /// Output: SHA-256(x) — safer, used by EncryptionManager.
   static Uint8List computeSharedSecret(String privateKeyHex, String publicKeyHex) {
     try {
       if (!_isValidHex(privateKeyHex) || !_isValidHex(publicKeyHex)) {
@@ -44,16 +44,16 @@ class ECDH {
       final rawBytes = xBigInt.toRadixString(16).padLeft(64, '0');
       xBytes.setAll(0, HEX.decode(rawBytes));
 
-      // Hash x untuk keamanan lebih baik
+      // Hash x for stronger security
       return Uint8List.fromList(sha256.convert(xBytes).bytes);
     } catch (e) {
       rethrow;
     }
   }
 
-  /// Shared secret untuk NIP-04 (standar Nostr).
-  /// Output: x mentah (raw), TANPA di-hash — sesuai spesifikasi NIP-04.
-  /// Gunakan ini hanya untuk interoperabilitas dengan client Nostr lain.
+  /// Shared secret for NIP-04 (Nostr standard).
+  /// Output: raw x, WITHOUT hashing — per NIP-04 spec.
+  /// Use only for interoperability with other Nostr clients.
   static Uint8List computeSharedSecretRaw(String privateKeyHex, String publicKeyHex) {
     try {
       if (!_isValidHex(privateKeyHex) || !_isValidHex(publicKeyHex)) {
@@ -80,7 +80,7 @@ class ECDH {
       final xBigInt = S!.x!.toBigInteger()!;
       final rawHex = xBigInt.toRadixString(16).padLeft(64, '0');
 
-      // NIP-04: kembalikan x mentah, TANPA hash
+      // NIP-04: return raw x, no hash
       return Uint8List.fromList(HEX.decode(rawHex));
     } catch (e) {
       rethrow;
