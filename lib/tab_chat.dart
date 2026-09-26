@@ -215,9 +215,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       List<Map<String, dynamic>> messageResults = [];
 
                       for (var contact in contactList) {
-                        final String displayName = contact.isSaved
-                            ? contact.name
-                            : AppSettings.formatDisplayName(contact.pubkey);
+                        final String displayName = AppSettings.getContactDisplayName(contact);
 
                         final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
                         final dynamic rawData = chatBox.get(chatKey);
@@ -307,7 +305,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                 dense: true,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                 title: Text(
-                                  contact.isSaved ? contact.name : AppSettings.formatDisplayName(contact.pubkey),
+                                  AppSettings.getContactDisplayName(contact),
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
                                 ),
                                 subtitle: Row(
@@ -366,9 +364,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   Widget _buildContactItem(Contact contact, ChatMessage? lastMsg) {
     final myPubkey = AppSettings.instance.myPubkey;
-    final String displayName = contact.isSaved
-        ? contact.name
-        : AppSettings.formatDisplayName(contact.pubkey);
+    final String displayName = AppSettings.getContactDisplayName(contact);
 
     final isMe = lastMsg?.senderPubkey == myPubkey;
     final isDark = Theme.of(context).brightness == Brightness.dark;

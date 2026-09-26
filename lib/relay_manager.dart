@@ -266,6 +266,19 @@ class RelayManager {
                 } else {
                   _profilePics.delete(pubkey);
                 }
+
+                final name = content['name'] is String ? content['name'] as String : null;
+                if (name != null && name.isNotEmpty) {
+                  try {
+                    final contactsBox = Hive.box<Contact>('contacts');
+                    final contact = contactsBox.get(pubkey);
+                    if (contact != null && !contact.hasGlobalId) {
+                      contact.name = name;
+                      await contactsBox.put(pubkey, contact);
+                    }
+                  } catch (_) {}
+                }
+
                 try {
                   onMessageReceived?.call();
                 } catch (_) {}
@@ -975,12 +988,13 @@ class RelayManager {
       if (contact == null) {
         contact = Contact(
             pubkey: peerPubkey,
-            name: 'User ${peerPubkey.substring(0, 8)}',
+            name: '',
             lastChatTime: timestamp,
             lastMessage: message,
             unreadCount: (isFromMe || currentlyChattingWith == peerPubkey || alreadyExists) ? 0 : 1,
             isSaved: false
         );
+        AppSettings.hydrateSingleContact(peerPubkey);
       } else {
         if (timestamp >= contact.lastChatTime) {
           contact.lastChatTime = timestamp;

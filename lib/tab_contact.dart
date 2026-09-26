@@ -343,10 +343,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   // Local filter by search query
                   final contacts = box.values
                       .where((c) => c.isSaved == true)
-                      .where((c) => _searchQuery.isEmpty || c.name.toLowerCase().contains(_searchQuery))
+                      .where((c) => _searchQuery.isEmpty || c.displayName.toLowerCase().contains(_searchQuery))
                       .toList();
 
-                  contacts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+                  contacts.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
 
                   if (contacts.isEmpty && _searchQuery.isEmpty) {
                     return _buildEmptyState();
@@ -461,10 +461,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return ListTile(
       leading: UserAvatar(
         pubkey: contact.pubkey,
-        name: contact.name,
+        name: contact.displayName,
         relayManager: widget.relayManager,
       ),
-      title: Text(contact.name),
+      title: Text(contact.displayName),
       subtitle: Text(
         AppSettings.formatDisplayName(contact.pubkey),
         style: const TextStyle(fontFamily: 'monospace', fontSize: 12),

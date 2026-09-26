@@ -175,6 +175,10 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
     _requestIgnoreBatteryOptimization();
 
+    Future.delayed(const Duration(seconds: 4), () {
+      AppSettings.hydrateMissingContactNames();
+    });
+
     Future.delayed(const Duration(milliseconds: 500), () {
       _relayManager.connect();
       _networkManager.onReconnect = () {

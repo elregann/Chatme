@@ -11,6 +11,7 @@ import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import '../models/contact.dart';
 
 class AppSettings {
   static final AppSettings _instance = AppSettings._internal();
@@ -214,6 +215,40 @@ Backup Date: ${DateTime.now().toString()}
     }
   }
 
+  static String getContactDisplayName(Contact contact) {
+    return contact.displayName;
+  }
+
+  static Future<void> hydrateSingleContact(String pubkey) async {
+    if (pubkey.isEmpty) return;
+
+    final settingsBox = Hive.box('settings');
+    final flagKey = 'hydrated_$pubkey';
+    if (settingsBox.get(flagKey, defaultValue: false) == true) return;
+
+    try {
+      final name = await AppSettings.instance._fetchNameFromFirebase(pubkey);
+      if (name != null && name.isNotEmpty) {
+        final contactsBox = Hive.box<Contact>('contacts');
+        final contact = contactsBox.get(pubkey);
+        if (contact != null && !contact.hasGlobalId) {
+          contact.name = name;
+          await contactsBox.put(pubkey, contact);
+        }
+      }
+      await settingsBox.put(flagKey, true);
+    } catch (_) {
+      // fetch failed — do not set flag, retry next time
+    }
+  }
+
+  static Future<void> hydrateMissingContactNames() async {
+    final contactsBox = Hive.box<Contact>('contacts');
+    for (final key in contactsBox.keys.toList()) {
+      await hydrateSingleContact(key.toString());
+    }
+  }
+
   /// Default display name for a pubkey (fallback when no username is set)
   static String formatDisplayName(String pubkey) {
     if (pubkey.isEmpty) return "User";
@@ -229,7 +264,7 @@ Backup Date: ${DateTime.now().toString()}
 
       return npub;
     } catch (e) {
-      return "User ${pubkey.substring(0, 8)}";
+      return pubkey.length > 16 ? "${pubkey.substring(0, 8)}...${pubkey.substring(pubkey.length - 8)}" : pubkey;
     }
   }
 }

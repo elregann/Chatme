@@ -1,6 +1,7 @@
 // contact.dart
 
 import 'package:hive/hive.dart';
+import '../core/utils/key_utils.dart';
 
 part 'contact.g.dart';
 
@@ -21,6 +22,22 @@ class Contact {
     this.unreadCount = 0,
     this.isSaved = false,
   });
+
+  String get displayName {
+    if (name.isEmpty) return KeyUtils.formatDisplayName(pubkey);
+    if (name.startsWith('npub1')) return KeyUtils.formatDisplayName(pubkey);
+    if (name.startsWith('User ')) return KeyUtils.formatDisplayName(pubkey);
+    if (name == pubkey) return KeyUtils.formatDisplayName(pubkey);
+    return name;
+  }
+
+  bool get hasGlobalId {
+    if (name.isEmpty) return false;
+    if (name.startsWith('npub1')) return false;
+    if (name.startsWith('User ')) return false;
+    if (name == pubkey) return false;
+    return true;
+  }
 
   Map<String, dynamic> toMap() {
     return {

@@ -76,6 +76,25 @@ class KeyUtils {
     }
   }
 
+  // Format display name (npub shortened or fallback)
+  static String formatDisplayName(String pubkey) {
+    if (pubkey.isEmpty) return "";
+
+    try {
+      String npub = toNpub(pubkey);
+
+      if (npub.length > 16) {
+        String prefix = npub.substring(0, 8);
+        String suffix = npub.substring(npub.length - 8);
+        return "$prefix...$suffix";
+      }
+
+      return npub;
+    } catch (e) {
+      return pubkey.length > 8 ? pubkey.substring(0, 8) : pubkey;
+    }
+  }
+
   // Helper convertBits untuk bech32
   static List<int> _convertBits(List<int> data, int from, int to, bool pad) {
     int acc = 0;

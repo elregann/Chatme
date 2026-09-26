@@ -722,9 +722,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    String displayName = widget.contact.isSaved
-        ? widget.contact.name
-        : AppSettings.formatDisplayName(widget.contact.pubkey);
+    String displayName = AppSettings.getContactDisplayName(widget.contact);
 
     final chatKey = ChatManager.instance.getChatKey(AppSettings.instance.myPubkey, widget.contact.pubkey);
 
@@ -765,17 +763,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(displayName, style: TextStyle(fontSize: 16,
-                        fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black),
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4),
-                    // Show short npub instead of raw hex
-                    Text(AppSettings.formatDisplayName(widget.contact.pubkey),
-                        style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54)),
-                  ],
+                child: Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

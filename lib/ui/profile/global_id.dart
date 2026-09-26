@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../../services/app_settings.dart';
+import '../../relay_manager.dart';
 
 class GlobalIdPage extends StatefulWidget {
-  const GlobalIdPage({super.key});
+  final RelayManager? relayManager;
+  const GlobalIdPage({super.key, this.relayManager});
 
   @override
   State<GlobalIdPage> createState() => _GlobalIdPageState();
@@ -217,6 +219,9 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
 
                 if (success) {
                   await AppSettings.instance.updateNip05('$input@chatme', true);
+                  try {
+                    await widget.relayManager?.broadcastProfileKind0();
+                  } catch (_) {}
                   if (!mounted) return;
                   setState(() {});
                   messenger.showSnackBar(
