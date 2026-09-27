@@ -27,10 +27,11 @@ class RelayManager {
   Function(Map<String, dynamic>)? onSignalReceived;
 
   final List<String> relays = [
-    'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://nostr.mom',
+    'wss://relay.damus.io',
     'wss://relay.mostr.pub',
+    'wss://relay.noswhere.com',
     'wss://relay.primal.net',
   ];
 
