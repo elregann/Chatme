@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'relay_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'call_overlay.dart';
+import 'call_manager.dart';
 import 'services/app_settings.dart';
 import 'core/utils/key_utils.dart';
 import 'ui/profile/security_vault.dart';
@@ -481,6 +483,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+
+            ValueListenableBuilder<CallState>(
+              valueListenable: CallManager.instance.callStateNotifier,
+              builder: (context, callState, _) {
+                if (callState == CallState.idle ||
+                    callState == CallState.ending ||
+                    callState == CallState.error) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: CallFloatingBar(relay: widget.relayManager),
+                );
+              },
+            ),
+
             const SizedBox(height: 24),
             _buildSectionTitle('Global ID', textSecondary),
             Card(
@@ -745,7 +763,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                 title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('0.5.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                trailing: Text('0.5.1.1-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
               ),
             ),
             const SizedBox(height: 20),

@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'call_manager.dart';
+import 'call_overlay.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
 import 'core/crypto/nip04.dart';
@@ -833,6 +834,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       ),
       body: Column(
         children: [
+
+          ValueListenableBuilder<CallState>(
+            valueListenable: CallManager.instance.callStateNotifier,
+            builder: (context, callState, _) {
+              if (callState == CallState.idle ||
+                  callState == CallState.ending ||
+                  callState == CallState.error) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: CallFloatingBar(relay: widget.relayManager),
+              );
+            },
+          ),
+
           Expanded(
             child: ValueListenableBuilder(
               valueListenable: Hive.box('chats').listenable(),
