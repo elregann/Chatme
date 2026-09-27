@@ -66,7 +66,7 @@ class _CallScreenState extends State<CallScreen> {
       if (_callManager.callState == CallState.active) {
         _startTimer();
       }
-      debugPrint("Layar dibuka kembali: Melewatkan inisialisasi telfon baru.");
+      debugPrint("Screen reopened: Skipping new call initialization.");
     } else {
       if (!widget.isIncoming) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -128,7 +128,7 @@ class _CallScreenState extends State<CallScreen> {
       _logCallEvent('missed_call_timeout');
       setState(() {
         _hasError = true;
-        _errorMessage = 'Panggilan tidak diangkat';
+        _errorMessage = 'Call not answered';
       });
       _scheduleAutoClose();
     }
@@ -189,7 +189,7 @@ class _CallScreenState extends State<CallScreen> {
       );
     } catch (e) {
       if (mounted && !_hasError) {
-        _handleError('Gagal memulai panggilan: ${e.toString()}');
+        _handleError('Failed to start call: ${e.toString()}');
       }
     } finally {
       if (mounted && _isInitializing) {
@@ -213,7 +213,7 @@ class _CallScreenState extends State<CallScreen> {
 
     try {
       if (widget.remoteSdp == null || widget.remoteSdp!.isEmpty) {
-        throw Exception('SDP remote tidak valid');
+        throw Exception('Invalid remote SDP');
       }
 
       await _callManager.handleOffer(
@@ -226,7 +226,7 @@ class _CallScreenState extends State<CallScreen> {
       _logCallEvent('call_accepted_manually');
     } catch (e) {
       if (mounted && !_hasError) {
-        _handleError('Gagal menerima panggilan');
+        _handleError('Failed to accept call');
       }
     } finally {
       if (mounted && _isInitializing) {
@@ -280,7 +280,7 @@ class _CallScreenState extends State<CallScreen> {
 
     setState(() {
       _hasError = true;
-      _errorMessage = error ?? 'Terjadi kesalahan';
+      _errorMessage = error ?? 'An error occurred';
     });
 
     _scheduleAutoClose();
@@ -555,7 +555,7 @@ class _CallScreenState extends State<CallScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              _errorMessage ?? 'Terjadi kesalahan',
+              _errorMessage ?? 'An error occurred',
               style: const TextStyle(
                 color: Colors.redAccent,
                 fontSize: 14,

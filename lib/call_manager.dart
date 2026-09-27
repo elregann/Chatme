@@ -312,7 +312,7 @@ class CallManager {
 
       for (final callback in _errorCallbacks.values) {
         try {
-          callback('Tidak dapat mengakses mikrofon.');
+          callback('Cannot access microphone.');
         } catch (e) {
           debugPrint('[Call] Error callback error | $e');
         }
@@ -385,7 +385,7 @@ class CallManager {
 
       for (final callback in _errorCallbacks.values) {
         try {
-          callback('Gagal menyiapkan koneksi.');
+          callback('Failed to prepare connection.');
         } catch (e) {
           debugPrint('[Call] Error callback error | $e');
         }
@@ -522,7 +522,7 @@ class CallManager {
 
       for (final callback in _errorCallbacks.values) {
         try {
-          callback('Gagal memulai panggilan.');
+          callback('Failed to start call.');
         } catch (e) {
           debugPrint('[Call] Error callback error | $e');
         }
