@@ -29,6 +29,7 @@ class AppSettings {
   String myPhotoPath = '';
   String myPhotoUrl = '';
   ThemeMode themeMode = ThemeMode.dark;
+  String roomChatTheme = 'default'; // 'default' or 'nostr_cyber'
 
   Future<void> load() async {
     try {
@@ -62,11 +63,19 @@ class AppSettings {
       final savedTheme = settingsBox.get('theme_mode', defaultValue: 'system');
       themeMode = savedTheme == 'dark' ? ThemeMode.dark : (savedTheme == 'light' ? ThemeMode.light : ThemeMode.system);
 
+      roomChatTheme = settingsBox.get('room_chat_theme', defaultValue: 'default');
+
       DebugLogger.log('[Settings] Loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
     } catch (e) {
       DebugLogger.log('[Settings] Load failed | $e', type: 'ERROR');
       rethrow;
     }
+  }
+
+  Future<void> setRoomChatTheme(String theme) async {
+    roomChatTheme = theme;
+    final settingsBox = Hive.box('settings');
+    await settingsBox.put('room_chat_theme', theme);
   }
 
   Future<String?> _fetchNameFromFirebase(String pubkey) async {

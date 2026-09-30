@@ -727,14 +727,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final chatKey = ChatManager.instance.getChatKey(AppSettings.instance.myPubkey, widget.contact.pubkey);
 
-    final headerColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final accentColor = isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2);
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
+
+    final headerColor = isNostrCyber 
+        ? const Color(0xFF1B1425) 
+        : (isDark ? const Color(0xFF121212) : Colors.white);
+
+    final headerTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
+        
+    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
     final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF121212)
-          : const Color(0xFFE5DDD5),
+      backgroundColor: isNostrCyber
+          ? const Color(0xFF130F1A)
+          : (isDark ? const Color(0xFF121212) : const Color(0xFFE5DDD5)),
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: headerColor,
@@ -743,7 +750,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         leading: IconButton(
           icon: Icon(
             Icons.arrow_back_ios_rounded,
-            color: isDark ? Colors.white : Colors.black,
+            color: headerTextColor,
             size: 18,
           ),
           onPressed: () => Navigator.pop(context),
@@ -769,7 +776,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black,
+                    color: headerTextColor,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -780,7 +787,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         titleSpacing: 0,
         actions: [
           IconButton(
-            icon: Icon(Icons.phone_outlined, color: isDark ? Colors.white : Colors.black),
+            icon: Icon(Icons.phone_outlined, color: headerTextColor),
             onPressed: () {
               final String pubkey = widget.contact.pubkey;
               final int colorValue = int.tryParse(pubkey.substring(0, 8), radix: 16) ?? 0xFF000000;
@@ -801,7 +808,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             },
           ),
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: isDark ? Colors.white : Colors.black),
+            icon: Icon(Icons.more_vert, color: headerTextColor),
             color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
             elevation: 0,
             offset: const Offset(0, 40),
@@ -970,8 +977,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   Widget _buildDateDivider(String label) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accentColor = isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2);
-    final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
+
+    final accentColor = isNostrCyber 
+        ? const Color(0xFFD4BBFC) 
+        : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
+        
+    final dividerBg = isNostrCyber 
+        ? const Color(0xFF1B1425) 
+        : (isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -1001,11 +1015,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   Widget _buildFloatingInputBar() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
     const double actionButtonSize = 38.0;
     const double containerHeight = 38.0;
-    const accentColor = Color(0xFF1976D2);
-    final inputBgColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
+    
+    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF1976D2);
+    final inputBgColor = isNostrCyber 
+        ? const Color(0xFF1B1425) 
+        : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
+    final inputTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
+    final inputHintColor = isNostrCyber ? Colors.white54 : (isDark ? Colors.white38 : Colors.black38);
 
     return SafeArea(
       top: false,
@@ -1050,12 +1070,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                         minLines: 1,
                         style: TextStyle(
                           fontSize: 16,
-                          color: isDark ? Colors.white : Colors.black,
+                          color: inputTextColor,
                         ),
                         decoration: InputDecoration(
                           hintText: 'Message',
                           hintStyle: TextStyle(
-                            color: isDark ? Colors.white38 : Colors.black38,
+                            color: inputHintColor,
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -1079,7 +1099,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                           duration: const Duration(milliseconds: 200),
                           height: actionButtonSize,
                           width: actionButtonSize,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: accentColor,
                             shape: BoxShape.circle,
                           ),
@@ -1106,11 +1126,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   Widget _buildReplyPreviewInside() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final nameColor = isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2);
-    final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);
-    final previewTextColor = isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153);
-    final iconThemeColor = isDark ? Colors.white70 : Colors.black87;
+    final nameColor = isNostrCyber 
+        ? const Color(0xFFD4BBFC) 
+        : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
+        
+    final bgColor = isNostrCyber 
+        ? const Color(0xFF251C33) 
+        : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
+        
+    final previewTextColor = isNostrCyber 
+        ? Colors.white70 
+        : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
+        
+    final iconThemeColor = isNostrCyber 
+        ? const Color(0xFFD4BBFC) 
+        : (isDark ? Colors.white70 : Colors.black87);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(4, 4, 4, 0),
@@ -1313,17 +1345,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final theme = Theme.of(context);
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
     final isDark = theme.brightness == Brightness.dark;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
     final is24Hour = MediaQuery.of(context).alwaysUse24HourFormat;
     final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a').format(
         DateTime.fromMillisecondsSinceEpoch(message.timestamp)
     );
 
-    final bubbleColor = isMe
-        ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
-        : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF));
+    final bubbleColor = isNostrCyber
+        ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
+        : (isMe
+            ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
+            : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
 
-    final textColor = isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
+    final textColor = isNostrCyber
+        ? Colors.white
+        : (isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000));
 
     final hasReactions = message.reactions.isNotEmpty;
     final isHighlighted = _highlightedIds.contains(message.id);
@@ -1443,14 +1480,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   Widget _buildReplyInBubble(ChatMessage message, bool isMe) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
     final String senderName = _getReplyName(
       message.replyToSenderPubkey ?? message.senderPubkey,
     );
 
-    const nameColor = Color(0xFF1976D2);
-    final bgColor = isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15);
-    final contentColor = isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153);
+    final nameColor = isNostrCyber ? const Color(0xFFD0BCFF) : const Color(0xFF1976D2);
+    final bgColor = isNostrCyber ? Colors.white.withAlpha(20) : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
+    final contentColor = isNostrCyber ? Colors.white70 : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
 
     return GestureDetector(
       onTap: () => _scrollToMessage(message.replyToId),
@@ -1463,7 +1501,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               top: Radius.circular(10),
               bottom: Radius.circular(10)
           ),
-          border: const Border(
+          border: Border(
             left: BorderSide(
                 color: nameColor,
                 width: 4
@@ -1476,7 +1514,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           children: [
             Text(
               senderName,
-              style: const TextStyle(
+              style: TextStyle(
                 color: nameColor,
                 fontWeight: FontWeight.bold,
                 fontSize: 12,

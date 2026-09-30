@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'call_manager.dart';
 import 'call.dart';
+import 'services/app_settings.dart';
 
 class CallFloatingBar extends StatefulWidget {
   final dynamic relay;
@@ -60,6 +61,13 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final manager = CallManager.instance;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
+
+    final bgColor = isNostrCyber
+        ? const Color(0xFF1B1425)
+        : (isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10));
+
+    final textColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black87);
 
     return GestureDetector(
       onTap: () {
@@ -82,8 +90,9 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10),
+          color: bgColor,
           borderRadius: BorderRadius.circular(24),
+          border: isNostrCyber ? Border.all(color: Colors.white.withAlpha(25), width: 0.5) : null,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -100,13 +109,13 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                   height: 32,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isDark
-                        ? Colors.white.withAlpha(25)
-                        : Colors.black.withAlpha(20),
+                    color: isNostrCyber
+                        ? Colors.white.withAlpha(35)
+                        : (isDark ? Colors.white.withAlpha(25) : Colors.black.withAlpha(20)),
                   ),
                   child: Icon(
                     manager.isMuted ? Icons.mic_off : Icons.mic,
-                    color: isDark ? Colors.white : Colors.black,
+                    color: textColor,
                     size: 16,
                   ),
                 ),
@@ -124,7 +133,7 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black,
+                        color: textColor,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -132,9 +141,9 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                     const SizedBox(height: 1),
                     Text(
                       _getStatusText(manager),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Colors.grey,
+                        color: isNostrCyber ? Colors.white70 : Colors.grey,
                         fontWeight: FontWeight.w500,
                       ),
                     ),

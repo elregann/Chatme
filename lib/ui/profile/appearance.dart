@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/app_settings.dart';
+import 'chat_theme_page.dart';
 
 class AppearancePage extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -69,6 +70,55 @@ class _AppearancePageState extends State<AppearancePage> {
                   Divider(height: 0.5, thickness: 0.5, color: borderColor),
                   _buildThemeOption(context, 'Dark', Icons.dark_mode_rounded, ThemeMode.dark, borderColor, textPrimary, textSecondary, isLast: true),
                 ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            Text(
+              'ROOM CHAT',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+            ),
+            const SizedBox(height: 8),
+
+            Container(
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: 0.5),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ChatThemePage()),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      child: Row(
+                        children: [
+                          Icon(Icons.palette_outlined, size: 18, color: textPrimary),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              'Room Chat Theme',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: textSecondary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
 
