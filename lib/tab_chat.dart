@@ -217,42 +217,32 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       for (var contact in contactList) {
                         final String displayName = AppSettings.getContactDisplayName(contact);
 
-                        final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
-                        final dynamic rawData = chatBox.get(chatKey);
-                        List<ChatMessage> messages = rawData is List ? rawData.cast<ChatMessage>().toList() : [];
-
                         bool nameMatches = _searchQuery.isNotEmpty &&
                             (displayName.toLowerCase().contains(_searchQuery) ||
                                 contact.pubkey.toLowerCase().contains(_searchQuery));
 
-                        // Scan message bodies (min 2 chars to keep it lightweight)
+                        // Only inspect chatBox when searching message bodies
                         if (_searchQuery.length >= 2) {
-                          for (var m in messages) {
-                            if (m.plaintext.toLowerCase().contains(_searchQuery)) {
-                              messageResults.add({
-                                'contact': contact,
-                                'message': m,
-                              });
+                          final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
+                          final dynamic rawData = chatBox.get(chatKey);
+                          if (rawData is List) {
+                            for (var m in rawData.cast<ChatMessage>()) {
+                              if (m.plaintext.toLowerCase().contains(_searchQuery)) {
+                                messageResults.add({
+                                  'contact': contact,
+                                  'message': m,
+                                });
+                              }
                             }
                           }
                         }
 
-                        // Build chat preview entry
-                        int latestTime = contact.lastChatTime;
-                        ChatMessage? lastMessage;
-
-                        if (messages.isNotEmpty) {
-                          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-                          lastMessage = messages.last;
-                          latestTime = lastMessage.timestamp;
-                        }
-
-                        if ((messages.isNotEmpty || contact.lastChatTime > 0) &&
+                        if ((contact.lastChatTime > 0 || contact.lastMessage.isNotEmpty) &&
                             (_searchQuery.isEmpty || nameMatches)) {
                           chatPreviews.add({
                             'contact': contact,
-                            'lastMsg': lastMessage,
-                            'time': latestTime,
+                            'lastMsg': null,
+                            'time': contact.lastChatTime,
                           });
                         }
                       }
@@ -396,7 +386,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ],
             Expanded(
               child: Text(
-                lastMsg != null ? lastMsg.plaintext : 'Tap to start chatting',
+                lastMsg != null
+                    ? lastMsg.plaintext
+                    : (contact.lastMessage.isNotEmpty ? contact.lastMessage : 'Tap to start chatting'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(

@@ -343,7 +343,16 @@ class ChatManager {
       final peerPubkey = (message.senderPubkey == myPubkey) ? message.receiverPubkey : message.senderPubkey;
 
       var contact = contactsBox.get(peerPubkey);
-      if (contact != null && message.timestamp >= contact.lastChatTime) {
+      if (contact == null) {
+        contact = Contact(
+          pubkey: peerPubkey,
+          name: '',
+          isSaved: false,
+          lastMessage: message.plaintext,
+          lastChatTime: message.timestamp,
+        );
+        await contactsBox.put(peerPubkey, contact);
+      } else if (message.timestamp >= contact.lastChatTime) {
         contact.lastMessage = message.plaintext;
         contact.lastChatTime = message.timestamp;
         await contactsBox.put(peerPubkey, contact);

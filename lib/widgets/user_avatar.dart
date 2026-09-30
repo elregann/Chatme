@@ -9,6 +9,9 @@ class UserAvatar extends StatelessWidget {
   final double radius;
   final RelayManager relayManager;
 
+  // Static in-memory cache to prevent FutureBuilder flicker & re-execution during scrolling
+  static final Map<String, String?> _avatarMemCache = {};
+
   const UserAvatar({
     super.key,
     required this.pubkey,
@@ -17,40 +20,51 @@ class UserAvatar extends StatelessWidget {
     required this.relayManager,
   });
 
+  Widget _buildAvatar(BuildContext context, String? photoUrl) {
+    final fallbackAvatar = CircleAvatar(
+      radius: radius,
+      backgroundColor: UIUtils.getAvatarColor(pubkey),
+      child: Text(
+        UIUtils.getInitials(name ?? pubkey),
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: radius * 0.7,
+        ),
+      ),
+    );
+
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: photoUrl,
+        imageBuilder: (context, imageProvider) => CircleAvatar(
+          radius: radius,
+          backgroundColor: UIUtils.getAvatarColor(pubkey),
+          backgroundImage: imageProvider,
+        ),
+        placeholder: (context, url) => fallbackAvatar,
+        errorWidget: (context, url, error) => fallbackAvatar,
+      );
+    }
+
+    return fallbackAvatar;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Instant synchronous render if photo URL is already in memory cache
+    if (_avatarMemCache.containsKey(pubkey)) {
+      return _buildAvatar(context, _avatarMemCache[pubkey]);
+    }
+
     return FutureBuilder<String?>(
       future: relayManager.fetchProfilePicture(pubkey),
       builder: (context, snapshot) {
-        final photoUrl = snapshot.data;
-        
-        final fallbackAvatar = CircleAvatar(
-          radius: radius,
-          backgroundColor: UIUtils.getAvatarColor(pubkey),
-          child: Text(
-            UIUtils.getInitials(name ?? pubkey),
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: radius * 0.7, // Skala font otomatis
-            ),
-          ),
-        );
-
-        if (photoUrl != null && photoUrl.isNotEmpty) {
-          return CachedNetworkImage(
-            imageUrl: photoUrl,
-            imageBuilder: (context, imageProvider) => CircleAvatar(
-              radius: radius,
-              backgroundColor: UIUtils.getAvatarColor(pubkey),
-              backgroundImage: imageProvider,
-            ),
-            placeholder: (context, url) => fallbackAvatar,
-            errorWidget: (context, url, error) => fallbackAvatar,
-          );
+        if (snapshot.connectionState == ConnectionState.done || snapshot.hasData) {
+          _avatarMemCache[pubkey] = snapshot.data;
         }
-
-        return fallbackAvatar;
+        final photoUrl = snapshot.data ?? _avatarMemCache[pubkey];
+        return _buildAvatar(context, photoUrl);
       },
     );
   }
