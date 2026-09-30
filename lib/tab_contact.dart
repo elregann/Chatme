@@ -245,13 +245,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     if (confirmed == true) {
       final contactsBox = Hive.box<Contact>('contacts');
-      if (contact.lastMessage.isNotEmpty) {
-        contact.isSaved = false;
+
+      // Check if user has a registered global username
+      String? globalName;
+      try {
+        globalName = await AppSettings.instance.fetchGlobalUsername(contact.pubkey);
+      } catch (_) {}
+
+      final newName = globalName ?? '';
+      contact.isSaved = false;
+      contact.name = newName;
+
+      if (contact.lastMessage.isNotEmpty || newName.isNotEmpty) {
         await contactsBox.put(contact.pubkey, contact);
       } else {
         await contactsBox.delete(contact.pubkey);
       }
-      DebugLogger.log('[Contact] Removed: ${contact.name}', type: 'UI');
+      DebugLogger.log('[Contact] Removed: ${contact.pubkey}', type: 'UI');
     }
   }
 

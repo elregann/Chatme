@@ -78,6 +78,10 @@ class AppSettings {
     await settingsBox.put('room_chat_theme', theme);
   }
 
+  Future<String?> fetchGlobalUsername(String pubkey) async {
+    return _fetchNameFromFirebase(pubkey);
+  }
+
   Future<String?> _fetchNameFromFirebase(String pubkey) async {
     try {
       const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";

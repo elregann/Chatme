@@ -713,9 +713,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   String _getReplyName(String senderPubkey) {
     if (senderPubkey == AppSettings.instance.myPubkey) return "You";
-    return widget.contact.isSaved
-        ? widget.contact.name
-        : AppSettings.formatDisplayName(senderPubkey);
+    final contactsBox = Hive.box<Contact>('contacts');
+    final c = contactsBox.get(senderPubkey);
+    if (c != null) return AppSettings.getContactDisplayName(c);
+    return AppSettings.formatDisplayName(senderPubkey);
   }
 
   @override
@@ -723,7 +724,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    String displayName = AppSettings.getContactDisplayName(widget.contact);
+    final contactsBox = Hive.box<Contact>('contacts');
+    final currentContact = contactsBox.get(widget.contact.pubkey) ?? widget.contact;
+    String displayName = AppSettings.getContactDisplayName(currentContact);
 
     final chatKey = ChatManager.instance.getChatKey(AppSettings.instance.myPubkey, widget.contact.pubkey);
 
@@ -1600,7 +1603,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   Future<void> _showSaveContactDialog() async {
-    final nameController = TextEditingController(text: widget.contact.isSaved ? widget.contact.name : "");
+    final contactsBox = Hive.box<Contact>('contacts');
+    final targetContact = contactsBox.get(widget.contact.pubkey) ?? widget.contact;
+    final nameController = TextEditingController(text: targetContact.isSaved ? targetContact.name : "");
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
     final textPrimary = isDark ? Colors.white : Colors.black;
@@ -1626,7 +1631,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.contact.isSaved ? 'Rename contact' : 'Save contact',
+                          targetContact.isSaved ? 'Rename contact' : 'Save contact',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -1649,7 +1654,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       border: Border.all(color: Colors.blue.withAlpha(30), width: 0.5),
                     ),
                     child: Icon(
-                      widget.contact.isSaved ? Remix.edit_2_fill : Remix.user_add_fill,
+                      targetContact.isSaved ? Remix.edit_2_fill : Remix.user_add_fill,
                       size: 18,
                       color: Colors.blue.withAlpha(200),
                     ),
@@ -1708,9 +1713,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       onTap: () {
                         final currentContext = context;
                         if (nameController.text.trim().isNotEmpty) {
-                          widget.contact.name = nameController.text.trim();
-                          widget.contact.isSaved = true;
-                          Hive.box<Contact>('contacts').put(widget.contact.pubkey, widget.contact).then((_) {
+                          targetContact.name = nameController.text.trim();
+                          targetContact.isSaved = true;
+                          Hive.box<Contact>('contacts').put(targetContact.pubkey, targetContact).then((_) {
                             HapticFeedback.lightImpact();
                             if (currentContext.mounted) {
                               setState(() {});
