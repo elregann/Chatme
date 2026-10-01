@@ -1126,6 +1126,30 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
+  String _formatMessagePreview(String text) {
+    if (text.startsWith('[CALL]:')) {
+      final parts = text.split(':');
+      final direction = parts.length > 1 ? parts[1] : 'outgoing';
+      final durationSeconds = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
+
+      final bool isMissed = direction == 'missed';
+      final bool isIncoming = direction == 'incoming';
+
+      String label = isMissed
+          ? 'Missed Call'
+          : (isIncoming ? 'Incoming Call' : 'Outgoing Call');
+
+      if (durationSeconds > 0) {
+        final m = durationSeconds ~/ 60;
+        final s = durationSeconds % 60;
+        final durationLabel = m > 0 ? '${m}m ${s}s' : '${s}s';
+        label = '$label ($durationLabel)';
+      }
+      return label;
+    }
+    return text;
+  }
+
   Widget _buildReplyPreviewInside() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -1174,7 +1198,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     )
                 ),
                 Text(
-                    _replyingTo!.plaintext,
+                    _formatMessagePreview(_replyingTo!.plaintext),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1345,6 +1369,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
+    // --- Call message bubble ---
+    if (message.plaintext.startsWith('[CALL]:')) {
+      return _buildCallMessageBubble(message);
+    }
+
     final theme = Theme.of(context);
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
     final isDark = theme.brightness == Brightness.dark;
@@ -1524,7 +1553,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               ),
             ),
             Text(
-              message.replyToContent ?? "",
+              _formatMessagePreview(message.replyToContent ?? ""),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1748,6 +1777,117 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // --- Call message bubble ---
+  Widget _buildCallMessageBubble(ChatMessage message) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
+
+    // Parse format: [CALL]:direction:mediaType:duration:durationSeconds
+    final parts = message.plaintext.split(':');
+    final direction = parts.length > 1 ? parts[1] : 'outgoing';
+    final durationSeconds = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
+
+    final bool isMissed = direction == 'missed';
+    final bool isIncoming = direction == 'incoming';
+
+    IconData callIcon;
+    String label;
+
+    if (isMissed) {
+      callIcon = Icons.call_missed;
+      label = 'Missed Call';
+    } else if (isIncoming) {
+      callIcon = Icons.call_received;
+      label = 'Incoming Call';
+    } else {
+      callIcon = Icons.call_made;
+      label = 'Outgoing Call';
+    }
+
+    String durationLabel = '';
+    if (durationSeconds > 0) {
+      final m = durationSeconds ~/ 60;
+      final s = durationSeconds % 60;
+      durationLabel = m > 0 ? '${m}m ${s}s' : '${s}s';
+    }
+
+    final textColor = isMissed
+        ? Colors.red
+        : (isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black87));
+    final iconColor = isMissed ? Colors.red : textColor;
+
+    final fullText = durationLabel.isNotEmpty ? '$label ($durationLabel)' : label;
+
+    final is24Hour = MediaQuery.of(context).alwaysUse24HourFormat;
+    final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a')
+        .format(DateTime.fromMillisecondsSinceEpoch(message.timestamp));
+
+    final bubbleColor = isNostrCyber
+        ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
+        : (isMe
+            ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
+            : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
+
+    return Align(
+      key: _messageKeys[message.id],
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.only(
+          left: isMe ? 60 : 12,
+          right: isMe ? 12 : 60,
+          bottom: 2,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isMe ? 16 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 16),
+          ),
+          border: isDark
+              ? Border.all(color: Colors.white10, width: 0.5)
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(callIcon, color: iconColor, size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                fullText,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  color: textColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const SizedBox(height: 12),
+                Text(
+                  timeStr,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

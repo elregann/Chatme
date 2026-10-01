@@ -1,10 +1,13 @@
-// call_manager.dart
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
+import 'package:hive/hive.dart';
+import 'models/call_log.dart';
+import 'models/chat_message.dart';
+import 'chat_manager.dart';
+import 'services/app_settings.dart';
 import 'call.dart';
 
 class CallConstants {
@@ -105,6 +108,9 @@ class CallManager {
   String? _currentTargetPubkey;
   bool _isMakingOffer = false;
 
+  CallType currentCallDirection = CallType.outgoing;
+  bool _wasCallConnected = false;
+
   static CallState _sharedCallState = CallState.idle;
   int _lastProcessedTimestamp = DateTime.now().millisecondsSinceEpoch;
   static final ValueNotifier<CallState> _sharedNotifier = ValueNotifier(CallState.idle);
@@ -196,6 +202,7 @@ class CallManager {
     _sharedCallState = newState;
 
     if (newState == CallState.active) {
+      _wasCallConnected = true;
       callStartTime ??= DateTime.now();
       _durationTimer?.cancel();
       _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -240,6 +247,8 @@ class CallManager {
     required dynamic relay,
     required Color peerColor,
   }) {
+    currentCallDirection = CallType.outgoing;
+    _wasCallConnected = false;
     setSessionInfo(peerName, peerPubkey, peerColor);
 
     Navigator.push(
@@ -534,6 +543,8 @@ class CallManager {
 
   Future<void> handleOffer(String remoteSdp, String callerPubkey, dynamic relay, VoidCallback onConnected) async {
     try {
+      currentCallDirection = CallType.incoming;
+      _wasCallConnected = false;
       _logCallEvent('handle_offer_received_sending_ringing');
       _setCallState(CallState.initializing);
       _currentRelay = relay;
@@ -698,6 +709,63 @@ class CallManager {
 
       _currentRelay?.onSignalReceived = null;
       _currentRelay = null;
+
+      final String? peerPubkey = activePeerPubkey;
+      final String? peerName = activePeerName;
+      final int duration = _actualSeconds;
+      final bool wasConnected = _wasCallConnected;
+      final CallType directionType = currentCallDirection;
+
+      if (peerPubkey != null && peerPubkey.isNotEmpty) {
+        String directionStr;
+        if (directionType == CallType.incoming && !wasConnected) {
+          directionStr = 'missed';
+        } else if (directionType == CallType.incoming) {
+          directionStr = 'incoming';
+        } else {
+          directionStr = 'outgoing';
+        }
+
+        final name = (peerName != null && peerName.isNotEmpty) ? peerName : 'Kontak';
+        final callLogEntry = CallLog(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          peerPubkey: peerPubkey,
+          peerName: name,
+          direction: directionStr,
+          mediaType: 'voice',
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+          durationSeconds: duration,
+        );
+
+        try {
+          if (Hive.isBoxOpen('call_logs')) {
+            Hive.box<CallLog>('call_logs').add(callLogEntry);
+          }
+        } catch (e) {
+          debugPrint('[Call] Error saving CallLog: $e');
+        }
+
+        try {
+          final myPubkey = AppSettings.instance.myPubkey;
+          if (myPubkey.isNotEmpty) {
+            final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
+            final callMsgContent = '[CALL]:$directionStr:voice:duration:$duration';
+            final chatMsg = ChatMessage(
+              id: 'call_${DateTime.now().millisecondsSinceEpoch}',
+              senderPubkey: directionType == CallType.outgoing ? myPubkey : peerPubkey,
+              receiverPubkey: directionType == CallType.outgoing ? peerPubkey : myPubkey,
+              content: callMsgContent,
+              plaintext: callMsgContent,
+              timestamp: DateTime.now().millisecondsSinceEpoch,
+              status: 'read',
+              chatKey: chatKey,
+            );
+            ChatManager.instance.saveMessage(chatMsg);
+          }
+        } catch (e) {
+          debugPrint('[Call] Error saving ChatMessage call record: $e');
+        }
+      }
 
       _setCallState(CallState.idle);
 

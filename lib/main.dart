@@ -16,6 +16,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'models/contact.dart';
 import 'models/chat_message.dart';
+import 'models/call_log.dart';
 import 'services/app_settings.dart';
 import 'notification_handler.dart';
 import 'services/network_manager.dart';
@@ -29,6 +30,7 @@ import 'chat_manager.dart';
 import 'tab_contact.dart';
 import 'tab_profile.dart';
 import 'tab_chat.dart';
+import 'tab_calls.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -57,11 +59,13 @@ void main() async {
     await Hive.initFlutter();
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
     if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ChatMessageAdapter());
+    if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(CallLogAdapter());
 
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
     await Hive.openBox<String>('profile_pictures');
+    await Hive.openBox<CallLog>('call_logs');
 
     await AppSettings.instance.load();
 
@@ -372,6 +376,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         children: [
           ChatsScreen(relayManager: widget.relayManager),
           ContactsScreen(relayManager: widget.relayManager),
+          CallsScreen(relayManager: widget.relayManager),
           ProfileScreen(onThemeToggle: widget.onThemeToggle, relayManager: widget.relayManager),
         ],
       ),
@@ -425,6 +430,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               icon: Icon(Remix.contacts_line, color: Theme.of(context).iconTheme.color),
               selectedIcon: Icon(Remix.contacts_fill, color: Theme.of(context).iconTheme.color),
               label: 'Contacts',
+            ),
+            NavigationDestination(
+              icon: Icon(Remix.phone_line, color: Theme.of(context).iconTheme.color),
+              selectedIcon: Icon(Remix.phone_fill, color: Theme.of(context).iconTheme.color),
+              label: 'Calls',
             ),
             NavigationDestination(
               icon: Icon(Remix.settings_line, color: Theme.of(context).iconTheme.color),

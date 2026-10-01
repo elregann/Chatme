@@ -359,6 +359,45 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final isMe = lastMsg?.senderPubkey == myPubkey;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final String rawMessageText = lastMsg != null
+        ? lastMsg.plaintext
+        : (contact.lastMessage.isNotEmpty ? contact.lastMessage : 'Tap to start chatting');
+
+    final bool isCall = rawMessageText.startsWith('[CALL]:');
+    IconData? callIcon;
+    Color? callIconColor;
+    String callLabel = '';
+
+    if (isCall) {
+      final parts = rawMessageText.split(':');
+      final direction = parts.length > 1 ? parts[1] : 'outgoing';
+      final durationSeconds = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
+
+      final bool isMissed = direction == 'missed';
+      final bool isIncoming = direction == 'incoming';
+
+      if (isMissed) {
+        callIcon = Icons.call_missed;
+        callIconColor = Colors.red;
+        callLabel = 'Missed Call';
+      } else if (isIncoming) {
+        callIcon = Icons.call_received;
+        callIconColor = isDark ? Colors.white70 : Colors.black87;
+        callLabel = 'Incoming Call';
+      } else {
+        callIcon = Icons.call_made;
+        callIconColor = isDark ? Colors.white70 : Colors.black87;
+        callLabel = 'Outgoing Call';
+      }
+
+      if (durationSeconds > 0) {
+        final m = durationSeconds ~/ 60;
+        final s = durationSeconds % 60;
+        final durationLabel = m > 0 ? '${m}m ${s}s' : '${s}s';
+        callLabel = '$callLabel ($durationLabel)';
+      }
+    }
+
     return ListTile(
       leading: UserAvatar(
         pubkey: contact.pubkey,
@@ -380,20 +419,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
         padding: const EdgeInsets.only(top: 4),
         child: Row(
           children: [
-            if (lastMsg != null && isMe) ...[
+            if (lastMsg != null && isMe && !isCall) ...[
               _buildStatusIcon(lastMsg.status, isDark ? Colors.white70 : Colors.black54),
               const SizedBox(width: 4),
             ],
+            if (isCall && callIcon != null) ...[
+              Icon(callIcon, size: 16, color: callIconColor),
+              const SizedBox(width: 6),
+            ],
             Expanded(
               child: Text(
-                lastMsg != null
-                    ? lastMsg.plaintext
-                    : (contact.lastMessage.isNotEmpty ? contact.lastMessage : 'Tap to start chatting'),
+                isCall ? callLabel : rawMessageText,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 14,
-                  color: isMe ? Colors.grey : (isDark ? Colors.white70 : Colors.black87),
+                  color: isCall && rawMessageText.contains(':missed:')
+                      ? Colors.red
+                      : (isDark ? Colors.white70 : Colors.black87),
                 ),
               ),
             ),
