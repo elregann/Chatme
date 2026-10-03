@@ -752,8 +752,8 @@ class CallManager {
             final callMsgContent = '[CALL]:$directionStr:voice:duration:$duration';
             final chatMsg = ChatMessage(
               id: 'call_${DateTime.now().millisecondsSinceEpoch}',
-              senderPubkey: directionType == CallType.outgoing ? myPubkey : peerPubkey,
-              receiverPubkey: directionType == CallType.outgoing ? peerPubkey : myPubkey,
+              senderPubkey: (directionStr == 'incoming' || directionStr == 'missed') ? peerPubkey : myPubkey,
+              receiverPubkey: (directionStr == 'incoming' || directionStr == 'missed') ? myPubkey : peerPubkey,
               content: callMsgContent,
               plaintext: callMsgContent,
               timestamp: DateTime.now().millisecondsSinceEpoch,

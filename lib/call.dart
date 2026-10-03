@@ -73,6 +73,9 @@ class _CallScreenState extends State<CallScreen> {
           _startOutgoingCall();
         });
       } else {
+        // Panggil inisialisasi state incoming agar CallManager tahu ini panggilan masuk (mencegah missed call tercatat sebagai outgoing)
+        _callManager.currentCallDirection = CallType.incoming;
+        _callManager.setSessionInfo(widget.peerName, widget.peerPubkey, widget.peerColor);
         _startMissedCallTimeout();
       }
     }
@@ -130,6 +133,8 @@ class _CallScreenState extends State<CallScreen> {
         _hasError = true;
         _errorMessage = 'Call not answered';
       });
+      // Panggil stopCall agar log missed call tersimpan otomatis saat timeout di sisi penerima
+      _callManager.stopCall(sendHangupSignal: false);
       _scheduleAutoClose();
     }
   }
