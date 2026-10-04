@@ -7,6 +7,7 @@ import 'package:remixicon/remixicon.dart';
 import 'models/call_log.dart';
 import 'models/contact.dart';
 import 'relay_manager.dart';
+import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'core/utils/ui_utils.dart';
 import 'widgets/user_avatar.dart';
@@ -69,48 +70,68 @@ class _CallsScreenState extends State<CallsScreen> {
         ),
         elevation: 0,
       ),
-      body: ValueListenableBuilder(
-        valueListenable: Hive.box<CallLog>('call_logs').listenable(),
-        builder: (context, Box<CallLog> box, _) {
-          List<CallLog> logs = box.values.toList();
-          logs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-          if (logs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.phone,
-                    size: 64,
-                    color: isDark ? Colors.white24 : Colors.black26,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No call history yet',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: isDark ? Colors.white54 : Colors.black45,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.separated(
-            itemCount: logs.length,
-            separatorBuilder: (context, index) => Divider(
-              height: 1,
-              indent: 72,
-              color: isDark ? Colors.white10 : Colors.black.withAlpha(10),
-            ),
-            itemBuilder: (context, index) {
-              final log = logs[index];
-              return _buildCallLogItem(context, log, isDark);
+      body: Column(
+        children: [
+          ValueListenableBuilder<CallState>(
+            valueListenable: CallManager.instance.callStateNotifier,
+            builder: (context, callState, _) {
+              if (callState == CallState.idle ||
+                  callState == CallState.ending ||
+                  callState == CallState.error) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: CallFloatingBar(relay: widget.relayManager),
+              );
             },
-          );
-        },
+          ),
+          Expanded(
+            child: ValueListenableBuilder(
+              valueListenable: Hive.box<CallLog>('call_logs').listenable(),
+              builder: (context, Box<CallLog> box, _) {
+                List<CallLog> logs = box.values.toList();
+                logs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+                if (logs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.phone,
+                          size: 64,
+                          color: isDark ? Colors.white24 : Colors.black26,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No call history yet',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  itemCount: logs.length,
+                  separatorBuilder: (context, index) => Divider(
+                    height: 1,
+                    indent: 72,
+                    color: isDark ? Colors.white10 : Colors.black.withAlpha(10),
+                  ),
+                  itemBuilder: (context, index) {
+                    final log = logs[index];
+                    return _buildCallLogItem(context, log, isDark);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
