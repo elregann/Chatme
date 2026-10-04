@@ -59,10 +59,15 @@ class _CallsScreenState extends State<CallsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Calls',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 22,
+            color: Theme.of(context).iconTheme.color,
+          ),
         ),
+        elevation: 0,
       ),
       body: ValueListenableBuilder(
         valueListenable: Hive.box<CallLog>('call_logs').listenable(),
@@ -76,7 +81,7 @@ class _CallsScreenState extends State<CallsScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Remix.phone_line,
+                    Icons.phone,
                     size: 64,
                     color: isDark ? Colors.white24 : Colors.black26,
                   ),
@@ -191,7 +196,9 @@ class _CallsScreenState extends State<CallsScreen> {
           tooltip: 'Call',
           onPressed: () => _callPeer(context, log.peerPubkey, displayName),
         ),
-        onTap: () => _callPeer(context, log.peerPubkey, displayName),
+        onTap: () {
+          // Do nothing on row tap, only icon triggers call
+        },
       ),
     );
   }

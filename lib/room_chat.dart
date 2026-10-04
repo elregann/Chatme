@@ -1882,7 +1882,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   timeStr,
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark ? Colors.white38 : Colors.black38,
+                    color: textColor.withAlpha(153),
                   ),
                 ),
               ],

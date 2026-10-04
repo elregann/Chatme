@@ -432,8 +432,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               label: 'Contacts',
             ),
             NavigationDestination(
-              icon: Icon(Remix.phone_line, color: Theme.of(context).iconTheme.color),
-              selectedIcon: Icon(Remix.phone_fill, color: Theme.of(context).iconTheme.color),
+              icon: Icon(Icons.phone_outlined, color: Theme.of(context).iconTheme.color),
+              selectedIcon: Icon(Icons.phone, color: Theme.of(context).iconTheme.color),
               label: 'Calls',
             ),
             NavigationDestination(
