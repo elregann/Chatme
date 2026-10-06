@@ -206,6 +206,17 @@ class NotificationHandler {
     final senderPubkey = message.data['senderPubkey'] ?? '';
     final senderName = message.data['senderName'] ?? 'New Message';
     final body = message.notification?.body ?? message.data['body'] ?? '';
+    final eventId = message.data['eventId'] ?? '';
+
+    if (eventId.isNotEmpty) {
+      try {
+        final settingsBox = Hive.box('settings');
+        if (settingsBox.get('notified_$eventId') == true) {
+          return;
+        }
+        settingsBox.put('notified_$eventId', true);
+      } catch (_) {}
+    }
 
     if (senderPubkey.isNotEmpty && body.isNotEmpty) {
       showChatNotification(

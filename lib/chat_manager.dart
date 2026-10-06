@@ -385,6 +385,7 @@ class ChatManager {
           contact.unreadCount = 0;
           await contactsBox.put(peerPubkey, contact);
         }
+        NotificationHandler.clearNotification(peerPubkey);
       } catch (_) {}
     });
   }
