@@ -108,11 +108,15 @@ class CallManager {
   String? _currentTargetPubkey;
   bool _isMakingOffer = false;
 
+  /// Guards against double-processing of the SDP answer when the same
+  /// signal arrives via multiple relays or duplicate routes. Set to true
+  /// before awaiting setRemoteDescription, reset on failure.
+  bool _answerProcessed = false;
+
   CallType currentCallDirection = CallType.outgoing;
   bool _wasCallConnected = false;
 
   static CallState _sharedCallState = CallState.idle;
-  int _lastProcessedTimestamp = DateTime.now().millisecondsSinceEpoch;
   static final ValueNotifier<CallState> _sharedNotifier = ValueNotifier(CallState.idle);
   int _actualSeconds = 0;
   Timer? _durationTimer;
@@ -363,8 +367,6 @@ class CallManager {
   Future<void> setupPeerConnection(String targetPubkey, dynamic relay, VoidCallback onConnected) async {
     if (_peerConnection != null) return;
     try {
-      _lastProcessedTimestamp = DateTime.now().millisecondsSinceEpoch;
-
       _logCallEvent('peerconnection_setup_started');
       _currentRelay = relay;
       _currentTargetPubkey = targetPubkey;
@@ -407,10 +409,25 @@ class CallManager {
     try {
       final int? msgTimestamp = event['created_at'];
 
-      // Ignore stale signals (prevent ghost call from old events)
-      if (msgTimestamp != null && (msgTimestamp * 1000) < _lastProcessedTimestamp) {
-        debugPrint('[Call] Stale signal ignored (ghost call)');
-        return;
+      // Reject signals that are more than 60 seconds old. This catches
+      // genuine ghost signals from a previous call session without
+      // rejecting legitimate candidates that were sent by the peer
+      // during the call setup window.
+      //
+      // The previous implementation compared the signal's seconds-
+      // truncated timestamp against a millisecond timestamp captured at
+      // peer-connection setup. Because the peer starts sending ICE
+      // candidates immediately after the offer, many candidates were
+      // sent BEFORE setup completed on our side, so their timestamps
+      // were older than `_lastProcessedTimestamp` by the time they
+      // arrived — every such candidate was wrongly dropped as stale.
+      if (msgTimestamp != null) {
+        final int nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        final int ageSec = nowSec - msgTimestamp;
+        if (ageSec > 60) {
+          debugPrint('[Call] Stale signal ignored (age=${ageSec}s)');
+          return;
+        }
       }
 
       final rawContent = event['content'] as String?;
@@ -499,6 +516,7 @@ class CallManager {
     }
 
     _isMakingOffer = true;
+    _answerProcessed = false;
     try {
       _logCallEvent('make_offer_started');
       _setCallState(CallState.initializing);
@@ -545,6 +563,7 @@ class CallManager {
     try {
       currentCallDirection = CallType.incoming;
       _wasCallConnected = false;
+      _answerProcessed = false;
       _logCallEvent('handle_offer_received_sending_ringing');
       _setCallState(CallState.initializing);
       _currentRelay = relay;
@@ -580,11 +599,20 @@ class CallManager {
   Future<void> handleAnswer(String sdp, VoidCallback onConnected) async {
     if (_peerConnection == null || _isDisposing) return;
 
+    // Guard against duplicate answers. The relay layer can deliver the
+    // same signal via multiple relays, and multiple routes in the signal
+    // dispatch path may call this method more than once for a single
+    // answer event. Without this flag, both calls enter the try block,
+    // the first succeeds and flips the signaling state to "stable",
+    // and the second throws InvalidStateError.
+    if (_answerProcessed) return;
+
     if (_peerConnection!.signalingState == rtc.RTCSignalingState.RTCSignalingStateStable) {
       debugPrint('[Call] Connection already stable, skipping duplicate answer');
       return;
     }
 
+    _answerProcessed = true;
     try {
       _setCallState(CallState.connecting);
       _logCallEvent('setting_remote_description_answer');
@@ -592,6 +620,8 @@ class CallManager {
           rtc.RTCSessionDescription(sdp, 'answer')
       );
     } catch (e) {
+      // Allow a retry if the SDP was rejected for a transient reason.
+      _answerProcessed = false;
       _logCallEvent('handle_answer_error', {'error': e.toString()});
     }
   }

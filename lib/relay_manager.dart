@@ -311,15 +311,27 @@ class RelayManager {
     final senderPubkey = event['pubkey']?.toString() ?? '';
 
     if (kind == 1000) {
-      try {
-        if (onSignalReceived != null) onSignalReceived!(event);
-      } catch (e) {
-        DebugLogger.log('[Call] onSignalReceived error | $e', type: 'ERROR');
-      }
       if (senderPubkey == myPubkey) return;
       if (now - createdAt > 30) return;
-
       _processedEventIds.add(eventId);
+
+      // If a call session is active, route signals exclusively through
+      // the CallManager callback. Otherwise fall back to the default
+      // handler, which opens the incoming call screen for `offer` events.
+      //
+      // Previously both paths were executed for every signal, causing
+      // `answer`, `candidate`, and `hangup` to be dispatched twice. That
+      // produced duplicate setRemoteDescription calls (InvalidStateError)
+      // and double stopCall invocations.
+      if (onSignalReceived != null) {
+        try {
+          onSignalReceived!(event);
+        } catch (e) {
+          DebugLogger.log('[Call] onSignalReceived error | $e', type: 'ERROR');
+        }
+        return;
+      }
+
       _processCallSignal(event);
       return;
     }
