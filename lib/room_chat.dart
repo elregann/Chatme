@@ -304,6 +304,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final receiver = widget.contact.pubkey;
     final chatKey = ChatManager.instance.getChatKey(myPubkey, receiver);
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final messageTs = DateTime.now().millisecondsSinceEpoch;
 
     final tempMessage = ChatMessage(
       id: tempId,
@@ -311,7 +312,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       receiverPubkey: receiver,
       content: '',
       plaintext: text,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
+      timestamp: messageTs,
       status: 'sending',
       chatKey: chatKey,
       replyToId: replyId,
@@ -328,14 +329,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         plaintext: text,
         replyToId: replyId,
         replyToContent: replyContent,
+        messageTimestampMs: messageTs,
       );
 
+      // `event` is now a NIP-17 metadata map:
+      //   { giftWrap, giftWrapId, rumorId, rumorTimestamp }
+      // We persist the Rumor ID as the canonical ChatMessage.id, and keep
+      // the Gift Wrap ID alongside it so relay ["OK"] acks can be matched
+      // later in ChatManager.updateMessageStatusByGiftWrap.
       await ChatManager.instance.updateMessageIdAndStatus(
         tempId,
-        event['id'].toString(),
+        event['rumorId'].toString(),
         'sending',
         chatKey,
-        newContent: event['content'].toString(),
+        newContent: (event['giftWrap'] as Map<String, dynamic>)['content'].toString(),
+        newGiftWrapId: event['giftWrapId'].toString(),
       );
 
       _maybeAutoScroll(force: true);

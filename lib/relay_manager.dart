@@ -28,6 +28,7 @@ class RelayManager {
   Function(Map<String, dynamic>)? onSignalReceived;
 
   final List<String> relays = [
+    'wss://nip17.com',
     'wss://nos.lol',
     'wss://nostr.mom',
     'wss://relay.damus.io',
@@ -52,6 +53,10 @@ class RelayManager {
   bool _isConnecting = false;
   bool _isProcessingQueue = false;
   final Map<String, int> _lastKind0Timestamp = {};
+
+  /// Timestamp (ms) of the last re-send attempt per message ID.
+  /// Prevents the offline queue from hammering the same message every tick.
+  final Map<String, int> _lastQueueAttempt = {};
 
   Function(Map<String, dynamic>)? onMessageReceivedWithData;
   Function(String)? onMessageDelivered;
@@ -137,7 +142,13 @@ class RelayManager {
             }
           }
           if (latestTime > 0) {
-            syncSince = (latestTime ~/ 1000) - 3600;
+            final computed = (latestTime ~/ 1000) - 3600;
+            // NIP-59 randomises gift-wrap `created_at` up to 2 days into
+            // the past. A narrower window would silently drop freshly
+            // queued messages whose random timestamp happens to fall
+            // outside it. Always look back at least 3 days.
+            final minimum = nowTimestamp - 259200; // 3 days
+            syncSince = computed < minimum ? computed : minimum;
             DebugLogger.log('[Sync] Fetching since ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}');
           }
         }
@@ -401,9 +412,13 @@ class RelayManager {
       List tags = event['tags'] as List? ?? [];
       String content = event['content']?.toString() ?? '';
 
+      // Holds the fully-decrypted Rumor when kind==1059, so we can read
+      // reply tags and rumor-only metadata from it below.
+      Nip17Result? nip17Result;
+
       if (event['kind'] == 1059) {
         try {
-          final nip17Result = await Nip17.unwrap(
+          nip17Result = await Nip17.unwrap(
             giftWrapEvent: event,
             receiverPrivkey: myPrivkey,
             receiverPubkey: myPubkey,
@@ -415,6 +430,9 @@ class RelayManager {
           receiverPubkey = nip17Result.receiverPubkey;
 
           final bool isFromMe = (actualSenderPubkey == myPubkey);
+          // For self-envelopes: sender == myPubkey AND rumor p tag == myPubkey
+          // would mean this is truly a self-loop with no peer. Skip those.
+          // Otherwise the rumor p tag carries the real peer.
           peerPubkey = isFromMe ? receiverPubkey : actualSenderPubkey;
         } catch (e) {
           DebugLogger.log('[NIP-17] Unwrap failed | $e', type: 'ERROR');
@@ -453,6 +471,9 @@ class RelayManager {
 
       final bool isFromMe = (actualSenderPubkey == myPubkey);
 
+      // --- Encrypted control messages (carried inside NIP-17 rumor) ---
+
+      // Reaction
       if (decrypted.startsWith('REACTION:')) {
         final parts = decrypted.split(':');
         if (parts.length >= 3) {
@@ -464,7 +485,28 @@ class RelayManager {
             return;
           }
         }
-      } else if (event['kind'] == 7) {
+      }
+
+      // Read receipt
+      if (decrypted.startsWith('READ_RECEIPT:')) {
+        final parts = decrypted.split(':');
+        if (parts.length >= 3) {
+          final targetMessageId = parts[1];
+          final status = parts[2];
+          if (targetMessageId.isNotEmpty) {
+            await ChatManager.instance.updateMessageStatus(
+              targetMessageId,
+              status,
+              chatKey: chatKey,
+            );
+            if (onMessageReceived != null) onMessageReceived!();
+            return;
+          }
+        }
+      }
+
+      // Legacy kind-7 reaction handling (for backwards compat)
+      if (event['kind'] == 7) {
         String? targetId;
         for (var t in tags) {
           if (t is List && t.length > 1 && t[0] == 'e') {
@@ -479,11 +521,19 @@ class RelayManager {
         }
       }
 
+      // --- Regular chat message ---
+
       String? replyToId;
-      for (var t in tags) {
-        if (t is List && t.length > 1 && t[0] == 'e') {
-          replyToId = t[1].toString();
-          break;
+      if (event['kind'] == 1059 && nip17Result != null) {
+        // Reply tag lives inside the Rumor, already extracted by Nip17.unwrap.
+        replyToId = nip17Result.replyToId;
+      } else {
+        // Legacy NIP-04 / kind-1 path: reply is a public event tag.
+        for (var t in tags) {
+          if (t is List && t.length > 1 && t[0] == 'e') {
+            replyToId = t[1].toString();
+            break;
+          }
         }
       }
 
@@ -509,6 +559,7 @@ class RelayManager {
         replyToId: replyToId,
         replyToContent: replyToContent,
         replyToSenderPubkey: replyToSenderPubkey,
+        giftWrapId: eventId,
       );
 
       await ChatManager.instance.saveMessage(chatMessage);
@@ -563,25 +614,51 @@ class RelayManager {
     }
   }
 
+  /// Handles relay `["OK", <eventId>, true]` acknowledgements.
+  ///
+  /// The `<eventId>` here is the **Gift Wrap ID** (kind 1059), because that
+  /// is the event we actually published to the relay. We must therefore
+  /// look up the ChatMessage by its `giftWrapId` field, not by `id`.
   void _handleOk(List<dynamic> decoded, String url) {
     try {
       if (decoded.length > 2 && decoded[2] == true) {
-        final messageId = decoded[1].toString();
-        ChatManager.instance.updateMessageStatus(messageId, 'sent');
+        final giftWrapId = decoded[1].toString();
+        ChatManager.instance.updateMessageStatusByGiftWrap(giftWrapId, 'sent');
 
         onMessageReceived?.call();
-        if (onMessageDelivered != null) onMessageDelivered!(messageId);
+        if (onMessageDelivered != null) onMessageDelivered!(giftWrapId);
       }
     } catch (e) {
       DebugLogger.log('[Relay] OK handler error | $e', type: 'ERROR');
     }
   }
 
+  /// Sends a plaintext message to [receiverPubkey] using NIP-17.
+  ///
+  /// Two Gift Wraps are produced from a SINGLE Rumor (so both share the
+  /// same Rumor ID), then published:
+  ///   1. **Recipient envelope** — encrypted to the recipient.
+  ///   2. **Self envelope** — encrypted to ourselves, with the recipient
+  ///      still referenced in the rumor's `p` tag, so that other devices
+  ///      logged into the same account can display the sent message.
+  ///
+  /// [messageTimestampMs] pins the Rumor's `created_at` to the local
+  /// ChatMessage timestamp, so the rumor ID is deterministic and matches
+  /// the ID stored on the recipient's side.
+  ///
+  /// Returns a map with:
+  ///   - `giftWrap`: the signed Gift Wrap event (recipient envelope)
+  ///   - `giftWrapId`: outer event ID (used for OK matching)
+  ///   - `rumorId`: inner Rumor ID (canonical message ID)
+  ///   - `rumorTimestamp`: Rumor's original timestamp (ms)
+  ///
+  /// Throws [Exception] if NIP-17 wrapping fails.
   Future<Map<String, dynamic>> sendMessage({
     required String receiverPubkey,
     required String plaintext,
     String? replyToId,
     String? replyToContent,
+    int? messageTimestampMs,
   }) async {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
@@ -592,51 +669,52 @@ class RelayManager {
         throw Exception('Missing pubkey or privkey');
       }
 
-      // 1. Wrap for recipient (NIP-17)
-      final giftWrapRecipient = await Nip17.wrap(
+      // Build ONE Rumor and wrap it into two envelopes (recipient + self).
+      // Both share the same Rumor ID → sender's self-echo dedups cleanly
+      // and multi-device sync works.
+      final wrappedList = await Nip17.wrapMulti(
         plaintext: plaintext,
         senderPrivkey: myPrivkey,
         senderPubkey: myPubkey,
-        receiverPubkey: receiverPubkey,
+        receiverPubkeys: [receiverPubkey, myPubkey],
+        rumorReceiverPubkey: receiverPubkey,
         replyToId: replyToId,
+        forcedTimestampSec: messageTimestampMs != null
+            ? messageTimestampMs ~/ 1000
+            : null,
       );
-
-      // 2. Wrap for self (Self-envelope for multi-device sync)
-      final giftWrapSelf = await Nip17.wrap(
-        plaintext: plaintext,
-        senderPrivkey: myPrivkey,
-        senderPubkey: myPubkey,
-        receiverPubkey: myPubkey,
-        replyToId: replyToId,
-      );
+      final wrappedRecipient = wrappedList[0];
+      final wrappedSelf = wrappedList[1];
 
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
-          entry.value.sink.add(jsonEncode(["EVENT", giftWrapRecipient]));
-          entry.value.sink.add(jsonEncode(["EVENT", giftWrapSelf]));
+          entry.value.sink.add(jsonEncode(["EVENT", wrappedRecipient.giftWrap]));
+          entry.value.sink.add(jsonEncode(["EVENT", wrappedSelf.giftWrap]));
         }
       }
 
-      final eventId = giftWrapRecipient['id']?.toString() ?? '';
-
-      // Ambil nama pengirim dari contacts
+      // Notify via Cloudflare worker (uses recipient Gift Wrap ID)
       final contactsBox = Hive.box<Contact>('contacts');
       final myContact = contactsBox.get(myPubkey);
       final senderName = (myContact != null && myContact.isSaved)
           ? myContact.name
           : AppSettings.formatDisplayName(myPubkey);
 
-      // Trigger notifikasi via Cloudflare
       _triggerCloudflareNotification(
         receiverPubkey: receiverPubkey,
         senderPubkey: myPubkey,
-        eventId: eventId,
+        eventId: wrappedRecipient.giftWrapId,
         senderName: senderName,
-        ciphertext: giftWrapRecipient['content']?.toString() ?? '',
-        ephemeralPubkey: giftWrapRecipient['pubkey']?.toString() ?? '',
+        ciphertext: wrappedRecipient.giftWrap['content']?.toString() ?? '',
+        ephemeralPubkey: wrappedRecipient.giftWrap['pubkey']?.toString() ?? '',
       );
 
-      return giftWrapRecipient;
+      return {
+        'giftWrap': wrappedRecipient.giftWrap,
+        'giftWrapId': wrappedRecipient.giftWrapId,
+        'rumorId': wrappedRecipient.rumorId,
+        'rumorTimestamp': wrappedRecipient.rumorTimestamp,
+      };
     } catch (e) {
       DebugLogger.log('[NIP-17] sendMessage failed | $e', type: 'ERROR');
       throw Exception('NIP-17 sendMessage failed: $e');
@@ -895,31 +973,44 @@ class RelayManager {
     }
   }
 
-  Future<void> sendReceipt(String originalEventId, String receiverPubkey, String status) async {
+  /// Sends a read receipt for [originalRumorId] to [receiverPubkey].
+  ///
+  /// The receipt is wrapped as a NIP-17 message (Rumor -> Seal -> Gift Wrap)
+  /// so that relay operators cannot see who is reading whose messages.
+  /// The plaintext payload is `READ_RECEIPT:<rumorId>:<status>`.
+  ///
+  /// [originalRumorId] MUST be the canonical Rumor ID of the message being
+  /// acknowledged (i.e. `ChatMessage.id`), NOT the Gift Wrap ID.
+  Future<void> sendReceipt(String originalRumorId, String receiverPubkey, String status) async {
     try {
       final myPrivkey = AppSettings.instance.myPrivkey;
       final myPubkey = AppSettings.instance.myPubkey;
 
-      final unsignedEvent = {
-        'pubkey': myPubkey,
-        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        'kind': 7,
-        'tags': [['e', originalEventId], ['p', receiverPubkey], ['status', status]],
-        'content': status == 'read' ? '👁️' : '✓',
-      };
+      if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
 
-      final eventId = NostrHelpers.generateEventId(unsignedEvent);
-      final signature = NostrSigner.sign(eventId, myPrivkey);
-      final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+      final receiptPlaintext = 'READ_RECEIPT:$originalRumorId:$status';
 
-      for (final conn in _connections.values) {
-        conn.sink.add(jsonEncode(["EVENT", signedEvent]));
+      final wrapped = await Nip17.wrap(
+        plaintext: receiptPlaintext,
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPubkey,
+        receiverPubkey: receiverPubkey,
+      );
+
+      for (final entry in _connections.entries) {
+        if (_connectionStatus[entry.key] == true) {
+          entry.value.sink.add(jsonEncode(["EVENT", wrapped.giftWrap]));
+        }
       }
     } catch (e) {
       DebugLogger.log('[Receipt] Send failed | $e', type: 'ERROR');
     }
   }
 
+  /// Sends a reaction emoji for [messageId] to [receiverPubkey].
+  ///
+  /// The reaction is wrapped as a NIP-17 message. [messageId] MUST be the
+  /// canonical Rumor ID of the message being reacted to (`ChatMessage.id`).
   Future<void> sendReaction({
     required String messageId,
     required String receiverPubkey,
@@ -933,26 +1024,23 @@ class RelayManager {
 
       final reactionPlaintext = 'REACTION:$emoji:$messageId';
 
-      final giftWrapRecipient = await Nip17.wrap(
+      // Single Rumor shared across both envelopes, so the reaction lands
+      // on the same message ID on both sides.
+      final wrappedList = await Nip17.wrapMulti(
         plaintext: reactionPlaintext,
         senderPrivkey: myPrivkey,
         senderPubkey: myPubkey,
-        receiverPubkey: receiverPubkey,
+        receiverPubkeys: [receiverPubkey, myPubkey],
+        rumorReceiverPubkey: receiverPubkey,
         replyToId: messageId,
       );
-
-      final giftWrapSelf = await Nip17.wrap(
-        plaintext: reactionPlaintext,
-        senderPrivkey: myPrivkey,
-        senderPubkey: myPrivkey,
-        receiverPubkey: myPubkey,
-        replyToId: messageId,
-      );
+      final wrappedRecipient = wrappedList[0];
+      final wrappedSelf = wrappedList[1];
 
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
-          entry.value.sink.add(jsonEncode(["EVENT", giftWrapRecipient]));
-          entry.value.sink.add(jsonEncode(["EVENT", giftWrapSelf]));
+          entry.value.sink.add(jsonEncode(["EVENT", wrappedRecipient.giftWrap]));
+          entry.value.sink.add(jsonEncode(["EVENT", wrappedSelf.giftWrap]));
         }
       }
     } catch (e) {
@@ -1147,11 +1235,18 @@ class RelayManager {
     DebugLogger.log('[Queue] Processing ${pendingMessages.length} pending message(s)');
 
     try {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
       for (var snapshot in pendingMessages) {
         // Re-fetch from Hive — replyToId may have been updated by a previous iteration
         final msg = await ChatManager.instance.getMessageById(snapshot.id, snapshot.chatKey);
         if (msg == null) continue;
         if (msg.status == 'sent' || msg.status == 'read') continue;
+
+        // Cooldown: skip if we tried to send this message < 60s ago.
+        final lastAttempt = _lastQueueAttempt[msg.id] ?? 0;
+        if (nowMs - lastAttempt < 60000) continue;
+        _lastQueueAttempt[msg.id] = nowMs;
 
         final myPrivkey = AppSettings.instance.myPrivkey;
         final myPubkey = AppSettings.instance.myPubkey;
@@ -1159,28 +1254,28 @@ class RelayManager {
         if (plaintext.isEmpty) continue;
 
         try {
-          final giftWrapRecipient = await Nip17.wrap(
+          // Force the Rumor timestamp to the ORIGINAL message timestamp so
+          // re-sends produce the same Rumor ID — this keeps the message
+          // idempotent on the recipient's side, and keeps reactions and
+          // read receipts pointing at a stable ID.
+          final wrappedList = await Nip17.wrapMulti(
             plaintext: plaintext,
             senderPrivkey: myPrivkey,
             senderPubkey: myPubkey,
-            receiverPubkey: msg.receiverPubkey,
+            receiverPubkeys: [msg.receiverPubkey, myPubkey],
+            rumorReceiverPubkey: msg.receiverPubkey,
             replyToId: msg.replyToId,
+            forcedTimestampSec: msg.timestamp ~/ 1000,
           );
-
-          final giftWrapSelf = await Nip17.wrap(
-            plaintext: plaintext,
-            senderPrivkey: myPrivkey,
-            senderPubkey: myPubkey,
-            receiverPubkey: myPubkey,
-            replyToId: msg.replyToId,
-          );
+          final wrappedRecipient = wrappedList[0];
+          final wrappedSelf = wrappedList[1];
 
           bool sentToAtLeastOne = false;
           for (final entry in _connections.entries) {
             if (_connectionStatus[entry.key] == true) {
               try {
-                entry.value.sink.add(jsonEncode(["EVENT", giftWrapRecipient]));
-                entry.value.sink.add(jsonEncode(["EVENT", giftWrapSelf]));
+                entry.value.sink.add(jsonEncode(["EVENT", wrappedRecipient.giftWrap]));
+                entry.value.sink.add(jsonEncode(["EVENT", wrappedSelf.giftWrap]));
                 sentToAtLeastOne = true;
               } catch (e) {
                 DebugLogger.log('[Queue] Send to ${entry.key} failed | $e', type: 'ERROR');
@@ -1189,15 +1284,15 @@ class RelayManager {
           }
 
           if (sentToAtLeastOne) {
-            final finalId = giftWrapRecipient['id']?.toString() ?? '';
             await ChatManager.instance.updateMessageIdAndStatus(
               msg.id,
-              finalId,
+              wrappedRecipient.rumorId,
               'sending',
               msg.chatKey,
-              newContent: giftWrapRecipient['content']?.toString() ?? '',
+              newContent: wrappedRecipient.giftWrap['content']?.toString() ?? '',
+              newGiftWrapId: wrappedRecipient.giftWrapId,
             );
-            DebugLogger.log('[Queue] Sent, awaiting OK: $finalId');
+            DebugLogger.log('[Queue] Sent, awaiting OK: ${wrappedRecipient.giftWrapId}');
           } else {
             DebugLogger.log('[Queue] No relay connected, deferring ${msg.id}', type: 'WARN');
           }

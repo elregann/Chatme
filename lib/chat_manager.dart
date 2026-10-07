@@ -91,6 +91,9 @@ class ChatManager {
             reactions: message.reactions.isNotEmpty
                 ? message.reactions
                 : oldMsg.reactions,
+            giftWrapId: message.giftWrapId.isNotEmpty
+                ? message.giftWrapId
+                : oldMsg.giftWrapId,
           );
         } else {
           messages.add(message);
@@ -114,11 +117,19 @@ class ChatManager {
 
     try {
       final settingsBox = Hive.box('settings');
-      final eventId = message.id;
 
-      final alreadyNotified = settingsBox.get('notified_$eventId', defaultValue: false) as bool;
+      // Use the Gift Wrap ID for notification dedup because the background
+      // FCM handler stores its "notified_<eventId>" flag using the
+      // gift-wrap ID (that's what the Cloudflare worker sends). Falling
+      // back to the canonical message ID when no gift-wrap ID is present
+      // (legacy NIP-04 messages) keeps behaviour consistent.
+      final dedupKey = message.giftWrapId.isNotEmpty
+          ? message.giftWrapId
+          : message.id;
+
+      final alreadyNotified = settingsBox.get('notified_$dedupKey', defaultValue: false) as bool;
       if (alreadyNotified) {
-        await settingsBox.delete('notified_$eventId');
+        await settingsBox.delete('notified_$dedupKey');
         return;
       }
 
@@ -143,6 +154,7 @@ class ChatManager {
       final myPubkey = AppSettings.instance.myPubkey;
       final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
       final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+      final messageTs = DateTime.now().millisecondsSinceEpoch;
 
       final tempMessage = ChatMessage(
         id: tempId,
@@ -150,7 +162,7 @@ class ChatManager {
         receiverPubkey: receiverPubkey,
         content: '',
         plaintext: plaintext,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
+        timestamp: messageTs,
         status: 'sending',
         chatKey: chatKey,
       );
@@ -160,11 +172,17 @@ class ChatManager {
       final event = await relayManager.sendMessage(
         receiverPubkey: receiverPubkey,
         plaintext: plaintext,
+        messageTimestampMs: messageTs,
       );
 
+      // `event` now carries the NIP-17 metadata map:
+      //   { giftWrap, giftWrapId, rumorId, rumorTimestamp }
+      // The canonical message ID is the Rumor ID; the Gift Wrap ID is kept
+      // alongside for relay OK matching.
       final realMessage = tempMessage.copyWith(
-        id: event['id'].toString(),
-        content: event['content'].toString(),
+        id: event['rumorId'].toString(),
+        giftWrapId: event['giftWrapId'].toString(),
+        content: (event['giftWrap'] as Map<String, dynamic>)['content'].toString(),
         status: 'sending',
       );
 
@@ -190,6 +208,41 @@ class ChatManager {
         }
       } catch (e) {
         DebugLogger.log('[Message] Status update failed | $e', type: 'ERROR');
+      }
+    });
+  }
+
+  /// Updates the status of a message identified by its **Gift Wrap ID**.
+  ///
+  /// This is used to process relay `["OK", <giftWrapId>, true]` acknowledgements.
+  /// Because the Gift Wrap ID changes every time a message is re-sent with
+  /// a fresh ephemeral key, this method must be called before the message
+  /// is re-queued (i.e. while its status is still `sending`).
+  ///
+  /// Status transitions follow the same monotonic weighting as
+  /// [updateMessageStatus] — a `sent` update will not overwrite a `read`.
+  Future<void> updateMessageStatusByGiftWrap(String giftWrapId, String newStatus) async {
+    if (giftWrapId.isEmpty) return;
+    await _lock.synchronized<void>(() async {
+      try {
+        final chatsBox = Hive.box('chats');
+        for (final key in chatsBox.keys) {
+          final dynamic rawData = chatsBox.get(key);
+          if (rawData is! List) continue;
+
+          final List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
+          final index = messages.indexWhere((m) => m.giftWrapId == giftWrapId);
+          if (index == -1) continue;
+
+          if (_getStatusWeight(newStatus) > _getStatusWeight(messages[index].status)) {
+            messages[index] = messages[index].copyWithStatus(newStatus);
+            await chatsBox.put(key, messages);
+            DebugLogger.log('[Message] GiftWrap status updated: $giftWrapId -> $newStatus');
+          }
+          return;
+        }
+      } catch (e) {
+        DebugLogger.log('[Message] GiftWrap status update failed | $e', type: 'ERROR');
       }
     });
   }
@@ -240,12 +293,24 @@ class ChatManager {
     return pendingQueue;
   }
 
+  /// Replaces a message's local ID with the canonical ID assigned after
+  /// NIP-17 wrapping, and optionally updates its Gift Wrap ID and status.
+  ///
+  /// For a fresh send, [oldId] is the local `temp_<ms>` placeholder and
+  /// [newId] is the Rumor ID. [newGiftWrapId] is the outer Gift Wrap ID.
+  ///
+  /// For a queue retry, [oldId] and [newId] may be the same Rumor ID (since
+  /// the Rumor is rebuilt deterministically from the same content + reply
+  /// info... actually no, `_realTimestamp` differs each call, so the Rumor
+  /// ID will also change on each retry — hence the update path is still
+  /// needed for retries too).
   Future<void> updateMessageIdAndStatus(
       String oldId,
       String newId,
       String status,
       String chatKey, {
         String? newContent,
+        String? newGiftWrapId,
       }) async {
     await _lock.synchronized(() async {
       try {
@@ -264,6 +329,9 @@ class ChatManager {
             messages[index] = messages[index].copyWith(
               id: newId,
               status: finalStatus,
+              giftWrapId: (newGiftWrapId != null && newGiftWrapId.isNotEmpty)
+                  ? newGiftWrapId
+                  : messages[index].giftWrapId,
               content: (newContent != null && newContent.isNotEmpty)
                   ? newContent
                   : messages[index].content,

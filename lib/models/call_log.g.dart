@@ -21,9 +21,9 @@ class CallLogAdapter extends TypeAdapter<CallLog> {
       peerPubkey: fields[1] as String,
       peerName: fields[2] as String,
       direction: fields[3] as String,
-      mediaType: fields[4] == null ? 'voice' : fields[4] as String,
+      mediaType: fields[4] as String,
       timestamp: fields[5] as int,
-      durationSeconds: fields[6] == null ? 0 : fields[6] as int,
+      durationSeconds: fields[6] as int,
     );
   }
 

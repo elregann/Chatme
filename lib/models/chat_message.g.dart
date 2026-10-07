@@ -30,13 +30,14 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       reactions:
           fields[10] == null ? {} : (fields[10] as Map).cast<String, String>(),
       replyToSenderPubkey: fields[11] == null ? '' : fields[11] as String?,
+      giftWrapId: fields[12] == null ? '' : fields[12] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChatMessage obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -60,7 +61,9 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       ..writeByte(10)
       ..write(obj.reactions)
       ..writeByte(11)
-      ..write(obj.replyToSenderPubkey);
+      ..write(obj.replyToSenderPubkey)
+      ..writeByte(12)
+      ..write(obj.giftWrapId);
   }
 
   @override

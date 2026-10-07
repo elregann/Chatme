@@ -10,103 +10,120 @@ import 'package:bip340/bip340.dart' as bip340;
 
 /// NIP-17 — Private Direct Messages via Gift Wrap.
 ///
-/// This implementation conforms to the NIP-17 and NIP-59 specifications,
-/// providing metadata-private direct messaging through a three-layer
-/// wrapping scheme:
-///
-///   1. Rumor  (kind 14) — The unsigned plaintext chat message.
-///   2. Seal   (kind 13) — The rumor encrypted with NIP-44, signed by the sender.
-///   3. Gift Wrap (kind 1059) — The seal encrypted with NIP-44, signed by a
-///                              single-use ephemeral keypair.
-///
-/// Privacy guarantees:
-/// - Relay operators cannot determine the sender's identity from the outer event.
-/// - Message timestamps are randomised within a 2-day window to prevent
-///   timing correlation attacks.
-/// - The actual event kind, tags, and content are hidden from the network.
+/// Conforms to NIP-17 and NIP-59. Three-layer wrapping:
+///   1. Rumor  (kind 14)  — unsigned plaintext.
+///   2. Seal   (kind 13)  — NIP-44 encrypted Rumor, signed by sender.
+///   3. GiftWrap (kind 1059) — NIP-44 encrypted Seal, signed by ephemeral key.
 ///
 /// Reference: https://github.com/nostr-protocol/nips/blob/master/17.md
 class Nip17 {
-  /// The Nostr event kind for a private chat message (Rumor).
   static const int kindRumor = 14;
-
-  /// The Nostr event kind for a Seal — an encrypted, signed Rumor.
   static const int kindSeal = 13;
-
-  /// The Nostr event kind for a Gift Wrap — an encrypted, signed Seal.
   static const int kindGiftWrap = 1059;
 
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
 
-  /// Wraps a plaintext [message] into a NIP-17 Gift Wrap event ready for relay.
+  /// Wraps a plaintext into a **single** Gift Wrap for [receiverPubkey].
   ///
-  /// [plaintext]       : The UTF-8 chat message to send.
-  /// [senderPrivkey]   : Sender's private key as a 64-character hex string.
-  /// [senderPubkey]    : Sender's public key as a 64-character hex string.
-  /// [receiverPubkey]  : Recipient's public key as a 64-character hex string.
-  /// [replyToId]       : Optional event ID of the message being replied to.
-  ///
-  /// Returns a fully signed Gift Wrap event map ready to be published as:
-  ///   `["EVENT", giftWrap]`
-  ///
-  /// Throws [Exception] if any layer of wrapping fails.
-  static Future<Map<String, dynamic>> wrap({
+  /// Convenience wrapper around [wrapMulti] for the common single-recipient
+  /// case (e.g. read receipts and reactions that don't need a self-envelope).
+  static Future<Nip17Wrapped> wrap({
     required String plaintext,
     required String senderPrivkey,
     required String senderPubkey,
     required String receiverPubkey,
+    String? rumorReceiverPubkey,
     String? replyToId,
+    int? forcedTimestampSec,
+  }) async {
+    final results = await wrapMulti(
+      plaintext: plaintext,
+      senderPrivkey: senderPrivkey,
+      senderPubkey: senderPubkey,
+      receiverPubkeys: [receiverPubkey],
+      rumorReceiverPubkey: rumorReceiverPubkey,
+      replyToId: replyToId,
+      forcedTimestampSec: forcedTimestampSec,
+    );
+    return results.first;
+  }
+
+  /// Wraps a plaintext into **multiple** Gift Wraps that all share the SAME
+  /// inner Rumor.
+  ///
+  /// This is the correct way to build a recipient envelope + a self-envelope
+  /// for multi-device sync: the Rumor (and therefore its ID) is identical
+  /// across both envelopes, so the sender's own devices can deduplicate by
+  /// Rumor ID.
+  ///
+  /// [receiverPubkeys] is the list of pubkeys to encrypt to. Order is
+  /// preserved in the returned list.
+  ///
+  /// [rumorReceiverPubkey] is the pubkey that appears in the Rumor's `p` tag.
+  /// Defaults to `receiverPubkeys.first` if null.
+  ///
+  /// [forcedTimestampSec] pins the Rumor's `created_at`. Used on retries so
+  /// the resulting Rumor ID is stable across re-sends.
+  static Future<List<Nip17Wrapped>> wrapMulti({
+    required String plaintext,
+    required String senderPrivkey,
+    required String senderPubkey,
+    required List<String> receiverPubkeys,
+    String? rumorReceiverPubkey,
+    String? replyToId,
+    int? forcedTimestampSec,
   }) async {
     try {
-      // 1. Build the unsigned Rumor (kind 14) — the plaintext message layer.
+      if (receiverPubkeys.isEmpty) {
+        throw Exception('wrapMulti requires at least one receiver');
+      }
+
+      // 1. Build ONE Rumor — shared across all envelopes.
       final rumor = _buildRumor(
         plaintext: plaintext,
         senderPubkey: senderPubkey,
-        receiverPubkey: receiverPubkey,
+        receiverPubkey: rumorReceiverPubkey ?? receiverPubkeys.first,
         replyToId: replyToId,
+        forcedTimestampSec: forcedTimestampSec,
       );
+      final rumorId = rumor['id'] as String;
+      final rumorTimestamp = rumor['created_at'] as int;
 
-      // 2. Seal the Rumor: encrypt with NIP-44 and sign with the sender's key.
-      final seal = await _buildSeal(
-        rumor: rumor,
-        senderPrivkey: senderPrivkey,
-        senderPubkey: senderPubkey,
-        receiverPubkey: receiverPubkey,
-      );
-
-      // 3. Gift-wrap the Seal: encrypt with NIP-44 and sign with an ephemeral key.
-      final giftWrap = await _buildGiftWrap(
-        seal: seal,
-        receiverPubkey: receiverPubkey,
-      );
-
-      return giftWrap;
+      // 2. For each recipient, build a Seal + Gift Wrap around the SAME Rumor.
+      final results = <Nip17Wrapped>[];
+      for (final receiverPubkey in receiverPubkeys) {
+        final seal = await _buildSeal(
+          rumor: rumor,
+          senderPrivkey: senderPrivkey,
+          senderPubkey: senderPubkey,
+          receiverPubkey: receiverPubkey,
+        );
+        final giftWrap = await _buildGiftWrap(
+          seal: seal,
+          receiverPubkey: receiverPubkey,
+        );
+        results.add(Nip17Wrapped(
+          giftWrap: giftWrap,
+          giftWrapId: giftWrap['id'] as String,
+          rumorId: rumorId,
+          rumorTimestamp: rumorTimestamp,
+        ));
+      }
+      return results;
     } catch (e) {
-      throw Exception('NIP-17 wrap failed: $e');
+      throw Exception('NIP-17 wrapMulti failed: $e');
     }
   }
 
   /// Unwraps a received NIP-17 Gift Wrap event to recover the original plaintext.
-  ///
-  /// [giftWrapEvent]  : The raw kind-1059 event map received from a relay.
-  /// [receiverPrivkey]: Recipient's private key as a 64-character hex string.
-  /// [receiverPubkey] : Recipient's public key as a 64-character hex string.
-  ///
-  /// Returns an [Nip17Result] containing the plaintext message, the verified
-  /// sender public key, the original timestamp, and any reply metadata.
-  ///
-  /// Throws [Exception] if any layer fails to decrypt or validate.
   static Future<Nip17Result> unwrap({
     required Map<String, dynamic> giftWrapEvent,
     required String receiverPrivkey,
     required String receiverPubkey,
   }) async {
     try {
-      // 1. Decrypt the Gift Wrap to recover the Seal.
-      //    The Gift Wrap is signed by an ephemeral key — its pubkey is the
-      //    ephemeral public key used to encrypt the Seal content.
       final ephemeralPubkey = giftWrapEvent['pubkey']?.toString() ?? '';
       if (ephemeralPubkey.isEmpty) {
         throw Exception('Gift Wrap event is missing the ephemeral pubkey field');
@@ -120,16 +137,12 @@ class Nip17 {
 
       final seal = jsonDecode(sealJson) as Map<String, dynamic>;
 
-      // 2. Validate that the Seal is of the expected kind.
       if (seal['kind'] != kindSeal) {
         throw Exception(
           'Inner event kind ${seal['kind']} is not a valid Seal (expected $kindSeal)',
         );
       }
 
-      // 3. Decrypt the Seal to recover the Rumor.
-      //    The Seal is signed by the actual sender — its pubkey is the sender's
-      //    real public key, used as the peer key for NIP-44 decryption.
       final senderPubkey = seal['pubkey']?.toString() ?? '';
       if (senderPubkey.isEmpty) {
         throw Exception('Seal event is missing the sender pubkey field');
@@ -143,23 +156,27 @@ class Nip17 {
 
       final rumor = jsonDecode(rumorJson) as Map<String, dynamic>;
 
-      // 4. Validate that the Rumor is of the expected kind.
       if (rumor['kind'] != kindRumor) {
         throw Exception(
           'Innermost event kind ${rumor['kind']} is not a valid Rumor (expected $kindRumor)',
         );
       }
 
-      // 5. Extract recipient and reply metadata from the Rumor's tags, if present.
+      // Extract rumor tags — used by the caller to detect reply ('e'),
+      // recipient ('p'), and any custom tags.
       String? replyToId;
       String receiverPubkey = '';
+      final rumorTags = <List<String>>[];
       final tags = rumor['tags'] as List? ?? [];
       for (final tag in tags) {
-        if (tag is List && tag.length > 1) {
-          if (tag[0] == 'e') {
-            replyToId = tag[1].toString();
-          } else if (tag[0] == 'p') {
-            receiverPubkey = tag[1].toString();
+        if (tag is List) {
+          rumorTags.add(tag.map((e) => e.toString()).toList());
+          if (tag.length > 1) {
+            if (tag[0] == 'e') {
+              replyToId = tag[1].toString();
+            } else if (tag[0] == 'p') {
+              receiverPubkey = tag[1].toString();
+            }
           }
         }
       }
@@ -171,15 +188,13 @@ class Nip17 {
         timestamp: (rumor['created_at'] as int? ?? 0) * 1000,
         rumorId: rumor['id']?.toString() ?? '',
         replyToId: replyToId,
+        rumorTags: rumorTags,
       );
     } catch (e) {
       throw Exception('NIP-17 unwrap failed: $e');
     }
   }
 
-  /// Returns [true] if [event] is a Gift Wrap event (kind 1059).
-  ///
-  /// Use this to filter incoming relay events before calling [unwrap].
   static bool isGiftWrap(Map<String, dynamic> event) {
     return event['kind'] == kindGiftWrap;
   }
@@ -188,16 +203,12 @@ class Nip17 {
   // Layer Builders
   // ---------------------------------------------------------------------------
 
-  /// Constructs an unsigned Rumor event (kind 14).
-  ///
-  /// The Rumor is intentionally left unsigned — its ID is computed for
-  /// reference but no signature is attached. This ensures that the
-  /// plaintext message is never directly attributable on the network.
   static Map<String, dynamic> _buildRumor({
     required String plaintext,
     required String senderPubkey,
     required String receiverPubkey,
     String? replyToId,
+    int? forcedTimestampSec,
   }) {
     final List<List<String>> tags = [['p', receiverPubkey]];
 
@@ -207,26 +218,16 @@ class Nip17 {
 
     final unsignedRumor = {
       'pubkey': senderPubkey,
-      'created_at': _realTimestamp(),
+      'created_at': forcedTimestampSec ?? _realTimestamp(),
       'kind': kindRumor,
       'tags': tags,
       'content': plaintext,
     };
 
-    // Compute the event ID so the Rumor can be referenced by reply tags,
-    // but deliberately omit the 'sig' field to mark it as unsigned.
     final id = _computeEventId(unsignedRumor);
     return {...unsignedRumor, 'id': id};
   }
 
-  /// Constructs a signed Seal event (kind 13).
-  ///
-  /// The Rumor is serialised to JSON, encrypted with NIP-44 addressed to
-  /// the [receiverPubkey], and the resulting ciphertext is signed by the
-  /// sender's actual private key.
-  ///
-  /// The Seal's timestamp is randomised within ±2 days to prevent
-  /// timing correlation between the Seal and the Gift Wrap.
   static Future<Map<String, dynamic>> _buildSeal({
     required Map<String, dynamic> rumor,
     required String senderPrivkey,
@@ -245,7 +246,7 @@ class Nip17 {
       'pubkey': senderPubkey,
       'created_at': _randomisedTimestamp(),
       'kind': kindSeal,
-      'tags': <List<String>>[],  // Seals carry no tags per the specification.
+      'tags': <List<String>>[],
       'content': encryptedRumor,
     };
 
@@ -255,21 +256,10 @@ class Nip17 {
     return {...unsignedSeal, 'id': id, 'sig': sig};
   }
 
-  /// Constructs a signed Gift Wrap event (kind 1059).
-  ///
-  /// The Seal is serialised to JSON, encrypted with NIP-44 addressed to
-  /// the [receiverPubkey], and the resulting ciphertext is signed by a
-  /// freshly generated single-use ephemeral keypair.
-  ///
-  /// The ephemeral key is discarded after signing — this prevents relay
-  /// operators from linking the Gift Wrap to the sender's identity.
-  ///
-  /// The Gift Wrap's timestamp is also randomised to prevent timing attacks.
   static Future<Map<String, dynamic>> _buildGiftWrap({
     required Map<String, dynamic> seal,
     required String receiverPubkey,
   }) async {
-    // Generate a single-use ephemeral keypair for this Gift Wrap only.
     final ephemeral = _generateEphemeralKeypair();
     final ephemeralPrivkey = ephemeral.privkey;
     final ephemeralPubkey = ephemeral.pubkey;
@@ -286,7 +276,9 @@ class Nip17 {
       'pubkey': ephemeralPubkey,
       'created_at': _randomisedTimestamp(),
       'kind': kindGiftWrap,
-      'tags': [['p', receiverPubkey]],  // Only the recipient tag is exposed.
+      'tags': [
+        ['p', receiverPubkey]
+      ],
       'content': encryptedSeal,
     };
 
@@ -300,10 +292,6 @@ class Nip17 {
   // Utilities
   // ---------------------------------------------------------------------------
 
-  /// Computes the canonical Nostr event ID for [event].
-  ///
-  /// Per NIP-01: SHA-256 of the UTF-8 JSON serialisation of
-  /// [0, pubkey, created_at, kind, tags, content].
   static String _computeEventId(Map<String, dynamic> event) {
     final serialized = jsonEncode([
       0,
@@ -316,27 +304,21 @@ class Nip17 {
     return sha256.convert(utf8.encode(serialized)).toString();
   }
 
-  /// Returns the current Unix timestamp in seconds.
   static int _realTimestamp() {
     return DateTime.now().millisecondsSinceEpoch ~/ 1000;
   }
 
-  /// Returns a randomised Unix timestamp within ±2 days of the current time.
+  /// Returns a randomised timestamp within the **past** 2 days.
   ///
-  /// Per the NIP-17 specification, timestamps on Seals and Gift Wraps must be
-  /// randomised to prevent timing-based correlation of wrapped messages.
+  /// MUST be in the past — relays reject events whose `created_at` is more
+  /// than ~15 minutes ahead of real time.
   static int _randomisedTimestamp() {
     const twoDaysInSeconds = 172800;
     final rng = Random.secure();
-    final offset = rng.nextInt(twoDaysInSeconds * 2) - twoDaysInSeconds;
-    return _realTimestamp() + offset;
+    final offset = rng.nextInt(twoDaysInSeconds);
+    return _realTimestamp() - offset;
   }
 
-  /// Generates a single-use ephemeral secp256k1 keypair.
-  ///
-  /// The private key is 32 cryptographically random bytes encoded as hex.
-  /// The public key is derived via the same scalar multiplication used
-  /// throughout the Nostr protocol.
   static _EphemeralKeypair _generateEphemeralKeypair() {
     final rng = Random.secure();
     final privkeyBytes = Uint8List.fromList(
@@ -346,7 +328,6 @@ class Nip17 {
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
 
-    // Derive the corresponding public key from the ephemeral private key.
     final pubkeyHex = bip340.getPublicKey(privkeyHex);
 
     return _EphemeralKeypair(privkey: privkeyHex, pubkey: pubkeyHex);
@@ -357,25 +338,17 @@ class Nip17 {
 // Result and Internal Data Classes
 // ---------------------------------------------------------------------------
 
-/// The result of successfully unwrapping a NIP-17 Gift Wrap event.
 class Nip17Result {
-  /// The decrypted plaintext message content.
   final String plaintext;
-
-  /// The verified public key of the actual message sender.
   final String senderPubkey;
-
-  /// The public key of the message recipient (from rumor p tag).
   final String receiverPubkey;
-
-  /// The original message timestamp in milliseconds since epoch.
   final int timestamp;
-
-  /// The event ID of the innermost Rumor event.
   final String rumorId;
-
-  /// The event ID of the message being replied to, if any.
   final String? replyToId;
+
+  /// The full tag list from the inner Rumor. Useful for callers that need
+  /// to inspect custom tags beyond `p` and `e`.
+  final List<List<String>> rumorTags;
 
   const Nip17Result({
     required this.plaintext,
@@ -384,15 +357,26 @@ class Nip17Result {
     required this.timestamp,
     required this.rumorId,
     this.replyToId,
+    this.rumorTags = const [],
   });
 }
 
-/// Holds a single-use ephemeral secp256k1 keypair.
-class _EphemeralKeypair {
-  /// Private key as a 64-character lowercase hex string.
-  final String privkey;
+class Nip17Wrapped {
+  final Map<String, dynamic> giftWrap;
+  final String giftWrapId;
+  final String rumorId;
+  final int rumorTimestamp;
 
-  /// Public key as a 64-character lowercase hex string (x-only).
+  const Nip17Wrapped({
+    required this.giftWrap,
+    required this.giftWrapId,
+    required this.rumorId,
+    required this.rumorTimestamp,
+  });
+}
+
+class _EphemeralKeypair {
+  final String privkey;
   final String pubkey;
 
   const _EphemeralKeypair({required this.privkey, required this.pubkey});
