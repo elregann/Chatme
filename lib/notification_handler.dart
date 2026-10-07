@@ -12,6 +12,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'chat_manager.dart';
+import 'core/crypto/nip17.dart';
 import 'core/crypto/nip04.dart';
 
 /// Background FCM handler (runs in separate isolate).
@@ -23,18 +24,36 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final senderPubkey = message.data['senderPubkey'] ?? '';
   final senderName = message.data['senderName'] ?? 'New Message';
   final ciphertext = message.data['ciphertext'] ?? '';
+  final ephemeralPubkey = message.data['ephemeralPubkey'] ?? '';
   final eventId = message.data['eventId'] ?? '';
 
   if (senderPubkey.isEmpty || eventId.isEmpty) return;
 
   final settingsBox = await Hive.openBox('settings');
   final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+  final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
 
   String plaintext = 'You have a new message';
   if (ciphertext.isNotEmpty && myPrivkey.isNotEmpty) {
     try {
-      final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
-      if (decrypted.isNotEmpty) plaintext = decrypted;
+      if (ephemeralPubkey.isNotEmpty) {
+        final giftWrapEvent = {
+          'pubkey': ephemeralPubkey,
+          'content': ciphertext,
+          'kind': 1059,
+        };
+        final nip17Result = await Nip17.unwrap(
+          giftWrapEvent: giftWrapEvent,
+          receiverPrivkey: myPrivkey,
+          receiverPubkey: myPubkey,
+        );
+        if (nip17Result.plaintext.isNotEmpty) {
+          plaintext = nip17Result.plaintext;
+        }
+      } else {
+        final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
+        if (decrypted.isNotEmpty) plaintext = decrypted;
+      }
     } catch (_) {}
   }
 

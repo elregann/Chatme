@@ -12,6 +12,7 @@ import 'call.dart';
 import 'main.dart';
 import 'chat_manager.dart';
 import 'core/crypto/nip04.dart';
+import 'core/crypto/nip17.dart';
 import 'core/crypto/nostr_protocol.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
@@ -144,7 +145,7 @@ class RelayManager {
         DebugLogger.log('[Sync] Failed to compute syncSince, using 30 days default', type: 'WARN');
       }
 
-      final List<int> neededKinds = [1, 4, 7, 1000];
+      final List<int> neededKinds = [1, 4, 7, 1059, 1000];
 
       final subToMe = jsonEncode(["REQ", "${_subscriptionId!}_incoming", {
         "kinds": neededKinds,
@@ -312,7 +313,7 @@ class RelayManager {
       return;
     }
 
-    if (kind == 1 || kind == 4 || kind == 7) {
+    if (kind == 1 || kind == 4 || kind == 7 || kind == 1059) {
       if (kind == 7) {
         if (senderPubkey == myPubkey) return;
         if (now - createdAt > 60) return;
@@ -320,7 +321,7 @@ class RelayManager {
 
       _processedEventIds.add(eventId);
 
-      if (kind == 1 || kind == 4) {
+      if (kind == 1 || kind == 4 || kind == 1059) {
         _processIncomingEvent(event);
       }
 
@@ -388,42 +389,69 @@ class RelayManager {
   void _processIncomingEvent(Map<String, dynamic> event) async {
     try {
       final eventId = event['id']?.toString() ?? '';
-      final senderPubkey = event['pubkey']?.toString() ?? '';
       final myPubkey = AppSettings.instance.myPubkey;
-      final tags = event['tags'] as List? ?? [];
-      final receiverPubkey = _extractReceiverPubkey(tags);
-      final bool isFromMe = (senderPubkey == myPubkey);
-      final String peerPubkey = isFromMe ? receiverPubkey : senderPubkey;
+      final myPrivkey = AppSettings.instance.myPrivkey;
+
+      String decrypted = '';
+      String actualSenderPubkey = '';
+      int timestamp = (event['created_at'] as int? ?? 0) * 1000;
+      String actualEventId = eventId;
+      String peerPubkey = '';
+      String receiverPubkey = '';
+      List tags = event['tags'] as List? ?? [];
+      String content = event['content']?.toString() ?? '';
+
+      if (event['kind'] == 1059) {
+        try {
+          final nip17Result = await Nip17.unwrap(
+            giftWrapEvent: event,
+            receiverPrivkey: myPrivkey,
+            receiverPubkey: myPubkey,
+          );
+          decrypted = nip17Result.plaintext;
+          actualSenderPubkey = nip17Result.senderPubkey;
+          timestamp = nip17Result.timestamp;
+          actualEventId = nip17Result.rumorId;
+          receiverPubkey = nip17Result.receiverPubkey;
+
+          final bool isFromMe = (actualSenderPubkey == myPubkey);
+          peerPubkey = isFromMe ? receiverPubkey : actualSenderPubkey;
+        } catch (e) {
+          DebugLogger.log('[NIP-17] Unwrap failed | $e', type: 'ERROR');
+          return;
+        }
+      } else {
+        actualSenderPubkey = event['pubkey']?.toString() ?? '';
+        tags = event['tags'] as List? ?? [];
+        receiverPubkey = _extractReceiverPubkey(tags);
+        final bool isFromMe = (actualSenderPubkey == myPubkey);
+        peerPubkey = isFromMe ? receiverPubkey : actualSenderPubkey;
+
+        content = event['content']?.toString() ?? '';
+        if (event['kind'] == 4) {
+          decrypted = Nip04.decrypt(content, myPrivkey, peerPubkey);
+        } else if (event['kind'] == 1) {
+          decrypted = content;
+        }
+      }
 
       if (peerPubkey.isEmpty || peerPubkey == myPubkey) return;
 
       final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
 
-      final bool alreadyExists = await ChatManager.instance.isMessageExists(eventId, chatKey);
+      final bool alreadyExists = await ChatManager.instance.isMessageExists(actualEventId, chatKey);
       if (alreadyExists) return;
 
       final settingsBox = Hive.box('settings');
       final int cutOffTime = settingsBox.get('cut_off_$peerPubkey', defaultValue: 0);
-      final int timestamp = (event['created_at'] as int? ?? 0) * 1000;
 
       if (timestamp <= cutOffTime) return;
 
-      final content = event['content']?.toString() ?? '';
-      final myPrivkey = AppSettings.instance.myPrivkey;
-
-      String decrypted = Nip04.decrypt(
-        content,
-        myPrivkey,
-        peerPubkey,
-      );
-
       if (decrypted.isEmpty) {
-        if (event['kind'] == 1) {
-          decrypted = content;
-        } else {
-          decrypted = '[Encrypted Message]';
-        }
+        decrypted = '[Encrypted Message]';
       }
+
+      final bool isFromMe = (actualSenderPubkey == myPubkey);
 
       if (decrypted.startsWith('REACTION:')) {
         final parts = decrypted.split(':');
@@ -431,7 +459,7 @@ class RelayManager {
           final emoji = parts[1];
           final targetMessageId = parts[2];
           if (targetMessageId.isNotEmpty) {
-            await _updateMessageReaction(targetMessageId, senderPubkey, emoji, chatKey);
+            await _updateMessageReaction(targetMessageId, actualSenderPubkey, emoji, chatKey);
             if (onMessageReceived != null) onMessageReceived!();
             return;
           }
@@ -445,7 +473,7 @@ class RelayManager {
           }
         }
         if (targetId != null) {
-          await _updateMessageReaction(targetId, senderPubkey, content, chatKey);
+          await _updateMessageReaction(targetId, actualSenderPubkey, content, chatKey);
           if (onMessageReceived != null) onMessageReceived!();
           return;
         }
@@ -470,9 +498,9 @@ class RelayManager {
       final String initialStatus = isFromMe ? 'sending' : 'sent';
 
       final chatMessage = ChatMessage(
-        id: eventId,
-        senderPubkey: senderPubkey,
-        receiverPubkey: receiverPubkey,
+        id: actualEventId,
+        senderPubkey: actualSenderPubkey,
+        receiverPubkey: receiverPubkey.isEmpty ? peerPubkey : receiverPubkey,
         content: content,
         plaintext: decrypted,
         timestamp: timestamp,
@@ -484,7 +512,7 @@ class RelayManager {
       );
 
       await ChatManager.instance.saveMessage(chatMessage);
-      await ChatManager.instance.repairReplyContent(eventId, decrypted, chatKey);
+      await ChatManager.instance.repairReplyContent(actualEventId, decrypted, chatKey);
       await ChatManager.instance.repairPendingReplies(chatKey);
       await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExists);
 
@@ -564,50 +592,32 @@ class RelayManager {
         throw Exception('Missing pubkey or privkey');
       }
 
-      final encryptedContent = Nip04.encrypt(
-        plaintext,
-        myPrivkey,
-        receiverPubkey,
+      // 1. Wrap for recipient (NIP-17)
+      final giftWrapRecipient = await Nip17.wrap(
+        plaintext: plaintext,
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPubkey,
+        receiverPubkey: receiverPubkey,
+        replyToId: replyToId,
       );
 
-      if (encryptedContent.isEmpty) {
-        throw Exception('Encryption failed');
-      }
-
-      final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final List<List<String>> tags = [['p', receiverPubkey]];
-
-      if (replyToId != null && replyToId.isNotEmpty) {
-        tags.add(['e', replyToId]);
-      }
-
-      final unsignedEvent = {
-        'pubkey': myPubkey,
-        'created_at': createdAt,
-        'kind': 4,
-        'tags': tags,
-        'content': encryptedContent,
-      };
-
-      final eventId = NostrHelpers.generateEventId(unsignedEvent);
-
-      if (eventId.isEmpty) {
-        throw Exception('Event ID generation failed');
-      }
-
-      final signature = NostrSigner.sign(eventId, myPrivkey);
-
-      if (signature.isEmpty) {
-        throw Exception('Signature generation failed');
-      }
-
-      final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+      // 2. Wrap for self (Self-envelope for multi-device sync)
+      final giftWrapSelf = await Nip17.wrap(
+        plaintext: plaintext,
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPubkey,
+        receiverPubkey: myPubkey,
+        replyToId: replyToId,
+      );
 
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
-          entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
+          entry.value.sink.add(jsonEncode(["EVENT", giftWrapRecipient]));
+          entry.value.sink.add(jsonEncode(["EVENT", giftWrapSelf]));
         }
       }
+
+      final eventId = giftWrapRecipient['id']?.toString() ?? '';
 
       // Ambil nama pengirim dari contacts
       final contactsBox = Hive.box<Contact>('contacts');
@@ -622,13 +632,14 @@ class RelayManager {
         senderPubkey: myPubkey,
         eventId: eventId,
         senderName: senderName,
-        ciphertext: encryptedContent,
+        ciphertext: giftWrapRecipient['content']?.toString() ?? '',
+        ephemeralPubkey: giftWrapRecipient['pubkey']?.toString() ?? '',
       );
-      return signedEvent;
 
+      return giftWrapRecipient;
     } catch (e) {
-      DebugLogger.log('[Message] Send failed | $e', type: 'ERROR');
-      rethrow;
+      DebugLogger.log('[NIP-17] sendMessage failed | $e', type: 'ERROR');
+      throw Exception('NIP-17 sendMessage failed: $e');
     }
   }
 
@@ -638,6 +649,7 @@ class RelayManager {
     required String eventId,
     required String senderName,
     required String ciphertext,
+    required String ephemeralPubkey,
   }) async {
     const workerUrl = 'https://chatme-notifier.cintanyanessa.workers.dev/';
     const secretKey = 'chatme2026secret';
@@ -655,6 +667,7 @@ class RelayManager {
           'eventId': eventId,
           'senderName': senderName,
           'ciphertext': ciphertext,
+          'ephemeralPubkey': ephemeralPubkey,
         }),
       ).timeout(const Duration(seconds: 10));
 
@@ -920,35 +933,30 @@ class RelayManager {
 
       final reactionPlaintext = 'REACTION:$emoji:$messageId';
 
-      final encryptedContent = Nip04.encrypt(
-        reactionPlaintext,
-        myPrivkey,
-        receiverPubkey,
+      final giftWrapRecipient = await Nip17.wrap(
+        plaintext: reactionPlaintext,
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPubkey,
+        receiverPubkey: receiverPubkey,
+        replyToId: messageId,
       );
-      if (encryptedContent.isEmpty) return;
 
-      final unsignedEvent = {
-        'pubkey': myPubkey,
-        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        'kind': 4,
-        'tags': [
-          ['p', receiverPubkey],
-          ['e', messageId],
-        ],
-        'content': encryptedContent,
-      };
-
-      final eventId = NostrHelpers.generateEventId(unsignedEvent);
-      final signature = NostrSigner.sign(eventId, myPrivkey);
-      final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+      final giftWrapSelf = await Nip17.wrap(
+        plaintext: reactionPlaintext,
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPrivkey,
+        receiverPubkey: myPubkey,
+        replyToId: messageId,
+      );
 
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
-          entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
+          entry.value.sink.add(jsonEncode(["EVENT", giftWrapRecipient]));
+          entry.value.sink.add(jsonEncode(["EVENT", giftWrapSelf]));
         }
       }
     } catch (e) {
-      DebugLogger.log('[Reaction] Send failed | $e', type: 'ERROR');
+      DebugLogger.log('[NIP-17] Reaction send failed | $e', type: 'ERROR');
     }
   }
 
@@ -1145,69 +1153,56 @@ class RelayManager {
         if (msg == null) continue;
         if (msg.status == 'sent' || msg.status == 'read') continue;
 
-        String ciphertext = msg.content;
+        final myPrivkey = AppSettings.instance.myPrivkey;
+        final myPubkey = AppSettings.instance.myPubkey;
+        final plaintext = msg.plaintext.isNotEmpty ? msg.plaintext : msg.content;
+        if (plaintext.isEmpty) continue;
 
-        if (ciphertext.isEmpty) {
-          if (msg.plaintext.isEmpty) {
-            DebugLogger.log('[Queue] Skip ${msg.id}: empty plaintext & content', type: 'WARN');
-            continue;
-          }
-          ciphertext = Nip04.encrypt(
-            msg.plaintext,
-            AppSettings.instance.myPrivkey,
-            msg.receiverPubkey,
+        try {
+          final giftWrapRecipient = await Nip17.wrap(
+            plaintext: plaintext,
+            senderPrivkey: myPrivkey,
+            senderPubkey: myPubkey,
+            receiverPubkey: msg.receiverPubkey,
+            replyToId: msg.replyToId,
           );
-          if (ciphertext.isEmpty) {
-            DebugLogger.log('[Queue] Re-encrypt failed for ${msg.id}', type: 'ERROR');
-            continue;
-          }
-          DebugLogger.log('[Queue] Re-encrypted ${msg.id} from plaintext');
-        }
 
-        final List<List<String>> tags = [['p', msg.receiverPubkey]];
-        if (msg.replyToId != null && msg.replyToId!.isNotEmpty) {
-          tags.add(['e', msg.replyToId!]);
-        }
+          final giftWrapSelf = await Nip17.wrap(
+            plaintext: plaintext,
+            senderPrivkey: myPrivkey,
+            senderPubkey: myPubkey,
+            receiverPubkey: myPubkey,
+            replyToId: msg.replyToId,
+          );
 
-        final unsignedEvent = {
-          'pubkey': msg.senderPubkey,
-          'created_at': msg.timestamp ~/ 1000,
-          'kind': 4,
-          'tags': tags,
-          'content': ciphertext,
-        };
-
-        final String finalId = NostrHelpers.generateEventId(unsignedEvent);
-        if (finalId.isEmpty) continue;
-
-        final String sig = NostrSigner.sign(finalId, AppSettings.instance.myPrivkey);
-        if (sig.isEmpty) continue;
-
-        final signedEvent = {...unsignedEvent, 'id': finalId, 'sig': sig};
-
-        bool sentToAtLeastOne = false;
-        for (final entry in _connections.entries) {
-          if (_connectionStatus[entry.key] == true) {
-            try {
-              entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
-              sentToAtLeastOne = true;
-            } catch (e) {
-              DebugLogger.log('[Queue] Send to ${entry.key} failed | $e', type: 'ERROR');
+          bool sentToAtLeastOne = false;
+          for (final entry in _connections.entries) {
+            if (_connectionStatus[entry.key] == true) {
+              try {
+                entry.value.sink.add(jsonEncode(["EVENT", giftWrapRecipient]));
+                entry.value.sink.add(jsonEncode(["EVENT", giftWrapSelf]));
+                sentToAtLeastOne = true;
+              } catch (e) {
+                DebugLogger.log('[Queue] Send to ${entry.key} failed | $e', type: 'ERROR');
+              }
             }
           }
-        }
 
-        if (sentToAtLeastOne) {
-          await ChatManager.instance.updateMessageIdAndStatus(
-            msg.id,
-            finalId,
-            'sending',
-            msg.chatKey,
-            newContent: ciphertext,
-          );
-          DebugLogger.log('[Queue] Sent, awaiting OK: $finalId');
-        } else {
-          DebugLogger.log('[Queue] No relay connected, deferring ${msg.id}', type: 'WARN');
+          if (sentToAtLeastOne) {
+            final finalId = giftWrapRecipient['id']?.toString() ?? '';
+            await ChatManager.instance.updateMessageIdAndStatus(
+              msg.id,
+              finalId,
+              'sending',
+              msg.chatKey,
+              newContent: giftWrapRecipient['content']?.toString() ?? '',
+            );
+            DebugLogger.log('[Queue] Sent, awaiting OK: $finalId');
+          } else {
+            DebugLogger.log('[Queue] No relay connected, deferring ${msg.id}', type: 'WARN');
+          }
+        } catch (e) {
+          DebugLogger.log('[Queue] Failed to wrap pending msg ${msg.id} | $e', type: 'ERROR');
         }
 
         await Future.delayed(const Duration(milliseconds: 150));

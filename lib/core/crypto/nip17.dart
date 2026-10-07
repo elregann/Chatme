@@ -150,19 +150,24 @@ class Nip17 {
         );
       }
 
-      // 5. Extract reply metadata from the Rumor's tags, if present.
+      // 5. Extract recipient and reply metadata from the Rumor's tags, if present.
       String? replyToId;
+      String receiverPubkey = '';
       final tags = rumor['tags'] as List? ?? [];
       for (final tag in tags) {
-        if (tag is List && tag.length > 1 && tag[0] == 'e') {
-          replyToId = tag[1].toString();
-          break;
+        if (tag is List && tag.length > 1) {
+          if (tag[0] == 'e') {
+            replyToId = tag[1].toString();
+          } else if (tag[0] == 'p') {
+            receiverPubkey = tag[1].toString();
+          }
         }
       }
 
       return Nip17Result(
         plaintext: rumor['content']?.toString() ?? '',
         senderPubkey: senderPubkey,
+        receiverPubkey: receiverPubkey,
         timestamp: (rumor['created_at'] as int? ?? 0) * 1000,
         rumorId: rumor['id']?.toString() ?? '',
         replyToId: replyToId,
@@ -360,6 +365,9 @@ class Nip17Result {
   /// The verified public key of the actual message sender.
   final String senderPubkey;
 
+  /// The public key of the message recipient (from rumor p tag).
+  final String receiverPubkey;
+
   /// The original message timestamp in milliseconds since epoch.
   final int timestamp;
 
@@ -372,6 +380,7 @@ class Nip17Result {
   const Nip17Result({
     required this.plaintext,
     required this.senderPubkey,
+    required this.receiverPubkey,
     required this.timestamp,
     required this.rumorId,
     this.replyToId,

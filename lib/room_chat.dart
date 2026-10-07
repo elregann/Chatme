@@ -11,7 +11,7 @@ import 'call_manager.dart';
 import 'call_overlay.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
-import 'core/crypto/nip04.dart';
+
 import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
@@ -340,15 +340,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
       _maybeAutoScroll(force: true);
     } catch (e) {
-      // Offline fallback: encrypt now and queue as pending
+      // Offline fallback: queue as pending with plaintext
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
-      final myPrivkey = AppSettings.instance.myPrivkey;
-
-      final encrypted = Nip04.encrypt(text, myPrivkey, receiver);
 
       final pendingMessage = tempMessage.copyWith(
         id: offlineId,
-        content: encrypted,
+        content: '',
+        plaintext: text,
         status: 'pending',
       );
 
