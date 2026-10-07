@@ -466,6 +466,28 @@ class _CallScreenState extends State<CallScreen> {
     return Center(
       child: Column(
         children: [
+          // End-to-end encryption label (plain, no background)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.lock_outline,
+                size: 13,
+                color: isDark ? Colors.white54 : Colors.black45,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'End-to-end encrypted',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white54 : Colors.black45,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
           // profile picture
           UserAvatar(
             pubkey: widget.peerPubkey,

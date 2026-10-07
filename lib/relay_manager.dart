@@ -467,6 +467,51 @@ class RelayManager {
 
       if (peerPubkey.isEmpty || peerPubkey == myPubkey) return;
 
+      // --- Encrypted call signaling (carried inside NIP-17 rumor) ---
+      //
+      // Call signals are wrapped the same way as chat messages but are
+      // marked with a `CALL_SIGNAL:` prefix so we can route them to the
+      // CallManager without saving them as chat messages.
+      if (decrypted.startsWith('CALL_SIGNAL:')) {
+        try {
+          final signalJson = decrypted.substring('CALL_SIGNAL:'.length);
+          final signalData = jsonDecode(signalJson);
+          if (signalData is Map) {
+            // Reconstruct an event-shaped map so the existing signal
+            // handlers (which expect { pubkey, content, created_at })
+            // can process it without modification.
+            final syntheticEvent = {
+              'pubkey': actualSenderPubkey,
+              'content': signalJson,
+              'created_at': timestamp ~/ 1000,
+              'kind': 1059,
+              'id': actualEventId,
+            };
+
+            // If a call session is active, prefer routing through the
+            // CallManager callback — same single-path discipline as the
+            // kind-1000 handler.
+            if (onSignalReceived != null) {
+              try {
+                onSignalReceived!(syntheticEvent);
+              } catch (e) {
+                DebugLogger.log('[Call] onSignalReceived error | $e', type: 'ERROR');
+              }
+              return;
+            }
+
+            // Otherwise, this is a cold-start signal (typically `offer`)
+            // that must open the incoming call screen.
+            if (actualSenderPubkey != myPubkey) {
+              _processCallSignal(syntheticEvent);
+            }
+          }
+        } catch (e) {
+          DebugLogger.log('[Call] CALL_SIGNAL parse failed | $e', type: 'ERROR');
+        }
+        return;
+      }
+
       final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
 
       final bool alreadyExists = await ChatManager.instance.isMessageExists(actualEventId, chatKey);
@@ -1060,6 +1105,17 @@ class RelayManager {
     }
   }
 
+  /// Sends a WebRTC signaling payload to [recipientPubkey], encrypted via
+  /// NIP-17.
+  ///
+  /// The signal JSON is prefixed with `CALL_SIGNAL:` and wrapped as a
+  /// NIP-17 Rumor -> Seal -> Gift Wrap. Relay operators cannot see the
+  /// SDP (codec, media parameters) or any ICE candidates that may be
+  /// embedded in the SDP.
+  ///
+  /// Because the caller uses vanilla-ICE mode, each signal is a single
+  /// bundle containing the full SDP with candidates already embedded.
+  /// A call therefore consists of ~4 signals instead of ~30.
   Future<void> sendCallSignal(String recipientPubkey, Map<String, dynamic> signalData) async {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
@@ -1067,21 +1123,18 @@ class RelayManager {
 
       if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
 
-      final Map<String, dynamic> unsignedEvent = {
-        'pubkey': myPubkey,
-        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        'kind': 1000,
-        'tags': [['p', recipientPubkey]],
-        'content': jsonEncode(signalData),
-      };
+      final plaintext = 'CALL_SIGNAL:${jsonEncode(signalData)}';
 
-      final eventId = NostrHelpers.generateEventId(unsignedEvent);
-      final signature = NostrSigner.sign(eventId, myPrivkey);
-      final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+      final wrapped = await Nip17.wrap(
+        plaintext: plaintext,
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPubkey,
+        receiverPubkey: recipientPubkey,
+      );
 
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
-          entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
+          entry.value.sink.add(jsonEncode(["EVENT", wrapped.giftWrap]));
         }
       }
     } catch (e) {

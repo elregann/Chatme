@@ -116,6 +116,16 @@ class ChatManager {
     if (kIsWeb) return;
 
     try {
+      // Call log messages ([CALL]:...) are generated locally on both
+      // devices when a call ends. Only missed calls should trigger a
+      // notification — a call that connected has already been seen by
+      // the user, and notifying the receiver that their call just ended
+      // is confusing. Missed calls get a clean label instead of the raw
+      // `[CALL]:missed:voice:duration:0` payload.
+      final isCallLog = message.plaintext.startsWith('[CALL]:');
+      final isMissedCall = message.plaintext.startsWith('[CALL]:missed:');
+      if (isCallLog && !isMissedCall) return;
+
       final settingsBox = Hive.box('settings');
 
       // Use the Gift Wrap ID for notification dedup because the background
@@ -135,10 +145,14 @@ class ChatManager {
 
       final contact = Hive.box<Contact>('contacts').get(message.senderPubkey);
       final senderName = contact?.name ?? AppSettings.formatDisplayName(message.senderPubkey);
+
+      // Missed calls get a clean label instead of the raw payload.
+      final notifBody = isMissedCall ? 'Missed Call' : message.plaintext;
+
       NotificationHandler.showChatNotification(
         senderPubkey: message.senderPubkey,
         senderName: senderName,
-        message: message.plaintext,
+        message: notifBody,
       );
     } catch (e) {
       DebugLogger.log('[Notification] Trigger failed | $e', type: 'ERROR');

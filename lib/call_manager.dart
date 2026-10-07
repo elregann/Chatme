@@ -127,6 +127,13 @@ class CallManager {
   bool _isMuted = false;
   bool _isSpeakerOn = false;
 
+  /// Completes when ICE gathering finishes (or after a timeout).
+  /// Used by vanilla-ICE mode: instead of trickling candidates over
+  /// individual signals, we wait for gathering to complete and let the
+  /// candidates be embedded inside the SDP, so the whole call fits in
+  /// 3-4 signals (offer, ringing, answer, hangup).
+  Completer<void>? _iceGatheringCompleter;
+
   Timer? _statsTimer;
   Timer? _reconnectTimer;
   Timer? _connectionTimeoutTimer;
@@ -496,17 +503,57 @@ class CallManager {
       }
     };
 
+    // Vanilla-ICE mode: individual candidate events are intentionally
+    // ignored. Instead, `_waitForIceGatheringComplete` waits until the
+    // connection has finished gathering candidates, and the final SDP
+    // (retrieved via `localDescription`) already contains them.
+    //
+    // This reduces the number of signals per call from ~30 to ~4, which
+    // makes NIP-17 wrapping viable without UI freezes or signal drops.
     _peerConnection!.onIceCandidate = (rtc.RTCIceCandidate? candidate) {
-      if (candidate == null || candidate.candidate == null) return;
-      relay.sendCallSignal(targetPubkey, {
-        'type': CallConstants.signalCandidate,
-        'data': {
-          'candidate': candidate.candidate,
-          'sdpMid': candidate.sdpMid,
-          'sdpMLineIndex': candidate.sdpMLineIndex,
-        }
-      });
+      // Ignored — candidates are bundled into the SDP.
     };
+
+    _peerConnection!.onIceGatheringState = (rtc.RTCIceGatheringState state) {
+      _logCallEvent('ice_gathering_state', {'state': state.toString()});
+      if (state == rtc.RTCIceGatheringState.RTCIceGatheringStateComplete) {
+        if (_iceGatheringCompleter != null &&
+            !_iceGatheringCompleter!.isCompleted) {
+          _iceGatheringCompleter!.complete();
+        }
+      }
+    };
+  }
+
+  /// Waits until ICE gathering is complete, or until [timeout] elapses.
+  ///
+  /// Used to implement vanilla-ICE mode. Once gathering completes, the
+  /// local SDP (obtainable via `_peerConnection.localDescription`) will
+  /// contain all candidates, so we can send a single bundled signal
+  /// instead of trickling individual candidates.
+  Future<void> _waitForIceGatheringComplete({
+    Duration timeout = const Duration(seconds: 2),
+  }) async {
+    if (_peerConnection == null) return;
+
+    if (_peerConnection!.iceGatheringState ==
+        rtc.RTCIceGatheringState.RTCIceGatheringStateComplete) {
+      return;
+    }
+
+    final completer = Completer<void>();
+    _iceGatheringCompleter = completer;
+
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        _logCallEvent('ice_gathering_timeout', {'timeout_s': timeout.inSeconds});
+        completer.complete();
+      }
+    });
+
+    await completer.future;
+    timer.cancel();
+    _iceGatheringCompleter = null;
   }
 
   // Signaling handlers
@@ -538,9 +585,16 @@ class CallManager {
       });
       await _peerConnection!.setLocalDescription(offer);
 
+      // Vanilla-ICE: wait for candidates to be gathered into the SDP so
+      // we can send the offer in a single signal instead of trickling
+      // 20+ candidate events.
+      await _waitForIceGatheringComplete();
+
+      final finalSdp = (await _peerConnection!.getLocalDescription())?.sdp ?? offer.sdp;
+
       relay.sendCallSignal(targetPubkey, {
         'type': CallConstants.signalOffer,
-        'data': offer.sdp
+        'data': finalSdp,
       });
 
       _setCallState(CallState.ringing);
@@ -585,11 +639,28 @@ class CallManager {
       });
       await _peerConnection!.setLocalDescription(answer);
 
+      // Move state to `connecting` BEFORE the ICE gathering wait.
+      //
+      // The `onIceConnectionState` callback may fire and set state to
+      // `active` while we are still blocked in
+      // `_waitForIceGatheringComplete()`. If we transition to `connecting`
+      // after that, we would overwrite `active` with `connecting`, leaving
+      // the UI stuck on "Connecting" even though audio is already flowing.
+      //
+      // Setting it here (before the blocking wait) ensures the state
+      // transition happens in the correct order regardless of how fast
+      // ICE negotiation completes.
+      _setCallState(CallState.connecting);
+
+      // Vanilla-ICE: same as makeOffer — embed candidates in the answer.
+      await _waitForIceGatheringComplete();
+
+      final finalSdp = (await _peerConnection!.getLocalDescription())?.sdp ?? answer.sdp;
+
       relay.sendCallSignal(callerPubkey, {
         'type': CallConstants.signalAnswer,
-        'data': answer.sdp
+        'data': finalSdp,
       });
-      _setCallState(CallState.connecting);
     } catch (e) {
       debugPrint('[Call] Handle offer failed | $e');
       await stopCall();
@@ -820,6 +891,13 @@ class CallManager {
     _reconnectTimer = null;
     _durationTimer?.cancel();
     _durationTimer = null;
+
+    // Release any pending ICE gathering wait so stopCall doesn't hang.
+    if (_iceGatheringCompleter != null &&
+        !_iceGatheringCompleter!.isCompleted) {
+      _iceGatheringCompleter!.complete();
+    }
+    _iceGatheringCompleter = null;
   }
 
   Future<void> dispose() async {
