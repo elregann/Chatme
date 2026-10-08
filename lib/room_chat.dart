@@ -1823,10 +1823,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       durationLabel = m > 0 ? '${m}m ${s}s' : '${s}s';
     }
 
+    final normalTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black87);
     final textColor = isMissed
         ? Colors.red
-        : (isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black87));
+        : normalTextColor;
     final iconColor = isMissed ? Colors.red : textColor;
+    final timeColor = normalTextColor.withAlpha(153);
 
     final fullText = durationLabel.isNotEmpty ? '$label ($durationLabel)' : label;
 
@@ -1888,7 +1890,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   timeStr,
                   style: TextStyle(
                     fontSize: 11,
-                    color: textColor.withAlpha(153),
+                    color: timeColor,
                   ),
                 ),
               ],

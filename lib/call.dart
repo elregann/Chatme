@@ -27,7 +27,12 @@ class CallScreen extends StatefulWidget {
     required this.peerColor,
     this.remoteSdp,
     required this.onClose,
-  });
+  })  : assert(peerPubkey != '',
+  'CallScreen: peerPubkey must not be empty. '
+      'Use CallScreenNavigator.showCallScreen or '
+      'CallManager.startCallFlow.'),
+        assert(!isIncoming || remoteSdp != null,
+        'CallScreen: incoming calls must provide an SDP offer.');
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -256,7 +261,18 @@ class _CallScreenState extends State<CallScreen> {
 
       _cancelAllTimers();
 
-      _callManager.stopCall(sendHangupSignal: false);
+      // The `byUser` flag tells CallManager that the user explicitly
+      // tapped end. This changes the resulting label for incoming calls:
+      // if the user did anything (accept or reject), the log shows
+      // "Incoming Call"; only unanswered, un-actioned calls become
+      // "Missed Call".
+      //
+      // Timeout-driven closes (isTimeout: true) are NOT user actions
+      // and must remain "missed".
+      _callManager.stopCall(
+        sendHangupSignal: false,
+        byUser: !isTimeout,
+      );
 
       if (mounted) {
         setState(() {
@@ -720,6 +736,16 @@ class _CallScreenState extends State<CallScreen> {
 
 // ==================== NAVIGATION HELPER ====================
 class CallScreenNavigator {
+  /// Guards against stacking multiple CallScreens on top of each other.
+  ///
+  /// A static flag is used instead of inspecting the top route name
+  /// because `ModalRoute.of(context)` always returns null when the
+  /// context comes from a global navigator key — the context belongs to
+  /// the Navigator itself, not to any specific route. The previous
+  /// implementation silently did nothing, allowing two offers to stack
+  /// two CallScreens.
+  static bool _isShowing = false;
+
   static Future<void> showCallScreen({
     required BuildContext context,
     required String peerName,
@@ -730,25 +756,32 @@ class CallScreenNavigator {
     String? remoteSdp,
     VoidCallback? onCallEnded,
   }) async {
-    if (ModalRoute.of(context)?.settings.name == '/call') {
-      debugPrint('Call screen already active');
+    if (_isShowing) {
+      debugPrint('[CallScreenNavigator] Call screen already active, ignoring');
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        settings: const RouteSettings(name: '/call'),
-        builder: (context) => CallScreen(
-          peerName: peerName,
-          peerPubkey: peerPubkey,
-          isIncoming: isIncoming,
-          relay: relay,
-          peerColor: peerColor,
-          remoteSdp: remoteSdp,
-          onClose: onCallEnded ?? () {},
+    _isShowing = true;
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          // No RouteSettings(name: ...) here — the platform will fall back
+          // to a generic name, so the web URL hash will not become
+          // "#/call" and cannot be restored as a ghost call.
+          builder: (context) => CallScreen(
+            peerName: peerName,
+            peerPubkey: peerPubkey,
+            isIncoming: isIncoming,
+            relay: relay,
+            peerColor: peerColor,
+            remoteSdp: remoteSdp,
+            onClose: onCallEnded ?? () {},
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      _isShowing = false;
+    }
   }
 }

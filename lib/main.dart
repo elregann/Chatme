@@ -23,7 +23,6 @@ import 'services/network_manager.dart';
 import 'services/background_service.dart';
 import 'core/utils/debug_logger.dart';
 
-import 'call.dart';
 import 'room_chat.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
@@ -167,13 +166,16 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     NotificationHandler.init(relayManager: _relayManager);
     WidgetsBinding.instance.addObserver(this);
 
+    // All notification taps are treated as chat navigations. The legacy
+    // 'incoming_call' branch was removed: it was dead code (no producer
+    // ever sent that payload) and it called pushNamed('/call'), a route
+    // that no longer exists and could never carry the peerPubkey / SDP
+    // data required by CallScreen. Incoming calls are now delivered
+    // exclusively through the NIP-17 CALL_SIGNAL flow, which opens the
+    // call screen with full session data.
     NotificationHandler.onNotificationClick.stream.listen((String? payload) {
       if (payload != null && payload.isNotEmpty) {
-        if (payload == 'incoming_call') {
-          navigatorKey.currentState?.pushNamed('/call');
-        } else {
-          _navigateToChat(payload);
-        }
+        _navigateToChat(payload);
       }
     });
 
@@ -276,14 +278,15 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
                 onThemeToggle: _toggleTheme,
                 networkManager: _networkManager,
               ),
-              '/call': (context) => CallScreen(
-                peerName: "Panggilan Masuk",
-                peerPubkey: "",
-                isIncoming: true,
-                relay: _relayManager,
-                peerColor: Colors.blue,
-                onClose: () {},
-              ),
+              // NOTE: named route '/call' has been intentionally removed.
+              // CallScreen requires dynamic data (peerPubkey, remoteSdp)
+              // that cannot be supplied via a named route. All valid call
+              // entry points go through CallScreenNavigator.showCallScreen
+              // or CallManager.startCallFlow, which pass real data.
+              //
+              // Removing the route prevents the web URL hash "#/call"
+              // (restored by the browser on refresh/hot restart) from
+              // re-opening an empty CallScreen as a ghost call.
             },
           ),
         );

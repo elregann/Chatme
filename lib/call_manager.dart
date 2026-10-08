@@ -1,3 +1,5 @@
+// call_manager.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -227,6 +229,13 @@ class CallManager {
       activePeerName = null;
       activePeerPubkey = null;
       activePeerColor = null;
+
+      // Reset the "was connected" flag so the next incoming call
+      // starts from a clean slate. Without this reset, a call that
+      // connected successfully leaves _wasCallConnected = true, and
+      // a subsequent unanswered call would be mislabeled as
+      // "Incoming Call" instead of "Missed Call".
+      _wasCallConnected = false;
     }
 
     _sharedNotifier.value = newState;
@@ -266,7 +275,9 @@ class CallManager {
       context,
       MaterialPageRoute(
         fullscreenDialog: true,
-        settings: const RouteSettings(name: '/call'),
+        // No RouteSettings(name: ...) — see CallScreenNavigator for
+        // rationale. Prevents the web URL hash from becoming "#/call"
+        // and being restored as a ghost call on hot restart.
         builder: (context) => CallScreen(
           peerName: activePeerName ?? peerName,
           peerPubkey: activePeerPubkey ?? peerPubkey,
@@ -783,7 +794,12 @@ class CallManager {
   }
 
   // Call lifecycle
-  Future<void> stopCall({bool sendHangupSignal = false, String? targetPubkey, dynamic relay}) async {
+  Future<void> stopCall({
+    bool sendHangupSignal = false,
+    String? targetPubkey,
+    dynamic relay,
+    bool byUser = false,
+  }) async {
     if (_isDisposing) return;
     _isDisposing = true;
     _setCallState(CallState.ending);
@@ -818,11 +834,25 @@ class CallManager {
       final CallType directionType = currentCallDirection;
 
       if (peerPubkey != null && peerPubkey.isNotEmpty) {
+        // Determine the call direction label.
+        //
+        // For incoming calls, the distinction between "missed" and
+        // "incoming" is whether the receiver took any action:
+        //   - The receiver tapped accept (byUser or wasConnected) → 'incoming'
+        //   - The receiver tapped end before accepting (byUser) → 'incoming'
+        //   - The receiver did nothing and the call timed out or the
+        //     caller hung up (neither flag) → 'missed'
+        //
+        // `wasConnected` alone is insufficient because ICE negotiation
+        // takes a few seconds, and a user who taps "end" quickly (before
+        // connect) would otherwise be mislabeled as "missed".
         String directionStr;
-        if (directionType == CallType.incoming && !wasConnected) {
-          directionStr = 'missed';
-        } else if (directionType == CallType.incoming) {
-          directionStr = 'incoming';
+        if (directionType == CallType.incoming) {
+          if (wasConnected || byUser) {
+            directionStr = 'incoming';
+          } else {
+            directionStr = 'missed';
+          }
         } else {
           directionStr = 'outgoing';
         }

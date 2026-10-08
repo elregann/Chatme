@@ -156,7 +156,7 @@ class RelayManager {
         DebugLogger.log('[Sync] Failed to compute syncSince, using 30 days default', type: 'WARN');
       }
 
-      final List<int> neededKinds = [1, 4, 7, 1059, 1000];
+      final List<int> neededKinds = [1, 4, 7, 1059];
 
       final subToMe = jsonEncode(["REQ", "${_subscriptionId!}_incoming", {
         "kinds": neededKinds,
@@ -310,32 +310,6 @@ class RelayManager {
     final myPubkey = AppSettings.instance.myPubkey;
     final senderPubkey = event['pubkey']?.toString() ?? '';
 
-    if (kind == 1000) {
-      if (senderPubkey == myPubkey) return;
-      if (now - createdAt > 30) return;
-      _processedEventIds.add(eventId);
-
-      // If a call session is active, route signals exclusively through
-      // the CallManager callback. Otherwise fall back to the default
-      // handler, which opens the incoming call screen for `offer` events.
-      //
-      // Previously both paths were executed for every signal, causing
-      // `answer`, `candidate`, and `hangup` to be dispatched twice. That
-      // produced duplicate setRemoteDescription calls (InvalidStateError)
-      // and double stopCall invocations.
-      if (onSignalReceived != null) {
-        try {
-          onSignalReceived!(event);
-        } catch (e) {
-          DebugLogger.log('[Call] onSignalReceived error | $e', type: 'ERROR');
-        }
-        return;
-      }
-
-      _processCallSignal(event);
-      return;
-    }
-
     if (kind == 1 || kind == 4 || kind == 7 || kind == 1059) {
       if (kind == 7) {
         if (senderPubkey == myPubkey) return;
@@ -472,11 +446,47 @@ class RelayManager {
       // Call signals are wrapped the same way as chat messages but are
       // marked with a `CALL_SIGNAL:` prefix so we can route them to the
       // CallManager without saving them as chat messages.
+      //
+      // Ghost-call prevention: NIP-17 events are stored permanently by
+      // relays. When the app opens or hot-restarts, the relay replays
+      // every event within our sync window (3 days). Without an age
+      // check, a `CALL_SIGNAL:offer` from hours ago would trigger a
+      // ghost incoming call. The TTL below mirrors the semantics of the
+      // existing kind-1000 path (30 s for offers) and adds a state gate
+      // so that non-offer signals can only affect an active session.
       if (decrypted.startsWith('CALL_SIGNAL:')) {
         try {
           final signalJson = decrypted.substring('CALL_SIGNAL:'.length);
           final signalData = jsonDecode(signalJson);
           if (signalData is Map) {
+            final type = signalData['type']?.toString() ?? '';
+
+            // Offer: 30 s (matches _startConnectionTimeout on the caller).
+            // Other signals: 60 s (only affect an already-active session).
+            final ttlSec = type == 'offer' ? 30 : 60;
+            final nowMs = DateTime.now().millisecondsSinceEpoch;
+            final ageSec = (nowMs - timestamp) ~/ 1000;
+
+            // Reject stale signals, and also reject signals whose
+            // timestamp is implausibly far in the future (clock skew).
+            if (ageSec > ttlSec || ageSec < -60) {
+              DebugLogger.log(
+                '[Call] Stale CALL_SIGNAL ignored '
+                    '(type=$type, age=${ageSec}s, ttl=${ttlSec}s)',
+              );
+              return;
+            }
+
+            // Without an active session, only `offer` has meaning.
+            // Stale `hangup` / `answer` / `candidate` events arriving
+            // while idle would otherwise call stopCall or handleAnswer
+            // on an idle CallManager.
+            if ((type == 'answer' || type == 'candidate') &&
+                CallManager.instance.callState == CallState.idle) {
+              DebugLogger.log('[Call] Cold CALL_SIGNAL ignored (type=$type, no active call)');
+              return;
+            }
+
             // Reconstruct an event-shaped map so the existing signal
             // handlers (which expect { pubkey, content, created_at })
             // can process it without modification.
