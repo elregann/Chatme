@@ -144,7 +144,7 @@ class ChatManager {
       }
 
       final contact = Hive.box<Contact>('contacts').get(message.senderPubkey);
-      final senderName = contact?.name ?? AppSettings.formatDisplayName(message.senderPubkey);
+      final senderName = contact?.displayName ?? AppSettings.formatDisplayName(message.senderPubkey);
 
       // Missed calls get a clean label instead of the raw payload.
       final notifBody = isMissedCall ? 'Missed Call' : message.plaintext;

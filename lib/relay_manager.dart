@@ -52,6 +52,7 @@ class RelayManager {
   bool _isInitialized = false;
   bool _isConnecting = false;
   bool _isProcessingQueue = false;
+  bool _isProcessingReactions = false;
   final Map<String, int> _lastKind0Timestamp = {};
 
   /// Timestamp (ms) of the last re-send attempt per message ID.
@@ -210,10 +211,6 @@ class RelayManager {
             _connectionStatus[relayUrl] == true) {
           _reconnectAttempts[relayUrl] = 0;
         }
-      });
-
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (_isConnected.value) _processOfflineQueue();
       });
 
     } catch (e) {
@@ -692,6 +689,13 @@ class RelayManager {
         final giftWrapId = decoded[1].toString();
         ChatManager.instance.updateMessageStatusByGiftWrap(giftWrapId, 'sent');
 
+        // Pending reactions are processed by the periodic offline queue
+        // (_processOfflineQueue, every 15 s). Previously this method also
+        // called _processPendingReactions directly, which caused each
+        // relay OK to trigger a fresh scan — including the OK emitted in
+        // response to a reaction we had just sent, creating an infinite
+        // feedback loop that spammed reactions and burned CPU.
+
         onMessageReceived?.call();
         if (onMessageDelivered != null) onMessageDelivered!(giftWrapId);
       }
@@ -764,7 +768,7 @@ class RelayManager {
       final contactsBox = Hive.box<Contact>('contacts');
       final myContact = contactsBox.get(myPubkey);
       final senderName = (myContact != null && myContact.isSaved)
-          ? myContact.name
+          ? myContact.displayName
           : AppSettings.formatDisplayName(myPubkey);
 
       _triggerCloudflareNotification(
@@ -1078,7 +1082,10 @@ class RelayManager {
   ///
   /// The reaction is wrapped as a NIP-17 message. [messageId] MUST be the
   /// canonical Rumor ID of the message being reacted to (`ChatMessage.id`).
-  Future<void> sendReaction({
+  ///
+  /// Returns `true` if successfully sent to at least one connected relay,
+  /// `false` otherwise (e.g. offline).
+  Future<bool> sendReaction({
     required String messageId,
     required String receiverPubkey,
     required String emoji,
@@ -1087,7 +1094,7 @@ class RelayManager {
       final myPubkey = AppSettings.instance.myPubkey;
       final myPrivkey = AppSettings.instance.myPrivkey;
 
-      if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
+      if (myPubkey.isEmpty || myPrivkey.isEmpty) return false;
 
       final reactionPlaintext = 'REACTION:$emoji:$messageId';
 
@@ -1104,14 +1111,22 @@ class RelayManager {
       final wrappedRecipient = wrappedList[0];
       final wrappedSelf = wrappedList[1];
 
+      bool sentToAtLeastOne = false;
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
-          entry.value.sink.add(jsonEncode(["EVENT", wrappedRecipient.giftWrap]));
-          entry.value.sink.add(jsonEncode(["EVENT", wrappedSelf.giftWrap]));
+          try {
+            entry.value.sink.add(jsonEncode(["EVENT", wrappedRecipient.giftWrap]));
+            entry.value.sink.add(jsonEncode(["EVENT", wrappedSelf.giftWrap]));
+            sentToAtLeastOne = true;
+          } catch (e) {
+            DebugLogger.log('[Relay] Send reaction to ${entry.key} failed | $e', type: 'ERROR');
+          }
         }
       }
+      return sentToAtLeastOne;
     } catch (e) {
       DebugLogger.log('[NIP-17] Reaction send failed | $e', type: 'ERROR');
+      return false;
     }
   }
 
@@ -1285,8 +1300,19 @@ class RelayManager {
 
   void _updateConnectionStatus() {
     final count = _connectionStatus.values.where((s) => s == true).length;
-    _isConnected.value = count > 0;
+    final bool wasConnected = _isConnected.value;
+    final bool isNowConnected = count > 0;
+
+    _isConnected.value = isNowConnected;
     _connectedCount.value = count;
+
+    // Trigger the offline queue only on the transition from
+    // disconnected → connected. Without this guard, every relay that
+    // connects (six of them, arriving nearly simultaneously) would
+    // fire its own queue-processing pass, causing a CPU spike.
+    if (!wasConnected && isNowConnected) {
+      _processOfflineQueue();
+    }
   }
 
   void connectIfNeeded() {
@@ -1303,13 +1329,15 @@ class RelayManager {
   Future<void> _processOfflineQueue() async {
     if (_isProcessingQueue) return;
 
-    final pendingMessages = await ChatManager.instance.getPendingMessages();
-    if (pendingMessages.isEmpty) return;
-
     _isProcessingQueue = true;
-    DebugLogger.log('[Queue] Processing ${pendingMessages.length} pending message(s)');
-
     try {
+      await _processPendingReactions();
+
+      final pendingMessages = await ChatManager.instance.getPendingMessages();
+      if (pendingMessages.isEmpty) return;
+
+      DebugLogger.log('[Queue] Processing ${pendingMessages.length} pending message(s)');
+
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
       for (var snapshot in pendingMessages) {
@@ -1377,10 +1405,80 @@ class RelayManager {
 
         await Future.delayed(const Duration(milliseconds: 150));
       }
+
+      // Process pending reactions after queue processing
+      await _processPendingReactions();
+
     } catch (e) {
       DebugLogger.log('[Queue] Process failed | $e', type: 'ERROR');
     } finally {
       _isProcessingQueue = false;
+    }
+  }
+
+  Future<void> _processPendingReactions() async {
+    if (_isProcessingReactions) return;
+    _isProcessingReactions = true;
+
+    try {
+      final chatsBox = Hive.box('chats');
+      for (var key in chatsBox.keys) {
+        final dynamic rawData = chatsBox.get(key);
+        if (rawData is! List) continue;
+
+        List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
+
+        for (int i = 0; i < messages.length; i++) {
+          final msg = messages[i];
+          // REQUISITE: Message must be confirmed sent or read (OK received from relay)
+          // and have a final valid ID (not temp_ or pending_)
+          final bool isConfirmedSent = (msg.status == 'sent' || msg.status == 'read') &&
+              !msg.id.startsWith('temp_') &&
+              !msg.id.startsWith('pending_');
+
+          if (!isConfirmedSent) continue;
+          if (msg.pendingReactions.isEmpty) continue;
+
+          final pendingMap = Map<String, String>.from(msg.pendingReactions);
+          bool messageChanged = false;
+
+          for (final entry in pendingMap.entries) {
+            final reactorPubkey = entry.key;
+            final emoji = entry.value;
+
+            try {
+              final success = await sendReaction(
+                messageId: msg.id,
+                receiverPubkey: msg.receiverPubkey,
+                emoji: emoji,
+              );
+              if (success) {
+                messages[i] = messages[i].copyWith(
+                  pendingReactions: Map.from(messages[i].pendingReactions)..remove(reactorPubkey),
+                );
+                messageChanged = true;
+                DebugLogger.log('[Queue] Sent pending reaction $emoji for confirmed message ${msg.id}');
+              } else {
+                DebugLogger.log('[Queue] No connection, keeping pending reaction for ${msg.id}', type: 'WARN');
+                break;
+              }
+            } catch (e) {
+              DebugLogger.log('[Queue] Failed to send pending reaction for ${msg.id} | $e', type: 'ERROR');
+              break;
+            }
+
+            await Future.delayed(const Duration(milliseconds: 150));
+          }
+
+          if (messageChanged) {
+            await chatsBox.put(key, messages);
+          }
+        }
+      }
+    } catch (e) {
+      DebugLogger.log('[Queue] Process pending reactions failed | $e', type: 'ERROR');
+    } finally {
+      _isProcessingReactions = false;
     }
   }
 }

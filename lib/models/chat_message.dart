@@ -37,6 +37,8 @@ class ChatMessage {
   /// have not yet been wrapped.
   @HiveField(12, defaultValue: '') final String giftWrapId;
 
+  @HiveField(13, defaultValue: {}) Map<String, String> pendingReactions;
+
   ChatMessage({
     required this.id,
     required this.senderPubkey,
@@ -51,6 +53,7 @@ class ChatMessage {
     this.reactions = const {},
     this.replyToSenderPubkey,
     this.giftWrapId = '',
+    this.pendingReactions = const {},
   });
 
   ChatMessage copyWithStatus(String newStatus) {
@@ -71,6 +74,7 @@ class ChatMessage {
     Map<String, String>? reactions,
     String? replyToSenderPubkey,
     String? giftWrapId,
+    Map<String, String>? pendingReactions,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -86,6 +90,7 @@ class ChatMessage {
       reactions: reactions ?? Map.from(this.reactions),
       replyToSenderPubkey: replyToSenderPubkey ?? this.replyToSenderPubkey,
       giftWrapId: giftWrapId ?? this.giftWrapId,
+      pendingReactions: pendingReactions ?? Map.from(this.pendingReactions),
     );
   }
 
@@ -110,6 +115,7 @@ class ChatMessage {
       'reactions': reactions,
       'replyToSenderPubkey': replyToSenderPubkey,
       'giftWrapId': giftWrapId,
+      'pendingReactions': pendingReactions,
     };
   }
 
@@ -128,6 +134,7 @@ class ChatMessage {
       reactions: Map<String, String>.from(map['reactions'] ?? {}),
       replyToSenderPubkey: map['replyToSenderPubkey'],
       giftWrapId: map['giftWrapId'] ?? '',
+      pendingReactions: Map<String, String>.from(map['pendingReactions'] ?? {}),
     );
   }
 }

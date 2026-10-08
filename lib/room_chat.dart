@@ -506,11 +506,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         final index = messages.indexWhere((m) => m.id == targetId);
 
         if (index != -1) {
-          final updatedMessage = messages[index].copyWith(
-            reactions: {
-              ...messages[index].reactions,
-              myPubkey: emoji,
-            },
+          final msg = messages[index];
+          final bool isMessageReady = (msg.status == 'sent' || msg.status == 'read') &&
+              !msg.id.startsWith('temp_') &&
+              !msg.id.startsWith('pending_');
+
+          Map<String, String> updatedReactions = {
+            ...msg.reactions,
+            myPubkey: emoji,
+          };
+          Map<String, String> updatedPendingReactions = Map.from(msg.pendingReactions);
+
+          if (isMessageReady) {
+            final bool success = await widget.relayManager.sendReaction(
+              messageId: targetId,
+              receiverPubkey: widget.contact.pubkey,
+              emoji: emoji,
+            );
+            if (!success) {
+              updatedPendingReactions[myPubkey] = emoji;
+            }
+          } else {
+            updatedPendingReactions[myPubkey] = emoji;
+          }
+
+          final updatedMessage = msg.copyWith(
+            reactions: updatedReactions,
+            pendingReactions: updatedPendingReactions,
           );
 
           messages[index] = updatedMessage;
@@ -519,12 +541,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           if (mounted) setState(() {});
         }
       }
-
-      await widget.relayManager.sendReaction(
-        messageId: targetId,
-        receiverPubkey: widget.contact.pubkey,
-        emoji: emoji,
-      );
 
       _messageForReaction = null;
 
