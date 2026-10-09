@@ -7,12 +7,34 @@ import '../core/utils/ui_utils.dart';
 
 class UserAvatar extends StatelessWidget {
   final String pubkey;
-  final String? name; // For initials
+  final String? name;
   final double radius;
   final RelayManager relayManager;
 
-  // Static in-memory cache to prevent FutureBuilder flicker & re-execution during scrolling
-  static final Map<String, String?> _avatarMemCache = {};
+  /// In-memory cache of profile picture URLs. Only **non-null** entries
+  /// are stored — a missing picture must not be cached, otherwise the
+  /// widget would never retry and avatars would stay empty until the
+  /// app is fully restarted.
+  static final Map<String, String> _avatarMemCache = {};
+
+  /// Bumped whenever [invalidate] or [invalidateAll] is called. Every
+  /// live UserAvatar widget listens to this and rebuilds when it changes.
+  static final ValueNotifier<int> _cacheVersion = ValueNotifier<int>(0);
+
+  /// Clears the cached URL for [pubkey] and forces every visible
+  /// UserAvatar to rebuild. Call this whenever a profile picture is
+  /// updated — for the local user after `broadcastProfileKind0`, or
+  /// for a peer when a Kind 0 metadata event arrives from a relay.
+  static void invalidate(String pubkey) {
+    _avatarMemCache.remove(pubkey);
+    _cacheVersion.value++;
+  }
+
+  /// Clears the entire cache. Use sparingly (e.g. on account switch).
+  static void invalidateAll() {
+    _avatarMemCache.clear();
+    _cacheVersion.value++;
+  }
 
   const UserAvatar({
     super.key,
@@ -52,22 +74,35 @@ class UserAvatar extends StatelessWidget {
     return fallbackAvatar;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // Instant synchronous render if photo URL is already in memory cache
-    if (_avatarMemCache.containsKey(pubkey)) {
-      return _buildAvatar(context, _avatarMemCache[pubkey]);
+  Widget _buildContent(BuildContext context) {
+    // Instant synchronous render if the URL is already cached.
+    final cached = _avatarMemCache[pubkey];
+    if (cached != null) {
+      return _buildAvatar(context, cached);
     }
 
     return FutureBuilder<String?>(
       future: relayManager.fetchProfilePicture(pubkey),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done || snapshot.hasData) {
-          _avatarMemCache[pubkey] = snapshot.data;
+        // Only cache successful, non-empty fetches. Caching null (or an
+        // empty string) would permanently block future retries because
+        // the cache lookup below only checks for presence, not validity.
+        if (snapshot.hasData &&
+            snapshot.data != null &&
+            snapshot.data!.isNotEmpty) {
+          _avatarMemCache[pubkey] = snapshot.data!;
         }
-        final photoUrl = snapshot.data ?? _avatarMemCache[pubkey];
-        return _buildAvatar(context, photoUrl);
+
+        return _buildAvatar(context, snapshot.data);
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _cacheVersion,
+      builder: (context, _, __) => _buildContent(context),
     );
   }
 }

@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
+import 'widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -174,10 +175,19 @@ class RelayManager {
       channel.sink.add(subToMe);
       channel.sink.add(subFromMe);
 
-      final profileSince = nowTimestamp - 86400;
+      // Subscribe only to profiles of contacts we already know about.
+      // A firehose subscription (kinds:[0] with no authors filter) gets
+      // throttled by relays and will miss most profile events, and it also
+      // writes every profile on the network into our local Hive cache.
+      final contactsBox = Hive.box<Contact>('contacts');
+      final authorList = <String>[
+        ...contactsBox.keys.map((k) => k.toString()),
+        myPubkey,
+      ];
+
       final subProfiles = jsonEncode(["REQ", "${_subscriptionId!}_profiles", {
         "kinds": [0],
-        "since": profileSince
+        "authors": authorList,
       }]);
       channel.sink.add(subProfiles);
 
@@ -276,6 +286,10 @@ class RelayManager {
                 } else {
                   _profilePics.delete(pubkey);
                 }
+                // Invalidate the in-memory avatar cache so any visible UserAvatar
+                // for this pubkey re-fetches from Hive and re-renders.
+                UserAvatar.invalidate(pubkey);
+                _resolveProfileWaiters(pubkey, picture);
 
                 final name = content['name'] is String ? content['name'] as String : null;
                 if (name != null && name.isNotEmpty) {
@@ -834,30 +848,33 @@ class RelayManager {
     return _profilePictureBox!;
   }
 
+  /// Waiters for on-demand profile fetches, keyed by pubkey.
+  /// When a kind-0 event arrives for a pubkey, all waiters for that
+  /// pubkey are completed with the picture URL.
+  final Map<String, List<Completer<String?>>> _profileWaiters = {};
+
+  /// Fetches a peer's profile picture.
+  ///
+  /// Uses a waiter-registry pattern instead of re-listening on the
+  /// WebSocket stream (which would throw "Stream has already been
+  /// listened to"). The main dispatcher in [_handleEvent] resolves
+  /// waiters when a kind-0 event arrives.
   Future<String?> fetchProfilePicture(String pubkey) async {
-    // Return from persistent cache if available
+    // 1. Return cached URL if present.
     if (_profilePics.containsKey(pubkey)) {
-      final cachedUrl = _profilePics.get(pubkey);
-      if (cachedUrl != null && cachedUrl.isNotEmpty) {
-        return cachedUrl;
-      }
+      final cached = _profilePics.get(pubkey);
+      if (cached != null && cached.isNotEmpty) return cached;
     }
 
-    // Wait for relays to connect (max 5 seconds)
-    int waitAttempts = 0;
-    while (_connectionStatus.values.where((s) => s == true).isEmpty && waitAttempts < 50) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      waitAttempts++;
-    }
-
-    if (_connectionStatus.values.where((s) => s == true).isEmpty) {
-      return null;
-    }
-
+    // 2. Register as a waiter. If another fetch for this pubkey is
+    //    already in-flight, we piggyback on it rather than sending a
+    //    duplicate REQ.
     final completer = Completer<String?>();
-    final tempSubId = 'profile_${pubkey.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch}';
+    _profileWaiters.putIfAbsent(pubkey, () => []).add(completer);
 
-    // Send REQ to all connected relays
+    // 3. Send REQ to all connected relays.
+    final tempSubId = 'profile_${pubkey.substring(0, 12)}';
+    bool sentToAtLeastOne = false;
     for (final entry in _connections.entries) {
       if (_connectionStatus[entry.key] == true) {
         try {
@@ -867,73 +884,64 @@ class RelayManager {
             "limit": 1,
           }]);
           entry.value.sink.add(req);
-        } catch (e) {
-          // Skip failed sends
-        }
-      }
-    }
-
-    // Listen for responses from all relays
-    final List<StreamSubscription> subscriptions = [];
-
-    for (final entry in _connections.entries) {
-      if (_connectionStatus[entry.key] == true) {
-        final sub = entry.value.stream.listen((data) {
-          try {
-            final decoded = jsonDecode(data.toString());
-            if (decoded is List && decoded.length > 2 && decoded[0] == "EVENT") {
-              final rawEvent = decoded[2];
-              if (rawEvent is! Map) return;
-              final event = rawEvent as Map<String, dynamic>;
-              if (event['kind'] == 0 && event['pubkey'] == pubkey) {
-                final rawContent = event['content'];
-                if (rawContent is String && rawContent.trim().startsWith('{')) {
-                  final content = jsonDecode(rawContent);
-                  if (content is Map<String, dynamic>) {
-                    final picture = content['picture'] is String ? content['picture'] as String : null;
-
-                    if (picture != null && picture.isNotEmpty && !completer.isCompleted) {
-                      // Simpan ke Hive tanpa await (fire-and-forget)
-                      _profilePics.put(pubkey, picture).then((_) {
-                        if (!completer.isCompleted) {
-                          completer.complete(picture);
-                        }
-                      });
-                    }
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            // Ignore parsing errors
-          }
-        });
-        subscriptions.add(sub);
-      }
-    }
-
-    // Timeout after 8 seconds
-    final timeout = Timer(const Duration(seconds: 8), () {
-      if (!completer.isCompleted) completer.complete(null);
-    });
-
-    final result = await completer.future;
-    timeout.cancel();
-
-    // Cleanup
-    for (final sub in subscriptions) {
-      sub.cancel();
-    }
-
-    for (final entry in _connections.entries) {
-      if (_connectionStatus[entry.key] == true) {
-        try {
-          entry.value.sink.add(jsonEncode(["CLOSE", tempSubId]));
+          sentToAtLeastOne = true;
         } catch (_) {}
       }
     }
 
-    return result;
+    if (!sentToAtLeastOne) {
+      _profileWaiters.remove(pubkey);
+      return null;
+    }
+
+    // 4. Timeout after 8 seconds.
+    Timer(const Duration(seconds: 8), () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+
+    return completer.future;
+  }
+
+  /// Called from [_handleEvent] when a kind-0 event arrives. Completes
+  /// any pending [fetchProfilePicture] waiters for this pubkey.
+  void _resolveProfileWaiters(String pubkey, String? photoUrl) {
+    final waiters = _profileWaiters.remove(pubkey);
+    if (waiters == null) return;
+    for (final c in waiters) {
+      if (!c.isCompleted) c.complete(photoUrl);
+    }
+  }
+
+  /// Rebuilds and re-sends the profile (kind 0) subscription with the
+  /// current list of contacts. Call this whenever a new contact is
+  /// added, otherwise relays will not know to push their metadata.
+  void refreshProfileSubscription() {
+    if (_subscriptionId == null) return;
+    if (!_isInitialized) return;
+
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      final authorList = <String>[
+        ...contactsBox.keys.map((k) => k.toString()),
+        AppSettings.instance.myPubkey,
+      ];
+
+      final subProfiles = jsonEncode(["REQ", "${_subscriptionId!}_profiles", {
+        "kinds": [0],
+        "authors": authorList,
+      }]);
+
+      for (final entry in _connections.entries) {
+        if (_connectionStatus[entry.key] == true) {
+          try {
+            entry.value.sink.add(subProfiles);
+          } catch (_) {}
+        }
+      }
+      DebugLogger.log('[Profile] Subscription refreshed (${authorList.length} authors)');
+    } catch (e) {
+      DebugLogger.log('[Profile] refreshProfileSubscription failed | $e', type: 'ERROR');
+    }
   }
 
   /// Generate NIP-98 authentication token for nostr.build
@@ -1031,13 +1039,16 @@ class RelayManager {
         }
       }
 
-      // Perbarui cache lokal untuk diri sendiri
+      // Refresh the local cache for yourself
       if (photoUrl != null && photoUrl.isNotEmpty) {
         _profilePics.put(myPubkey, photoUrl);
       } else {
         _profilePics.delete(myPubkey);
       }
-      // Trigger pembaruan UI
+      // Invalidate the avatar cache so any visible UserAvatar for the
+      // local user re-renders (e.g. own avatar shown in other tabs).
+      UserAvatar.invalidate(myPubkey);
+      // Trigger UI update
       onMessageReceived?.call();
     } catch (e) {
       DebugLogger.log('[Profile] Broadcast kind 0 failed | $e', type: 'ERROR');
@@ -1171,6 +1182,7 @@ class RelayManager {
     try {
       final contactsBox = Hive.box<Contact>('contacts');
       Contact? contact = contactsBox.get(peerPubkey);
+      final bool isNewContact = contact == null;
 
       if (contact == null) {
         contact = Contact(
@@ -1193,6 +1205,12 @@ class RelayManager {
         if (currentlyChattingWith == peerPubkey) contact.unreadCount = 0;
       }
       await contactsBox.put(peerPubkey, contact);
+
+      // If this is a brand-new contact, refresh the profile subscription
+      // so relay starts pushing their kind-0 metadata to us.
+      if (isNewContact) {
+        refreshProfileSubscription();
+      }
     } catch (e) {
       DebugLogger.log('[Contact] Update failed | $e', type: 'ERROR');
     }
@@ -1312,6 +1330,7 @@ class RelayManager {
     // fire its own queue-processing pass, causing a CPU spike.
     if (!wasConnected && isNowConnected) {
       _processOfflineQueue();
+      refreshProfileSubscription();
     }
   }
 
