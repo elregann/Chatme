@@ -119,6 +119,13 @@ class AppSettings {
 
       myPubkey = bip340.getPublicKey(myPrivkey);
 
+      // Reset identity-specific state so a different account doesn't
+      // inherit the previous account's photo. The profile photo (and
+      // path) will be re-populated automatically once the relay
+      // delivers the account's kind-0 event.
+      myPhotoUrl = '';
+      myPhotoPath = '';
+
       // Try to fetch existing display name from Firebase
       final fetchedName = await _fetchNameFromFirebase(myPubkey);
       myName = fetchedName ?? formatDisplayName(myPubkey);
@@ -138,6 +145,8 @@ class AppSettings {
         'my_name': myName,
         'my_nip05': myNip05,
         'is_nip05_verified': isNip05Verified,
+        'my_photo_url': '',
+        'my_photo_path': '',
       });
 
       DebugLogger.log('[Settings] Account restored: $myPubkey', type: 'SETUP');

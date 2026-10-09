@@ -286,10 +286,21 @@ class RelayManager {
                 } else {
                   _profilePics.delete(pubkey);
                 }
-                // Invalidate the in-memory avatar cache so any visible UserAvatar
-                // for this pubkey re-fetches from Hive and re-renders.
                 UserAvatar.invalidate(pubkey);
                 _resolveProfileWaiters(pubkey, picture);
+
+                // If this is our own profile, keep AppSettings in sync
+                // too. This is what makes the Profile tab show the correct
+                // photo after a restore: as soon as the relay delivers
+                // our own kind-0, myPhotoUrl is updated and the tab
+                // rebuilds via its Hive listener.
+                if (pubkey == AppSettings.instance.myPubkey) {
+                  if (picture != null && picture.isNotEmpty) {
+                    AppSettings.instance.savePhotoUrl(picture);
+                  } else {
+                    AppSettings.instance.savePhotoUrl('');
+                  }
+                }
 
                 final name = content['name'] is String ? content['name'] as String : null;
                 if (name != null && name.isNotEmpty) {

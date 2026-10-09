@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'relay_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'services/app_settings.dart';
@@ -317,8 +318,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (mounted) {
       final newPubkey = AppSettings.instance.myPubkey;
+      widget.relayManager.refreshProfileSubscription();
       final photoUrl = await widget.relayManager.fetchProfilePicture(newPubkey);
-      
+
       if (photoUrl != null && photoUrl.isNotEmpty) {
         await AppSettings.instance.savePhotoUrl(photoUrl);
       } else {
@@ -400,377 +402,389 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = AppSettings.instance;
+    // Wrap the entire screen in a ValueListenableBuilder that listens
+    // to the settings Hive box. Whenever AppSettings.savePhotoUrl() is
+    // called — e.g. after a restore, when the relay delivers our own
+    // kind-0 event — the Profile tab rebuilds automatically without
+    // any manual setState or fetch retry.
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('settings').listenable(),
+      builder: (context, _, __) {
+        final settings = AppSettings.instance;
 
-    // Logic Warna sesuai AppearancePage
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+        // Logic Warna sesuai AppearancePage
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
+        final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
+        final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+        final textPrimary = isDark ? Colors.white : Colors.black;
+        final textSecondary = isDark ? Colors.white54 : Colors.black45;
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        // toolbarHeight: 40,
-        title: Text(
-          'Profile',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 22,
-            color: Theme.of(context).iconTheme.color,
+        return Scaffold(
+          backgroundColor: bgColor,
+          appBar: AppBar(
+            title: Text(
+              'Profile',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 22,
+                color: Theme.of(context).iconTheme.color,
+              ),
+            ),
+            elevation: 0,
           ),
-        ),
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: _pickPhoto,
-                    child: Stack(
-                      children: [
-                        // profile picture
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundColor: _getAvatarColor(settings.myPubkey),
-                          backgroundImage: _remotePhotoUrl != null
-                              ? CachedNetworkImageProvider(_remotePhotoUrl!)
-                              : (_localPhotoPath != null && !kIsWeb
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Column(
+                    children: [
+                      GestureDetector(
+                        onTap: _pickPhoto,
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 40,
+                              backgroundColor: _getAvatarColor(settings.myPubkey),
+                              backgroundImage: settings.myPhotoUrl.isNotEmpty
+                                  ? CachedNetworkImageProvider(settings.myPhotoUrl)
+                                  : (settings.myPhotoPath.isNotEmpty && !kIsWeb
+                                  ? FileImage(File(settings.myPhotoPath)) as ImageProvider
+                                  : (_remotePhotoUrl != null
+                                  ? CachedNetworkImageProvider(_remotePhotoUrl!)
+                                  : (_localPhotoPath != null && !kIsWeb
                                   ? FileImage(File(_localPhotoPath!)) as ImageProvider
-                                  : null),
-                          child: (_remotePhotoUrl == null && _localPhotoPath == null)
-                              ? Text(
-                            ((!_isEditing && _currentHandle.isNotEmpty)
-                                ? _currentHandle[0].toUpperCase()
-                                : (settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?')),
-                            style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-                          )
-                              : null,
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1976D2),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isDark ? const Color(0xFF121212) : Colors.white,
-                                width: 2,
+                                  : null))),
+                              child: (settings.myPhotoUrl.isEmpty && settings.myPhotoPath.isEmpty && _remotePhotoUrl == null && _localPhotoPath == null)
+                                  ? Text(
+                                ((!_isEditing && _currentHandle.isNotEmpty)
+                                    ? _currentHandle[0].toUpperCase()
+                                    : (settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?')),
+                                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                              )
+                                  : null,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1976D2),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isDark ? const Color(0xFF121212) : Colors.white,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(Icons.edit_rounded, size: 12, color: Colors.white),
                               ),
                             ),
-                            child: const Icon(Icons.edit_rounded, size: 12, color: Colors.white),
-                          ),
+                          ],
                         ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                          (!_isEditing && _currentHandle.isNotEmpty)
+                              ? _currentHandle.split('@')[0]
+                              : settings.myName,
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)
+                      ),
+                    ],
+                  ),
+                ),
+
+                ValueListenableBuilder<CallState>(
+                  valueListenable: CallManager.instance.callStateNotifier,
+                  builder: (context, callState, _) {
+                    if (callState == CallState.idle ||
+                        callState == CallState.ending ||
+                        callState == CallState.error) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 20),
+                      child: CallFloatingBar(relay: widget.relayManager),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 24),
+                _buildSectionTitle('Global ID', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: borderColor, width: 0.5),
+                  ),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: Icon(
+                      AppSettings.instance.isNip05Verified ? Icons.verified_rounded : Icons.verified_user_rounded,
+                      color: AppSettings.instance.isNip05Verified ? Colors.blue : textPrimary,
+                    ),
+                    title: Text(
+                      AppSettings.instance.myNip05.isNotEmpty ? AppSettings.instance.myNip05 : 'Claim your ID',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
+                    ),
+                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => GlobalIdPage(relayManager: widget.relayManager)),
+                      );
+                      setState(() {
+                        _currentHandle = AppSettings.instance.myNip05;
+                        _isEditing = _currentHandle.isEmpty;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Your Npub', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: borderColor, width: 0.5)
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    title: SelectableText(
+                      KeyUtils.toNpub(settings.myPubkey),
+                      style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textSecondary),
+                    ),
+                    trailing: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: KeyUtils.toNpub(settings.myPubkey)));
+                          HapticFeedback.lightImpact();
+                        },
+                        borderRadius: BorderRadius.circular(50),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: textSecondary.withAlpha(20), shape: BoxShape.circle),
+                          child: Icon(Icons.copy_rounded, color: textSecondary, size: 18),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Tools', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: borderColor, width: 0.5),
+                  ),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: Icon(Icons.swap_horiz_rounded, color: textPrimary, size: 18),
+                    title: Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const KeyConverterPage()),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Network', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: borderColor, width: 0.5),
+                  ),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: Icon(Remix.server_fill, color: textPrimary, size: 18),
+                    title: Text('Relay Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => RelayStatusPage(relayManager: widget.relayManager)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Security & Account', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  clipBehavior: Clip.antiAlias,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: borderColor, width: 0.5)
+                  ),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Remix.eye_fill, color: textPrimary, size: 18),
+                        title: Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        onTap: () => _showMnemonicDialog(context),
+                      ),
+                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      ListTile(
+                        leading: Icon(Remix.key_fill, color: textPrimary, size: 18),
+                        title: Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        onTap: () => _showBackupDialog(context),
+                      ),
+                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      ListTile(
+                        leading: Icon(Icons.settings_backup_restore_rounded, color: textPrimary, size: 18),
+                        title: Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        onTap: () => _showRestoreDialog(context),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Appearance', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: borderColor, width: 0.5)
+                  ),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: Icon(Icons.brightness_6_outlined, color: textPrimary, size: 18),
+                    title: Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    onTap: () => _showThemeDialog(context),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('Information', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: borderColor, width: 0.5)
+                  ),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                        ),
+                        leading: Icon(Icons.privacy_tip_outlined, color: textPrimary, size: 18),
+                        title: Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        onTap: () => _showPrivacyDialog(context, bgColor, textPrimary, textSecondary),
+                      ),
+                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      ListTile(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+                        ),
+                        leading: Icon(Icons.article_outlined, color: textPrimary, size: 18),
+                        title: Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        onTap: () async {
+                          final List<LicenseEntry> licenses = await LicenseRegistry.licenses.toList();
+                          if (!context.mounted) return;
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => Scaffold(
+                                backgroundColor: bgColor,
+                                appBar: AppBar(
+                                  backgroundColor: bgColor,
+                                  elevation: 0,
+                                  scrolledUnderElevation: 0,
+                                  centerTitle: true,
+                                  title: Text('Licenses', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary)),
+                                  leading: IconButton(
+                                    icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+                                    onPressed: () => Navigator.pop(context),
+                                  ),
+                                ),
+                                body: ListView.builder(
+                                  padding: const EdgeInsets.all(24.0),
+                                  itemCount: licenses.length,
+                                  itemBuilder: (context, index) {
+                                    final entry = licenses[index];
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(entry.packages.join(', '), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary)),
+                                        const SizedBox(height: 8),
+                                        ...entry.paragraphs.map((p) => Padding(
+                                          padding: const EdgeInsets.only(bottom: 8),
+                                          child: Text(p.text, style: TextStyle(fontSize: 14, height: 1.6, color: textSecondary)),
+                                        )),
+                                        if (index < licenses.length - 1) Divider(color: borderColor, height: 48),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('How to Chat', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: borderColor, width: 0.5)
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        _buildGuideStep(context, 1, 'Set your handle in Global ID to be searchable', textPrimary),
+                        _buildGuideStep(context, 2, 'Or copy your Npub to share privately', textPrimary),
+                        _buildGuideStep(context, 3, 'Go to Contacts to search name or paste key', textPrimary),
+                        _buildGuideStep(context, 4, 'Add them to your verified contact list', textPrimary),
+                        _buildGuideStep(context, 5, 'Start chatting securely in Chats tab', textPrimary),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                      (!_isEditing && _currentHandle.isNotEmpty)
-                          ? _currentHandle.split('@')[0]
-                          : settings.myName,
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)
+                ),
+                const SizedBox(height: 24),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: borderColor, width: 0.5),
                   ),
-                ],
-              ),
-            ),
-
-            ValueListenableBuilder<CallState>(
-              valueListenable: CallManager.instance.callStateNotifier,
-              builder: (context, callState, _) {
-                if (callState == CallState.idle ||
-                    callState == CallState.ending ||
-                    callState == CallState.error) {
-                  return const SizedBox.shrink();
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(top: 20),
-                  child: CallFloatingBar(relay: widget.relayManager),
-                );
-              },
-            ),
-
-            const SizedBox(height: 24),
-            _buildSectionTitle('Global ID', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: borderColor, width: 0.5),
-              ),
-              child: ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                leading: Icon(
-                  AppSettings.instance.isNip05Verified ? Icons.verified_rounded : Icons.verified_user_rounded,
-                  color: AppSettings.instance.isNip05Verified ? Colors.blue : textPrimary,
-                ),
-                title: Text(
-                  AppSettings.instance.myNip05.isNotEmpty ? AppSettings.instance.myNip05 : 'Claim your ID',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
-                ),
-                trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => GlobalIdPage(relayManager: widget.relayManager)),
-                  );
-                  setState(() {
-                    _currentHandle = AppSettings.instance.myNip05;
-                    _isEditing = _currentHandle.isEmpty;
-                  });
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Your Npub', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: borderColor, width: 0.5)
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                title: SelectableText(
-                  KeyUtils.toNpub(settings.myPubkey),
-                  style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textSecondary),
-                ),
-                trailing: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: KeyUtils.toNpub(settings.myPubkey)));
-                      HapticFeedback.lightImpact();
-                    },
-                    borderRadius: BorderRadius.circular(50),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: textSecondary.withAlpha(20), shape: BoxShape.circle),
-                      child: Icon(Icons.copy_rounded, color: textSecondary, size: 18),
-                    ),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
+                    title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    trailing: Text('1.8.3-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
-              ),
+                const SizedBox(height: 20),
+              ],
             ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Tools', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: borderColor, width: 0.5),
-              ),
-              child: ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                leading: Icon(Icons.swap_horiz_rounded, color: textPrimary, size: 18),
-                title: Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const KeyConverterPage()),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Network', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: borderColor, width: 0.5),
-              ),
-              child: ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                leading: Icon(Remix.server_fill, color: textPrimary, size: 18),
-                title: Text('Relay Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => RelayStatusPage(relayManager: widget.relayManager)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Security & Account', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: borderColor, width: 0.5)
-              ),
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: Icon(Remix.eye_fill, color: textPrimary, size: 18),
-                    title: Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                    onTap: () => _showMnemonicDialog(context),
-                  ),
-                  Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
-                  ListTile(
-                    leading: Icon(Remix.key_fill, color: textPrimary, size: 18),
-                    title: Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                    onTap: () => _showBackupDialog(context),
-                  ),
-                  Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
-                  ListTile(
-                    leading: Icon(Icons.settings_backup_restore_rounded, color: textPrimary, size: 18),
-                    title: Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                    onTap: () => _showRestoreDialog(context),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Appearance', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: borderColor, width: 0.5)
-              ),
-              child: ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                leading: Icon(Icons.brightness_6_outlined, color: textPrimary, size: 18),
-                title: Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                onTap: () => _showThemeDialog(context),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Information', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: borderColor, width: 0.5)
-              ),
-              child: Column(
-                children: [
-                  ListTile(
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                    ),
-                    leading: Icon(Icons.privacy_tip_outlined, color: textPrimary, size: 18),
-                    title: Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                    onTap: () => _showPrivacyDialog(context, bgColor, textPrimary, textSecondary),
-                  ),
-                  Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
-                  ListTile(
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
-                    ),
-                    leading: Icon(Icons.article_outlined, color: textPrimary, size: 18),
-                    title: Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                    onTap: () async {
-                      final List<LicenseEntry> licenses = await LicenseRegistry.licenses.toList();
-                      if (!context.mounted) return;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => Scaffold(
-                            backgroundColor: bgColor,
-                            appBar: AppBar(
-                              backgroundColor: bgColor,
-                              elevation: 0,
-                              scrolledUnderElevation: 0,
-                              centerTitle: true,
-                              title: Text('Licenses', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary)),
-                              leading: IconButton(
-                                icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
-                                onPressed: () => Navigator.pop(context),
-                              ),
-                            ),
-                            body: ListView.builder(
-                              padding: const EdgeInsets.all(24.0),
-                              itemCount: licenses.length,
-                              itemBuilder: (context, index) {
-                                final entry = licenses[index];
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(entry.packages.join(', '), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary)),
-                                    const SizedBox(height: 8),
-                                    ...entry.paragraphs.map((p) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: Text(p.text, style: TextStyle(fontSize: 14, height: 1.6, color: textSecondary)),
-                                    )),
-                                    if (index < licenses.length - 1) Divider(color: borderColor, height: 48),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('How to Chat', textSecondary),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: borderColor, width: 0.5)
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _buildGuideStep(context, 1, 'Set your handle in Global ID to be searchable', textPrimary),
-                    _buildGuideStep(context, 2, 'Or copy your Npub to share privately', textPrimary),
-                    _buildGuideStep(context, 3, 'Go to Contacts to search name or paste key', textPrimary),
-                    _buildGuideStep(context, 4, 'Add them to your verified contact list', textPrimary),
-                    _buildGuideStep(context, 5, 'Start chatting securely in Chats tab', textPrimary),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Card(
-              elevation: 0,
-              color: cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: borderColor, width: 0.5),
-              ),
-              child: ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
-                title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                trailing: Text('1.8.3-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
