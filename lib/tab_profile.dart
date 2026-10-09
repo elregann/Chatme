@@ -20,7 +20,7 @@ import 'package:remixicon/remixicon.dart';
 import 'dart:io' show File;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -445,27 +445,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onTap: _pickPhoto,
                         child: Stack(
                           children: [
-                            CircleAvatar(
-                              radius: 40,
-                              backgroundColor: _getAvatarColor(settings.myPubkey),
-                              backgroundImage: settings.myPhotoUrl.isNotEmpty
-                                  ? CachedNetworkImageProvider(settings.myPhotoUrl)
-                                  : (settings.myPhotoPath.isNotEmpty && !kIsWeb
-                                  ? FileImage(File(settings.myPhotoPath)) as ImageProvider
-                                  : (_remotePhotoUrl != null
-                                  ? CachedNetworkImageProvider(_remotePhotoUrl!)
-                                  : (_localPhotoPath != null && !kIsWeb
-                                  ? FileImage(File(_localPhotoPath!)) as ImageProvider
-                                  : null))),
-                              child: (settings.myPhotoUrl.isEmpty && settings.myPhotoPath.isEmpty && _remotePhotoUrl == null && _localPhotoPath == null)
-                                  ? Text(
-                                ((!_isEditing && _currentHandle.isNotEmpty)
-                                    ? _currentHandle[0].toUpperCase()
-                                    : (settings.myName.isNotEmpty ? settings.myName[0].toUpperCase() : '?')),
-                                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-                              )
-                                  : null,
-                            ),
+                            (_localPhotoPath != null && !kIsWeb)
+                                ? CircleAvatar(
+                                    radius: 40,
+                                    backgroundColor: _getAvatarColor(settings.myPubkey),
+                                    backgroundImage: FileImage(File(_localPhotoPath!)),
+                                  )
+                                : (settings.myPhotoPath.isNotEmpty && !kIsWeb)
+                                    ? CircleAvatar(
+                                        radius: 40,
+                                        backgroundColor: _getAvatarColor(settings.myPubkey),
+                                        backgroundImage: FileImage(File(settings.myPhotoPath)),
+                                      )
+                                    : UserAvatar(
+                                        pubkey: settings.myPubkey,
+                                        name: settings.myName.isNotEmpty
+                                            ? settings.myName
+                                            : (_currentHandle.isNotEmpty ? _currentHandle : null),
+                                        radius: 40,
+                                        relayManager: widget.relayManager,
+                                      ),
                             Positioned(
                               bottom: 0,
                               right: 0,
@@ -776,7 +775,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.8.3-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.8.3.1-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),

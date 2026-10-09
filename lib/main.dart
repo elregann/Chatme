@@ -65,6 +65,7 @@ void main() async {
     await Hive.openBox('chats');
     await Hive.openBox<String>('profile_pictures');
     await Hive.openBox<CallLog>('call_logs');
+    await Hive.openBox('processed_events');
 
     await AppSettings.instance.load();
 
@@ -164,6 +165,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     }
 
     NotificationHandler.init(relayManager: _relayManager);
+    _relayManager.precacheAllProfilePictures();
     WidgetsBinding.instance.addObserver(this);
 
     // All notification taps are treated as chat navigations. The legacy

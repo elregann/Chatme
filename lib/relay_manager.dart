@@ -83,9 +83,12 @@ class RelayManager {
         });
       }
 
+      // Compute latestTime once here, not 7× inside each _connectToRelay.
+      final int latestTime = _computeLatestContactTime();
+
       for (var i = 0; i < relays.length; i++) {
         Future.delayed(Duration(milliseconds: i * 300), () {
-          _connectToRelay(relays[i], myPubkey);
+          _connectToRelay(relays[i], myPubkey, latestTime);
         });
       }
       _isInitialized = true;
@@ -93,6 +96,19 @@ class RelayManager {
     } catch (e) {
       _isConnecting = false;
     }
+  }
+
+  int _computeLatestContactTime() {
+    int latestTime = 0;
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      for (var contact in contactsBox.values) {
+        if (contact.lastChatTime > latestTime) {
+          latestTime = contact.lastChatTime;
+        }
+      }
+    } catch (_) {}
+    return latestTime;
   }
 
   void disconnect() {
@@ -118,7 +134,7 @@ class RelayManager {
     _connectedCount.value = 0;
   }
 
-  Future<void> _connectToRelay(String relayUrl, String myPubkey) async {
+  Future<void> _connectToRelay(String relayUrl, String myPubkey, int latestTime) async {
     try {
       _closeConnection(relayUrl);
 
@@ -134,28 +150,14 @@ class RelayManager {
       final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       int syncSince = nowTimestamp - 2592000;
 
-      try {
-        final contactsBox = Hive.box<Contact>('contacts');
-        if (contactsBox.isNotEmpty) {
-          int latestTime = 0;
-          for (var contact in contactsBox.values) {
-            if (contact.lastChatTime > latestTime) {
-              latestTime = contact.lastChatTime;
-            }
-          }
-          if (latestTime > 0) {
-            final computed = (latestTime ~/ 1000) - 3600;
-            // NIP-59 randomises gift-wrap `created_at` up to 2 days into
-            // the past. A narrower window would silently drop freshly
-            // queued messages whose random timestamp happens to fall
-            // outside it. Always look back at least 3 days.
-            final minimum = nowTimestamp - 259200; // 3 days
-            syncSince = computed < minimum ? computed : minimum;
-            DebugLogger.log('[Sync] Fetching since ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}');
-          }
-        }
-      } catch (e) {
-        DebugLogger.log('[Sync] Failed to compute syncSince, using 30 days default', type: 'WARN');
+      // latestTime already computed once in connect(), not per relay.
+      if (latestTime > 0) {
+        final computed = (latestTime ~/ 1000) - 3600;
+        // NIP-59 randomises gift-wrap `created_at` up to 2 days into
+        // the past. Always look back at least 3 days.
+        final minimum = nowTimestamp - 259200; // 3 days
+        syncSince = computed < minimum ? computed : minimum;
+        DebugLogger.log('[Sync] Fetching since ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}');
       }
 
       final List<int> neededKinds = [1, 4, 7, 1059];
@@ -176,9 +178,6 @@ class RelayManager {
       channel.sink.add(subFromMe);
 
       // Subscribe only to profiles of contacts we already know about.
-      // A firehose subscription (kinds:[0] with no authors filter) gets
-      // throttled by relays and will miss most profile events, and it also
-      // writes every profile on the network into our local Hive cache.
       final contactsBox = Hive.box<Contact>('contacts');
       final authorList = <String>[
         ...contactsBox.keys.map((k) => k.toString()),
@@ -281,19 +280,21 @@ class RelayManager {
               if (createdAt >= lastProcessed) {
                 _lastKind0Timestamp[pubkey] = createdAt;
 
+                final oldPicture = _profilePics.containsKey(pubkey) ? _profilePics.get(pubkey) : null;
+                final hasPictureChanged = oldPicture != picture;
+
                 if (picture != null && picture.isNotEmpty) {
                   _profilePics.put(pubkey, picture);
                 } else {
                   _profilePics.delete(pubkey);
                 }
-                UserAvatar.invalidate(pubkey);
+
+                if (hasPictureChanged) {
+                  UserAvatar.invalidate(pubkey);
+                }
                 _resolveProfileWaiters(pubkey, picture);
 
-                // If this is our own profile, keep AppSettings in sync
-                // too. This is what makes the Profile tab show the correct
-                // photo after a restore: as soon as the relay delivers
-                // our own kind-0, myPhotoUrl is updated and the tab
-                // rebuilds via its Hive listener.
+                // If this is our own profile, keep AppSettings in sync too.
                 if (pubkey == AppSettings.instance.myPubkey) {
                   if (picture != null && picture.isNotEmpty) {
                     AppSettings.instance.savePhotoUrl(picture);
@@ -314,9 +315,10 @@ class RelayManager {
                   } catch (_) {}
                 }
 
-                try {
-                  onMessageReceived?.call();
-                } catch (_) {}
+                // Note: no manual onMessageReceived here. The UI already
+                // rebuilds via Hive listeners (contacts box, profile_pics
+                // box). Calling this 100x on startup caused a rebuild
+                // storm that contributed to jank.
               }
             }
           }
@@ -327,6 +329,16 @@ class RelayManager {
     }
 
     if (eventId.isEmpty || _processedEventIds.contains(eventId)) return;
+
+    // Persistent dedup: skip events already processed in a previous
+    // session, BEFORE doing expensive NIP-17 unwrap. This is what
+    // makes cold start fast after the first session.
+    try {
+      if (_processedEvents.containsKey(eventId)) {
+        _processedEventIds.add(eventId);
+        return;
+      }
+    } catch (_) {}
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final myPubkey = AppSettings.instance.myPubkey;
@@ -341,10 +353,18 @@ class RelayManager {
       _processedEventIds.add(eventId);
 
       if (kind == 1 || kind == 4 || kind == 1059) {
-        _processIncomingEvent(event);
+        await _processIncomingEvent(event);
+        try {
+          _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+        } catch (_) {}
       }
 
-      if (kind == 7) _handleReceiptEvent(event);
+      if (kind == 7) {
+        await _handleReceiptEvent(event);
+        try {
+          _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+        } catch (_) {}
+      }
     }
   }
 
@@ -405,7 +425,7 @@ class RelayManager {
     }
   }
 
-  void _processIncomingEvent(Map<String, dynamic> event) async {
+  Future<void> _processIncomingEvent(Map<String, dynamic> event) async {
     try {
       final eventId = event['id']?.toString() ?? '';
       final myPubkey = AppSettings.instance.myPubkey;
@@ -420,8 +440,6 @@ class RelayManager {
       List tags = event['tags'] as List? ?? [];
       String content = event['content']?.toString() ?? '';
 
-      // Holds the fully-decrypted Rumor when kind==1059, so we can read
-      // reply tags and rumor-only metadata from it below.
       Nip17Result? nip17Result;
 
       if (event['kind'] == 1059) {
@@ -438,9 +456,6 @@ class RelayManager {
           receiverPubkey = nip17Result.receiverPubkey;
 
           final bool isFromMe = (actualSenderPubkey == myPubkey);
-          // For self-envelopes: sender == myPubkey AND rumor p tag == myPubkey
-          // would mean this is truly a self-loop with no peer. Skip those.
-          // Otherwise the rumor p tag carries the real peer.
           peerPubkey = isFromMe ? receiverPubkey : actualSenderPubkey;
         } catch (e) {
           DebugLogger.log('[NIP-17] Unwrap failed | $e', type: 'ERROR');
@@ -463,19 +478,6 @@ class RelayManager {
 
       if (peerPubkey.isEmpty || peerPubkey == myPubkey) return;
 
-      // --- Encrypted call signaling (carried inside NIP-17 rumor) ---
-      //
-      // Call signals are wrapped the same way as chat messages but are
-      // marked with a `CALL_SIGNAL:` prefix so we can route them to the
-      // CallManager without saving them as chat messages.
-      //
-      // Ghost-call prevention: NIP-17 events are stored permanently by
-      // relays. When the app opens or hot-restarts, the relay replays
-      // every event within our sync window (3 days). Without an age
-      // check, a `CALL_SIGNAL:offer` from hours ago would trigger a
-      // ghost incoming call. The TTL below mirrors the semantics of the
-      // existing kind-1000 path (30 s for offers) and adds a state gate
-      // so that non-offer signals can only affect an active session.
       if (decrypted.startsWith('CALL_SIGNAL:')) {
         try {
           final signalJson = decrypted.substring('CALL_SIGNAL:'.length);
@@ -483,14 +485,10 @@ class RelayManager {
           if (signalData is Map) {
             final type = signalData['type']?.toString() ?? '';
 
-            // Offer: 30 s (matches _startConnectionTimeout on the caller).
-            // Other signals: 60 s (only affect an already-active session).
             final ttlSec = type == 'offer' ? 30 : 60;
             final nowMs = DateTime.now().millisecondsSinceEpoch;
             final ageSec = (nowMs - timestamp) ~/ 1000;
 
-            // Reject stale signals, and also reject signals whose
-            // timestamp is implausibly far in the future (clock skew).
             if (ageSec > ttlSec || ageSec < -60) {
               DebugLogger.log(
                 '[Call] Stale CALL_SIGNAL ignored '
@@ -499,19 +497,12 @@ class RelayManager {
               return;
             }
 
-            // Without an active session, only `offer` has meaning.
-            // Stale `hangup` / `answer` / `candidate` events arriving
-            // while idle would otherwise call stopCall or handleAnswer
-            // on an idle CallManager.
             if ((type == 'answer' || type == 'candidate') &&
                 CallManager.instance.callState == CallState.idle) {
               DebugLogger.log('[Call] Cold CALL_SIGNAL ignored (type=$type, no active call)');
               return;
             }
 
-            // Reconstruct an event-shaped map so the existing signal
-            // handlers (which expect { pubkey, content, created_at })
-            // can process it without modification.
             final syntheticEvent = {
               'pubkey': actualSenderPubkey,
               'content': signalJson,
@@ -520,9 +511,6 @@ class RelayManager {
               'id': actualEventId,
             };
 
-            // If a call session is active, prefer routing through the
-            // CallManager callback — same single-path discipline as the
-            // kind-1000 handler.
             if (onSignalReceived != null) {
               try {
                 onSignalReceived!(syntheticEvent);
@@ -532,8 +520,6 @@ class RelayManager {
               return;
             }
 
-            // Otherwise, this is a cold-start signal (typically `offer`)
-            // that must open the incoming call screen.
             if (actualSenderPubkey != myPubkey) {
               _processCallSignal(syntheticEvent);
             }
@@ -559,8 +545,6 @@ class RelayManager {
       }
 
       final bool isFromMe = (actualSenderPubkey == myPubkey);
-
-      // --- Encrypted control messages (carried inside NIP-17 rumor) ---
 
       // Reaction
       if (decrypted.startsWith('REACTION:')) {
@@ -594,7 +578,7 @@ class RelayManager {
         }
       }
 
-      // Legacy kind-7 reaction handling (for backwards compat)
+      // Legacy kind-7 reaction handling
       if (event['kind'] == 7) {
         String? targetId;
         for (var t in tags) {
@@ -610,14 +594,11 @@ class RelayManager {
         }
       }
 
-      // --- Regular chat message ---
-
+      // Regular chat message
       String? replyToId;
       if (event['kind'] == 1059 && nip17Result != null) {
-        // Reply tag lives inside the Rumor, already extracted by Nip17.unwrap.
         replyToId = nip17Result.replyToId;
       } else {
-        // Legacy NIP-04 / kind-1 path: reply is a public event tag.
         for (var t in tags) {
           if (t is List && t.length > 1 && t[0] == 'e') {
             replyToId = t[1].toString();
@@ -662,7 +643,7 @@ class RelayManager {
     }
   }
 
-  void _handleReceiptEvent(Map<String, dynamic> event) async {
+  Future<void> _handleReceiptEvent(Map<String, dynamic> event) async {
     try {
       final tags = event['tags'] as List? ?? [];
       final senderPubkey = event['pubkey']?.toString() ?? '';
@@ -703,24 +684,11 @@ class RelayManager {
     }
   }
 
-  /// Handles relay `["OK", <eventId>, true]` acknowledgements.
-  ///
-  /// The `<eventId>` here is the **Gift Wrap ID** (kind 1059), because that
-  /// is the event we actually published to the relay. We must therefore
-  /// look up the ChatMessage by its `giftWrapId` field, not by `id`.
   void _handleOk(List<dynamic> decoded, String url) {
     try {
       if (decoded.length > 2 && decoded[2] == true) {
         final giftWrapId = decoded[1].toString();
         ChatManager.instance.updateMessageStatusByGiftWrap(giftWrapId, 'sent');
-
-        // Pending reactions are processed by the periodic offline queue
-        // (_processOfflineQueue, every 15 s). Previously this method also
-        // called _processPendingReactions directly, which caused each
-        // relay OK to trigger a fresh scan — including the OK emitted in
-        // response to a reaction we had just sent, creating an infinite
-        // feedback loop that spammed reactions and burned CPU.
-
         onMessageReceived?.call();
         if (onMessageDelivered != null) onMessageDelivered!(giftWrapId);
       }
@@ -729,26 +697,6 @@ class RelayManager {
     }
   }
 
-  /// Sends a plaintext message to [receiverPubkey] using NIP-17.
-  ///
-  /// Two Gift Wraps are produced from a SINGLE Rumor (so both share the
-  /// same Rumor ID), then published:
-  ///   1. **Recipient envelope** — encrypted to the recipient.
-  ///   2. **Self envelope** — encrypted to ourselves, with the recipient
-  ///      still referenced in the rumor's `p` tag, so that other devices
-  ///      logged into the same account can display the sent message.
-  ///
-  /// [messageTimestampMs] pins the Rumor's `created_at` to the local
-  /// ChatMessage timestamp, so the rumor ID is deterministic and matches
-  /// the ID stored on the recipient's side.
-  ///
-  /// Returns a map with:
-  ///   - `giftWrap`: the signed Gift Wrap event (recipient envelope)
-  ///   - `giftWrapId`: outer event ID (used for OK matching)
-  ///   - `rumorId`: inner Rumor ID (canonical message ID)
-  ///   - `rumorTimestamp`: Rumor's original timestamp (ms)
-  ///
-  /// Throws [Exception] if NIP-17 wrapping fails.
   Future<Map<String, dynamic>> sendMessage({
     required String receiverPubkey,
     required String plaintext,
@@ -765,9 +713,6 @@ class RelayManager {
         throw Exception('Missing pubkey or privkey');
       }
 
-      // Build ONE Rumor and wrap it into two envelopes (recipient + self).
-      // Both share the same Rumor ID → sender's self-echo dedups cleanly
-      // and multi-device sync works.
       final wrappedList = await Nip17.wrapMulti(
         plaintext: plaintext,
         senderPrivkey: myPrivkey,
@@ -789,7 +734,6 @@ class RelayManager {
         }
       }
 
-      // Notify via Cloudflare worker (uses recipient Gift Wrap ID)
       final contactsBox = Hive.box<Contact>('contacts');
       final myContact = contactsBox.get(myPubkey);
       final senderName = (myContact != null && myContact.isSaved)
@@ -859,31 +803,55 @@ class RelayManager {
     return _profilePictureBox!;
   }
 
-  /// Waiters for on-demand profile fetches, keyed by pubkey.
-  /// When a kind-0 event arrives for a pubkey, all waiters for that
-  /// pubkey are completed with the picture URL.
+  /// Persistent dedup store: eventId -> timestamp (ms) when processed.
+  /// Skips already-processed events before NIP-17 unwrap on cold start.
+  /// Entries older than 3 days are pruned by [_startCleanupTimer].
+  Box? _processedEventsBox;
+  Box get _processedEvents {
+    _processedEventsBox ??= Hive.box('processed_events');
+    return _processedEventsBox!;
+  }
+
+  /// Synchronously gets a cached profile picture URL for [pubkey].
+  String? getProfilePictureSync(String pubkey) {
+    try {
+      if (_profilePics.containsKey(pubkey)) {
+        final cached = _profilePics.get(pubkey);
+        if (cached != null && cached.isNotEmpty) return cached;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Pre-caches all profile pictures stored in Hive into RAM memory.
+  void precacheAllProfilePictures() {
+    try {
+      final box = _profilePics;
+      for (final key in box.keys) {
+        final url = box.get(key);
+        if (url != null && url.isNotEmpty) {
+          UserAvatar.precacheProvider(key.toString(), url);
+        }
+      }
+    } catch (_) {}
+  }
+
   final Map<String, List<Completer<String?>>> _profileWaiters = {};
 
-  /// Fetches a peer's profile picture.
-  ///
-  /// Uses a waiter-registry pattern instead of re-listening on the
-  /// WebSocket stream (which would throw "Stream has already been
-  /// listened to"). The main dispatcher in [_handleEvent] resolves
-  /// waiters when a kind-0 event arrives.
   Future<String?> fetchProfilePicture(String pubkey) async {
-    // 1. Return cached URL if present.
     if (_profilePics.containsKey(pubkey)) {
       final cached = _profilePics.get(pubkey);
       if (cached != null && cached.isNotEmpty) return cached;
     }
 
-    // 2. Register as a waiter. If another fetch for this pubkey is
-    //    already in-flight, we piggyback on it rather than sending a
-    //    duplicate REQ.
+    final isAlreadyInFlight = _profileWaiters.containsKey(pubkey);
     final completer = Completer<String?>();
     _profileWaiters.putIfAbsent(pubkey, () => []).add(completer);
 
-    // 3. Send REQ to all connected relays.
+    if (isAlreadyInFlight) {
+      return completer.future;
+    }
+
     final tempSubId = 'profile_${pubkey.substring(0, 12)}';
     bool sentToAtLeastOne = false;
     for (final entry in _connections.entries) {
@@ -905,16 +873,13 @@ class RelayManager {
       return null;
     }
 
-    // 4. Timeout after 8 seconds.
-    Timer(const Duration(seconds: 8), () {
+    Timer(const Duration(seconds: 4), () {
       if (!completer.isCompleted) completer.complete(null);
     });
 
     return completer.future;
   }
 
-  /// Called from [_handleEvent] when a kind-0 event arrives. Completes
-  /// any pending [fetchProfilePicture] waiters for this pubkey.
   void _resolveProfileWaiters(String pubkey, String? photoUrl) {
     final waiters = _profileWaiters.remove(pubkey);
     if (waiters == null) return;
@@ -923,9 +888,6 @@ class RelayManager {
     }
   }
 
-  /// Rebuilds and re-sends the profile (kind 0) subscription with the
-  /// current list of contacts. Call this whenever a new contact is
-  /// added, otherwise relays will not know to push their metadata.
   void refreshProfileSubscription() {
     if (_subscriptionId == null) return;
     if (!_isInitialized) return;
@@ -955,7 +917,6 @@ class RelayManager {
     }
   }
 
-  /// Generate NIP-98 authentication token for nostr.build
   String _generateNip98Token(String url, String method) {
     final myPubkey = AppSettings.instance.myPubkey;
     final myPrivkey = AppSettings.instance.myPrivkey;
@@ -1050,30 +1011,18 @@ class RelayManager {
         }
       }
 
-      // Refresh the local cache for yourself
       if (photoUrl != null && photoUrl.isNotEmpty) {
         _profilePics.put(myPubkey, photoUrl);
       } else {
         _profilePics.delete(myPubkey);
       }
-      // Invalidate the avatar cache so any visible UserAvatar for the
-      // local user re-renders (e.g. own avatar shown in other tabs).
       UserAvatar.invalidate(myPubkey);
-      // Trigger UI update
       onMessageReceived?.call();
     } catch (e) {
       DebugLogger.log('[Profile] Broadcast kind 0 failed | $e', type: 'ERROR');
     }
   }
 
-  /// Sends a read receipt for [originalRumorId] to [receiverPubkey].
-  ///
-  /// The receipt is wrapped as a NIP-17 message (Rumor -> Seal -> Gift Wrap)
-  /// so that relay operators cannot see who is reading whose messages.
-  /// The plaintext payload is `READ_RECEIPT:<rumorId>:<status>`.
-  ///
-  /// [originalRumorId] MUST be the canonical Rumor ID of the message being
-  /// acknowledged (i.e. `ChatMessage.id`), NOT the Gift Wrap ID.
   Future<void> sendReceipt(String originalRumorId, String receiverPubkey, String status) async {
     try {
       final myPrivkey = AppSettings.instance.myPrivkey;
@@ -1100,13 +1049,6 @@ class RelayManager {
     }
   }
 
-  /// Sends a reaction emoji for [messageId] to [receiverPubkey].
-  ///
-  /// The reaction is wrapped as a NIP-17 message. [messageId] MUST be the
-  /// canonical Rumor ID of the message being reacted to (`ChatMessage.id`).
-  ///
-  /// Returns `true` if successfully sent to at least one connected relay,
-  /// `false` otherwise (e.g. offline).
   Future<bool> sendReaction({
     required String messageId,
     required String receiverPubkey,
@@ -1120,8 +1062,6 @@ class RelayManager {
 
       final reactionPlaintext = 'REACTION:$emoji:$messageId';
 
-      // Single Rumor shared across both envelopes, so the reaction lands
-      // on the same message ID on both sides.
       final wrappedList = await Nip17.wrapMulti(
         plaintext: reactionPlaintext,
         senderPrivkey: myPrivkey,
@@ -1152,17 +1092,6 @@ class RelayManager {
     }
   }
 
-  /// Sends a WebRTC signaling payload to [recipientPubkey], encrypted via
-  /// NIP-17.
-  ///
-  /// The signal JSON is prefixed with `CALL_SIGNAL:` and wrapped as a
-  /// NIP-17 Rumor -> Seal -> Gift Wrap. Relay operators cannot see the
-  /// SDP (codec, media parameters) or any ICE candidates that may be
-  /// embedded in the SDP.
-  ///
-  /// Because the caller uses vanilla-ICE mode, each signal is a single
-  /// bundle containing the full SDP with candidates already embedded.
-  /// A call therefore consists of ~4 signals instead of ~30.
   Future<void> sendCallSignal(String recipientPubkey, Map<String, dynamic> signalData) async {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
@@ -1217,8 +1146,6 @@ class RelayManager {
       }
       await contactsBox.put(peerPubkey, contact);
 
-      // If this is a brand-new contact, refresh the profile subscription
-      // so relay starts pushing their kind-0 metadata to us.
       if (isNewContact) {
         refreshProfileSubscription();
       }
@@ -1253,7 +1180,6 @@ class RelayManager {
         messages[index] = updatedMessage;
         await box.put(chatKey, messages);
 
-        // Notify UI
         if (onMessageReceived != null) onMessageReceived!();
       } else {
         DebugLogger.log('[Reaction] Target message not found: $messageId', type: 'WARN');
@@ -1288,11 +1214,32 @@ class RelayManager {
   void _startCleanupTimer() {
     _cleanupTimer?.cancel();
     _cleanupTimer = Timer.periodic(const Duration(minutes: 5), (t) {
+      // Trim in-memory dedup Set.
       if (_processedEventIds.length > 5000) {
         final list = _processedEventIds.toList();
         _processedEventIds.clear();
         _processedEventIds.addAll(list.sublist(list.length - 1000));
       }
+
+      // Prune persistent dedup entries older than the sync window (3 days).
+      try {
+        final box = _processedEvents;
+        final cutoff = DateTime.now().millisecondsSinceEpoch -
+            (3 * 24 * 3600 * 1000);
+        final toDelete = <dynamic>[];
+        for (final key in box.keys) {
+          final ts = box.get(key);
+          if (ts is int && ts < cutoff) {
+            toDelete.add(key);
+          }
+        }
+        for (final k in toDelete) {
+          box.delete(k);
+        }
+        if (toDelete.isNotEmpty) {
+          DebugLogger.log('[Cleanup] Pruned ${toDelete.length} old processed_events');
+        }
+      } catch (_) {}
     });
   }
 
@@ -1322,7 +1269,7 @@ class RelayManager {
 
       if (_connections.containsKey(url) && _connectionStatus[url] == false) {
         _reconnectAttempts[url] = attempts + 1;
-        _connectToRelay(url, AppSettings.instance.myPubkey);
+        _connectToRelay(url, AppSettings.instance.myPubkey, _computeLatestContactTime());
       }
     });
   }
@@ -1335,10 +1282,6 @@ class RelayManager {
     _isConnected.value = isNowConnected;
     _connectedCount.value = count;
 
-    // Trigger the offline queue only on the transition from
-    // disconnected → connected. Without this guard, every relay that
-    // connects (six of them, arriving nearly simultaneously) would
-    // fire its own queue-processing pass, causing a CPU spike.
     if (!wasConnected && isNowConnected) {
       _processOfflineQueue();
       refreshProfileSubscription();
@@ -1371,12 +1314,10 @@ class RelayManager {
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
       for (var snapshot in pendingMessages) {
-        // Re-fetch from Hive — replyToId may have been updated by a previous iteration
         final msg = await ChatManager.instance.getMessageById(snapshot.id, snapshot.chatKey);
         if (msg == null) continue;
         if (msg.status == 'sent' || msg.status == 'read') continue;
 
-        // Cooldown: skip if we tried to send this message < 60s ago.
         final lastAttempt = _lastQueueAttempt[msg.id] ?? 0;
         if (nowMs - lastAttempt < 60000) continue;
         _lastQueueAttempt[msg.id] = nowMs;
@@ -1387,10 +1328,6 @@ class RelayManager {
         if (plaintext.isEmpty) continue;
 
         try {
-          // Force the Rumor timestamp to the ORIGINAL message timestamp so
-          // re-sends produce the same Rumor ID — this keeps the message
-          // idempotent on the recipient's side, and keeps reactions and
-          // read receipts pointing at a stable ID.
           final wrappedList = await Nip17.wrapMulti(
             plaintext: plaintext,
             senderPrivkey: myPrivkey,
@@ -1436,7 +1373,6 @@ class RelayManager {
         await Future.delayed(const Duration(milliseconds: 150));
       }
 
-      // Process pending reactions after queue processing
       await _processPendingReactions();
 
     } catch (e) {
@@ -1460,8 +1396,6 @@ class RelayManager {
 
         for (int i = 0; i < messages.length; i++) {
           final msg = messages[i];
-          // REQUISITE: Message must be confirmed sent or read (OK received from relay)
-          // and have a final valid ID (not temp_ or pending_)
           final bool isConfirmedSent = (msg.status == 'sent' || msg.status == 'read') &&
               !msg.id.startsWith('temp_') &&
               !msg.id.startsWith('pending_');

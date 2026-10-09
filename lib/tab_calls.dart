@@ -22,11 +22,20 @@ class CallsScreen extends StatefulWidget {
 }
 
 class _CallsScreenState extends State<CallsScreen> {
-  String _formatCallTimestamp(int timestampMs) {
+  String _formatCallTimestamp(BuildContext context, int timestampMs) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestampMs);
     final now = DateTime.now();
 
-    final timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
+
+    String timeStr;
+    if (is24Hour) {
+      timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else {
+      final hour12 = date.hour == 0 ? 12 : (date.hour > 12 ? date.hour - 12 : date.hour);
+      final period = date.hour >= 12 ? 'PM' : 'AM';
+      timeStr = '$hour12:${date.minute.toString().padLeft(2, '0')} $period';
+    }
 
     if (date.year == now.year && date.month == now.month && date.day == now.day) {
       return 'Today, $timeStr';
@@ -37,7 +46,7 @@ class _CallsScreenState extends State<CallsScreen> {
       return 'Yesterday, $timeStr';
     }
 
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${date.day} ${months[date.month - 1]}, $timeStr';
   }
 
@@ -145,21 +154,19 @@ class _CallsScreenState extends State<CallsScreen> {
 
     IconData directionIcon;
     Color iconColor;
-    String statusLabel;
 
     if (log.isMissed) {
       directionIcon = Icons.call_missed;
       iconColor = Colors.red;
-      statusLabel = 'Missed Calls';
     } else if (log.isIncoming) {
       directionIcon = Icons.call_received;
       iconColor = Colors.green;
-      statusLabel = log.formattedDuration.isNotEmpty ? 'Incoming Calls (${log.formattedDuration})' : 'Incoming Calls';
     } else {
       directionIcon = Icons.call_made;
       iconColor = Colors.blue;
-      statusLabel = log.formattedDuration.isNotEmpty ? 'Outgoing Calls (${log.formattedDuration})' : 'Outgoing Calls';
     }
+
+    final durationText = log.formattedDuration;
 
     return Dismissible(
       key: Key(log.id),
@@ -192,22 +199,29 @@ class _CallsScreenState extends State<CallsScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(directionIcon, size: 15, color: iconColor),
-            const SizedBox(width: 6),
-            Text(
-              statusLabel,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.white60 : Colors.black54,
+            if (durationText.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              Text(
+                '($durationText)',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
               ),
-            ),
-            const Text(' • '),
-            Text(
-              _formatCallTimestamp(log.timestamp),
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white38 : Colors.black38,
+            ],
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                _formatCallTimestamp(context, log.timestamp),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white38 : Colors.black38,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

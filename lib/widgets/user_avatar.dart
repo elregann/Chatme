@@ -11,29 +11,54 @@ class UserAvatar extends StatelessWidget {
   final double radius;
   final RelayManager relayManager;
 
-  /// In-memory cache of profile picture URLs. Only **non-null** entries
-  /// are stored — a missing picture must not be cached, otherwise the
-  /// widget would never retry and avatars would stay empty until the
-  /// app is fully restarted.
+  /// In-memory cache of profile picture URLs.
+  /// Standard URLs are stored as non-empty strings.
+  /// Users without a picture are stored as `""` (negative caching) to prevent
+  /// infinite network re-fetch loops on every build/scroll pass.
   static final Map<String, String> _avatarMemCache = {};
 
-  /// Bumped whenever [invalidate] or [invalidateAll] is called. Every
-  /// live UserAvatar widget listens to this and rebuilds when it changes.
-  static final ValueNotifier<int> _cacheVersion = ValueNotifier<int>(0);
+  /// In-memory cache of resolved ImageProviders for zero-flicker instant rendering.
+  static final Map<String, ImageProvider?> _imageProviderCache = {};
 
-  /// Clears the cached URL for [pubkey] and forces every visible
-  /// UserAvatar to rebuild. Call this whenever a profile picture is
-  /// updated — for the local user after `broadcastProfileKind0`, or
-  /// for a peer when a Kind 0 metadata event arrives from a relay.
-  static void invalidate(String pubkey) {
-    _avatarMemCache.remove(pubkey);
-    _cacheVersion.value++;
+  /// Per-pubkey notifiers to ensure invalidating one user's avatar only
+  /// triggers a rebuild for widgets representing that specific user.
+  static final Map<String, ValueNotifier<int>> _pubkeyNotifiers = {};
+
+  static ValueNotifier<int> _getNotifier(String pubkey) {
+    return _pubkeyNotifiers.putIfAbsent(pubkey, () => ValueNotifier<int>(0));
   }
 
-  /// Clears the entire cache. Use sparingly (e.g. on account switch).
+  /// Pre-caches an ImageProvider into RAM memory for instant zero-flicker renders.
+  static void precacheProvider(String pubkey, String url) {
+    if (url.isEmpty) {
+      _avatarMemCache[pubkey] = '';
+      _imageProviderCache[pubkey] = null;
+      return;
+    }
+    _avatarMemCache[pubkey] = url;
+    _imageProviderCache[pubkey] = CachedNetworkImageProvider(url);
+  }
+
+  /// Clears the cached URL & ImageProvider for [pubkey] and forces only the visible
+  /// UserAvatars for that pubkey to rebuild. Call this whenever a profile
+  /// picture is updated — for the local user after `broadcastProfileKind0`,
+  /// or for a peer when a Kind 0 metadata event arrives from a relay with a new URL.
+  static void invalidate(String pubkey) {
+    _avatarMemCache.remove(pubkey);
+    _imageProviderCache.remove(pubkey);
+    if (_pubkeyNotifiers.containsKey(pubkey)) {
+      _pubkeyNotifiers[pubkey]!.value++;
+    }
+  }
+
+  /// Clears the entire cache and triggers rebuild for all registered avatars.
+  /// Use sparingly (e.g. on account switch).
   static void invalidateAll() {
     _avatarMemCache.clear();
-    _cacheVersion.value++;
+    _imageProviderCache.clear();
+    for (final notifier in _pubkeyNotifiers.values) {
+      notifier.value++;
+    }
   }
 
   const UserAvatar({
@@ -44,8 +69,8 @@ class UserAvatar extends StatelessWidget {
     required this.relayManager,
   });
 
-  Widget _buildAvatar(BuildContext context, String? photoUrl) {
-    final fallbackAvatar = CircleAvatar(
+  Widget _buildFallback() {
+    return CircleAvatar(
       radius: radius,
       backgroundColor: UIUtils.getAvatarColor(pubkey),
       child: Text(
@@ -57,40 +82,77 @@ class UserAvatar extends StatelessWidget {
         ),
       ),
     );
+  }
 
-    if (photoUrl != null && photoUrl.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: photoUrl,
-        imageBuilder: (context, imageProvider) => CircleAvatar(
-          radius: radius,
-          backgroundColor: UIUtils.getAvatarColor(pubkey),
-          backgroundImage: imageProvider,
-        ),
-        placeholder: (context, url) => fallbackAvatar,
-        errorWidget: (context, url, error) => fallbackAvatar,
+  Widget _buildAvatar(BuildContext context, String? photoUrl) {
+    // 1. Instant zero-flicker render if ImageProvider is already resolved in RAM
+    final cachedProvider = _imageProviderCache[pubkey];
+    if (cachedProvider != null) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: UIUtils.getAvatarColor(pubkey),
+        backgroundImage: cachedProvider,
       );
     }
 
-    return fallbackAvatar;
+    // 2. Photo URL exists but provider not yet in RAM cache -> render with CachedNetworkImage
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: photoUrl,
+        fadeInDuration: Duration.zero,
+        fadeOutDuration: Duration.zero,
+        imageBuilder: (context, imageProvider) {
+          _imageProviderCache[pubkey] = imageProvider;
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: UIUtils.getAvatarColor(pubkey),
+            backgroundImage: imageProvider,
+          );
+        },
+        placeholder: (context, url) => _buildFallback(),
+        errorWidget: (context, url, error) {
+          _avatarMemCache[pubkey] = '';
+          _imageProviderCache[pubkey] = null;
+          return _buildFallback();
+        },
+      );
+    }
+
+    return _buildFallback();
   }
 
   Widget _buildContent(BuildContext context) {
-    // Instant synchronous render if the URL is already cached.
-    final cached = _avatarMemCache[pubkey];
-    if (cached != null) {
-      return _buildAvatar(context, cached);
+    // 1. Instant synchronous render if RAM cache contains result (URL or negative empty string)
+    final cachedMem = _avatarMemCache[pubkey];
+    if (cachedMem != null) {
+      return _buildAvatar(context, cachedMem.isEmpty ? null : cachedMem);
     }
 
+    // 2. Instant synchronous render if available in local Hive cache
+    final cachedHive = relayManager.getProfilePictureSync(pubkey);
+    if (cachedHive != null) {
+      if (cachedHive.isNotEmpty) {
+        precacheProvider(pubkey, cachedHive);
+        return _buildAvatar(context, cachedHive);
+      } else {
+        _avatarMemCache[pubkey] = '';
+        _imageProviderCache[pubkey] = null;
+        return _buildFallback();
+      }
+    }
+
+    // 3. Fallback to async fetch if not found in RAM or Hive
     return FutureBuilder<String?>(
       future: relayManager.fetchProfilePicture(pubkey),
       builder: (context, snapshot) {
-        // Only cache successful, non-empty fetches. Caching null (or an
-        // empty string) would permanently block future retries because
-        // the cache lookup below only checks for presence, not validity.
-        if (snapshot.hasData &&
-            snapshot.data != null &&
-            snapshot.data!.isNotEmpty) {
-          _avatarMemCache[pubkey] = snapshot.data!;
+        if (snapshot.connectionState == ConnectionState.done) {
+          final url = snapshot.data ?? '';
+          if (url.isNotEmpty) {
+            precacheProvider(pubkey, url);
+          } else {
+            _avatarMemCache[pubkey] = '';
+            _imageProviderCache[pubkey] = null;
+          }
         }
 
         return _buildAvatar(context, snapshot.data);
@@ -101,7 +163,7 @@ class UserAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
-      valueListenable: _cacheVersion,
+      valueListenable: _getNotifier(pubkey),
       builder: (context, _, __) => _buildContent(context),
     );
   }
