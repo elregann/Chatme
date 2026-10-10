@@ -7,11 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'call_manager.dart';
 import 'call_overlay.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
-
 import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
@@ -37,8 +37,14 @@ class ChatDetailScreen extends StatefulWidget {
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
+
+  // Replaces ScrollController. Works with ScrollablePositionedList.
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
+
+  // Cache of the current chat messages, kept in sync by the ValueListenableBuilder.
+  List<ChatMessage> _cachedMessages = [];
 
   bool _isSending = false;
   bool _showScrollButton = false;
@@ -46,7 +52,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   bool _isUserScrolling = false;
 
   ChatMessage? _replyingTo;
-  final Map<String, GlobalKey> _messageKeys = {};
   final Set<String> _highlightedIds = {};
 
   double _dragOffset = 0.0;
@@ -104,7 +109,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       setState(() {});
     };
 
-    _scrollController.addListener(_handleScroll);
+    _itemPositionsListener.itemPositions.addListener(_handlePositionsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
@@ -129,15 +134,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _floatingDateTimer?.cancel();
     _scrollIdleTimer?.cancel();
 
-    _scrollController.dispose();
+    _itemPositionsListener.itemPositions.removeListener(_handlePositionsChanged);
+
     _focusNode.dispose();
     _messageController.dispose();
 
     super.dispose();
   }
 
-  void _handleScroll() {
-    if (!_scrollController.hasClients) return;
+  /// Replaces the old `_handleScroll`. Derives near-bottom / show-button
+  /// state from the current visible item positions instead of pixel offsets.
+  void _handlePositionsChanged() {
+    final positions = _itemPositionsListener.itemPositions.value;
+    if (positions.isEmpty) return;
 
     _isUserScrolling = true;
 
@@ -146,9 +155,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       _isUserScrolling = false;
     });
 
-    final offset = _scrollController.offset;
-    final nearBottom = offset < 120;
-    final showButton = offset > 600;
+    int minIndex = _cachedMessages.length;
+    int maxIndex = 0;
+    for (final p in positions) {
+      if (p.index < minIndex) minIndex = p.index;
+      if (p.index > maxIndex) maxIndex = p.index;
+    }
+
+    final bool nearBottom = minIndex <= 2;
+    final bool showButton = !nearBottom && minIndex >= 8;
 
     if (nearBottom != _userIsNearBottom || showButton != _showScrollButton) {
       setState(() {
@@ -156,48 +171,51 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         _showScrollButton = showButton;
       });
     }
-
-    if (offset > 200) {
-      _updateFloatingDate();
-    } else if (_showFloatingDate) {
-      _hideFloatingDate();
-    }
   }
 
   void _updateFloatingDate() {
-    if (!_scrollController.hasClients) return;
+    if (_cachedMessages.isEmpty) return;
 
-    _floatingDateTimer?.cancel();
+    final positions = _itemPositionsListener.itemPositions.value;
+    if (positions.isEmpty) return;
 
-    final box = Hive.box('chats');
-    final chatKey = ChatManager.instance.getChatKey(
-      AppSettings.instance.myPubkey,
-      widget.contact.pubkey,
-    );
+    int maxIndex = 0;
+    int minIndex = _cachedMessages.length;
+    for (final p in positions) {
+      if (p.index > maxIndex) maxIndex = p.index;
+      if (p.index < minIndex) minIndex = p.index;
+    }
+    if (maxIndex >= _cachedMessages.length) return;
 
-    final raw = box.get(chatKey);
-    if (raw is! List || raw.isEmpty) return;
+    // Only hide when the very first (newest) message is visible.
+    // Using `minIndex == 0` instead of `minIndex < 3` prevents
+    // rapid on/off flicker while the user is scrolling slowly
+    // near the bottom of the chat.
+    if (minIndex == 0) {
+      _floatingDateTimer?.cancel();
+      if (_showFloatingDate) _hideFloatingDate();
+      return;
+    }
 
-    final messages = raw.cast<ChatMessage>().toList();
-    messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final label = _getDateLabel(_cachedMessages[maxIndex].timestamp);
 
-    final double scrollOffset = _scrollController.offset;
-    final double viewportHeight = _scrollController.position.viewportDimension;
-    final double targetPoint = scrollOffset + (viewportHeight * 0.2);
-
-    int index = (targetPoint / ( _scrollController.position.maxScrollExtent / messages.length )).floor();
-    index = index.clamp(0, messages.length - 1);
-
-    final label = _getDateLabel(messages[index].timestamp);
-
-    if (label != _floatingDate) {
+    // Show the pill if it was hidden, or refresh the label if it changed.
+    // If the label is the same and the pill is already visible, we do
+    // nothing — this avoids redundant setState calls that caused flicker.
+    if (label != _floatingDate || !_showFloatingDate) {
       setState(() {
         _floatingDate = label;
         _showFloatingDate = true;
       });
     }
 
-    _floatingDateTimer = Timer(const Duration(milliseconds: 1200), _hideFloatingDate);
+    // Re-arm the hide timer on every scroll notification. The pill only
+    // disappears once the user has stopped scrolling for ~1.5s.
+    _floatingDateTimer?.cancel();
+    _floatingDateTimer = Timer(
+      const Duration(milliseconds: 1500),
+      _hideFloatingDate,
+    );
   }
 
   void _hideFloatingDate() {
@@ -206,27 +224,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   void _maybeAutoScroll({bool force = false}) {
-    if (!_scrollController.hasClients) return;
+    if (!_itemScrollController.isAttached) return;
     if (_isUserScrolling && !force) return;
 
     if (force || _userIsNearBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) return;
+        if (!mounted || !_itemScrollController.isAttached) return;
         _scrollToBottom(force: force);
       });
     }
   }
 
+  /// Jumps to the message identified by [messageId] regardless of how far
+  /// it is from the current viewport. Works for any index thanks to
+  /// `ItemScrollController`.
   void _scrollToMessage(String? messageId) {
     if (messageId == null) return;
-    final key = _messageKeys[messageId];
-    if (key == null || key.currentContext == null) return;
+    if (!_itemScrollController.isAttached) return;
+    if (_cachedMessages.isEmpty) return;
 
-    Scrollable.ensureVisible(
-      key.currentContext!,
+    final index = _cachedMessages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+
+    _itemScrollController.scrollTo(
+      index: index,
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeInOut,
-      alignment: 0.5,
+      alignment: 0.3,
     );
 
     setState(() => _highlightedIds.add(messageId));
@@ -236,10 +260,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   void _scrollToBottom({bool force = false}) {
-    if (!_scrollController.hasClients) return;
+    if (!_itemScrollController.isAttached) return;
     setState(() => _newMessagesCount = 0);
-    _scrollController.animateTo(
-      0.0,
+    _itemScrollController.scrollTo(
+      index: 0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
     );
@@ -275,7 +299,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
 
-    // Auto-register unknown contacts so they appear in Chats tab
     final contactsBox = Hive.box<Contact>('contacts');
     if (!contactsBox.containsKey(widget.contact.pubkey)) {
       final newContact = Contact(
@@ -332,11 +355,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         messageTimestampMs: messageTs,
       );
 
-      // `event` is now a NIP-17 metadata map:
-      //   { giftWrap, giftWrapId, rumorId, rumorTimestamp }
-      // We persist the Rumor ID as the canonical ChatMessage.id, and keep
-      // the Gift Wrap ID alongside it so relay ["OK"] acks can be matched
-      // later in ChatManager.updateMessageStatusByGiftWrap.
       await ChatManager.instance.updateMessageIdAndStatus(
         tempId,
         event['rumorId'].toString(),
@@ -348,7 +366,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
       _maybeAutoScroll(force: true);
     } catch (e) {
-      // Offline fallback: queue as pending with plaintext
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
 
       final pendingMessage = tempMessage.copyWith(
@@ -754,12 +771,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final headerColor = isNostrCyber 
-        ? const Color(0xFF1B1425) 
+    final headerColor = isNostrCyber
+        ? const Color(0xFF1B1425)
         : (isDark ? const Color(0xFF121212) : Colors.white);
 
     final headerTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
-        
+
     final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
     final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
 
@@ -782,7 +799,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         ),
         title: GestureDetector(
           onTap: () {
-            // Copy npub to clipboard when header tapped
             Clipboard.setData(ClipboardData(text: KeyUtils.toNpub(widget.contact.pubkey)));
             HapticFeedback.lightImpact();
           },
@@ -887,56 +903,70 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               valueListenable: Hive.box('chats').listenable(),
               builder: (context, Box box, _) {
                 final dynamic rawData = box.get(chatKey);
-                List<ChatMessage> messages = rawData is List ? rawData.cast<ChatMessage>().toList() : [];
-                if (messages.isEmpty) return _buildEmptyState();
+                if (rawData is List) {
+                  final List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
+                  messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+                  _cachedMessages = messages;
+                } else {
+                  _cachedMessages = [];
+                }
 
-                messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+                if (_cachedMessages.isEmpty) return _buildEmptyState();
 
                 return Stack(
                   alignment: Alignment.topCenter,
                   children: [
-                    ListView.builder(
-                      controller: _scrollController,
-                      reverse: true,
-                      physics: const ClampingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final message = messages[index];
-                        _messageKeys[message.id] ??= GlobalKey();
-                        double topPadding = 1;
-
-                        if (index < messages.length - 1) {
-                          final nextMessage = messages[index + 1];
-                          if (message.senderPubkey != nextMessage.senderPubkey) {
-                            topPadding = 8;
-                          }
+                    NotificationListener<ScrollNotification>(
+                      onNotification: (notification) {
+                        if (notification is ScrollUpdateNotification ||
+                            notification is ScrollStartNotification) {
+                          _updateFloatingDate();
                         }
-
-                        bool showDateDivider = false;
-                        if (index == messages.length - 1) {
-                          showDateDivider = true;
-                        } else {
-                          final nextMessage = messages[index + 1];
-                          final date = DateTime.fromMillisecondsSinceEpoch(message.timestamp);
-                          final prevDate = DateTime.fromMillisecondsSinceEpoch(nextMessage.timestamp);
-                          if (date.day != prevDate.day || date.month != prevDate.month || date.year != prevDate.year) {
-                            showDateDivider = true;
-                          }
-                        }
-
-                        return Column(
-                          children: [
-                            if (showDateDivider) _buildDateDivider(_getDateLabel(message.timestamp)),
-                            Padding(
-                              padding: EdgeInsets.only(top: topPadding),
-                              child: message.senderPubkey == AppSettings.instance.myPubkey
-                                  ? _wrapMyDismissible(message)
-                                  : _wrapTheirDismissible(message),
-                            ),
-                          ],
-                        );
+                        return false;
                       },
+                      child: ScrollablePositionedList.builder(
+                        itemCount: _cachedMessages.length,
+                        itemScrollController: _itemScrollController,
+                        itemPositionsListener: _itemPositionsListener,
+                        reverse: true,
+                        physics: const ClampingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        itemBuilder: (context, index) {
+                          final message = _cachedMessages[index];
+                          double topPadding = 1;
+
+                          if (index < _cachedMessages.length - 1) {
+                            final nextMessage = _cachedMessages[index + 1];
+                            if (message.senderPubkey != nextMessage.senderPubkey) {
+                              topPadding = 8;
+                            }
+                          }
+
+                          bool showDateDivider = false;
+                          if (index == _cachedMessages.length - 1) {
+                            showDateDivider = true;
+                          } else {
+                            final nextMessage = _cachedMessages[index + 1];
+                            final date = DateTime.fromMillisecondsSinceEpoch(message.timestamp);
+                            final prevDate = DateTime.fromMillisecondsSinceEpoch(nextMessage.timestamp);
+                            if (date.day != prevDate.day || date.month != prevDate.month || date.year != prevDate.year) {
+                              showDateDivider = true;
+                            }
+                          }
+
+                          return Column(
+                            children: [
+                              if (showDateDivider) _buildDateDivider(_getDateLabel(message.timestamp)),
+                              Padding(
+                                padding: EdgeInsets.only(top: topPadding),
+                                child: message.senderPubkey == AppSettings.instance.myPubkey
+                                    ? _wrapMyDismissible(message)
+                                    : _wrapTheirDismissible(message),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                     AnimatedOpacity(
                       duration: const Duration(milliseconds: 200),
@@ -1004,12 +1034,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final accentColor = isNostrCyber 
-        ? const Color(0xFFD4BBFC) 
+    final accentColor = isNostrCyber
+        ? const Color(0xFFD4BBFC)
         : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
-        
-    final dividerBg = isNostrCyber 
-        ? const Color(0xFF1B1425) 
+
+    final dividerBg = isNostrCyber
+        ? const Color(0xFF1B1425)
         : (isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230));
 
     return Padding(
@@ -1044,10 +1074,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     const double actionButtonSize = 38.0;
     const double containerHeight = 38.0;
-    
+
     final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF1976D2);
-    final inputBgColor = isNostrCyber 
-        ? const Color(0xFF1B1425) 
+    final inputBgColor = isNostrCyber
+        ? const Color(0xFF1B1425)
         : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
     final inputTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
     final inputHintColor = isNostrCyber ? Colors.white54 : (isDark ? Colors.white38 : Colors.black38);
@@ -1177,20 +1207,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final nameColor = isNostrCyber 
-        ? const Color(0xFFD4BBFC) 
+    final nameColor = isNostrCyber
+        ? const Color(0xFFD4BBFC)
         : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
-        
-    final bgColor = isNostrCyber 
-        ? const Color(0xFF251C33) 
+
+    final bgColor = isNostrCyber
+        ? const Color(0xFF251C33)
         : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
-        
-    final previewTextColor = isNostrCyber 
-        ? Colors.white70 
+
+    final previewTextColor = isNostrCyber
+        ? Colors.white70
         : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
-        
-    final iconThemeColor = isNostrCyber 
-        ? const Color(0xFFD4BBFC) 
+
+    final iconThemeColor = isNostrCyber
+        ? const Color(0xFFD4BBFC)
         : (isDark ? Colors.white70 : Colors.black87);
 
     return Container(
@@ -1391,7 +1421,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
-    // --- Call message bubble ---
     if (message.plaintext.startsWith('[CALL]:')) {
       return _buildCallMessageBubble(message);
     }
@@ -1409,8 +1438,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final bubbleColor = isNostrCyber
         ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
         : (isMe
-            ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
-            : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
+        ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
+        : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
 
     final textColor = isNostrCyber
         ? Colors.white
@@ -1420,7 +1449,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isHighlighted = _highlightedIds.contains(message.id);
 
     return Align(
-      key: _messageKeys[message.id],
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
         padding: EdgeInsets.only(bottom: hasReactions ? 25 : 2),
@@ -1804,13 +1832,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  // --- Call message bubble ---
   Widget _buildCallMessageBubble(ChatMessage message) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    // Parse format: [CALL]:direction:mediaType:duration:durationSeconds
     final parts = message.plaintext.split(':');
     final direction = parts.length > 1 ? parts[1] : 'outgoing';
     final durationSeconds = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
@@ -1855,11 +1881,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final bubbleColor = isNostrCyber
         ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
         : (isMe
-            ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
-            : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
+        ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
+        : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
 
     return Align(
-      key: _messageKeys[message.id],
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: EdgeInsets.only(
