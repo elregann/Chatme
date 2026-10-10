@@ -44,6 +44,13 @@ class RelayManager {
   final Map<String, int> _reconnectAttempts = {};
   final Set<String> _reconnectScheduled = {};
   final Set<String> _processedEventIds = {};
+
+  /// In-flight guard: event IDs currently being processed (not yet
+  /// finished). Prevents a race condition where the same event arrives
+  /// from multiple relays within a window of under 2 seconds, before
+  /// `_processedEventIds` has a chance to be populated.
+  final Set<String> _inFlightEventIds = {};
+
   Timer? _cleanupTimer;
   Timer? _queueTimer;
   String? _subscriptionId;
@@ -330,51 +337,62 @@ class RelayManager {
 
     if (eventId.isEmpty || _processedEventIds.contains(eventId)) return;
 
-    // Persistent dedup: skip events already processed in a previous
-    // session, BEFORE doing expensive NIP-17 unwrap. This is what
-    // makes cold start fast after the first session.
+    // In-flight guard: if this event ID is currently being processed by
+    // another caller (from a different relay), skip immediately. The
+    // `add` below is synchronous — there is no `await` before it — so
+    // there is no race window.
+    if (_inFlightEventIds.contains(eventId)) return;
+    _inFlightEventIds.add(eventId);
+
     try {
-      if (_processedEvents.containsKey(eventId)) {
-        _processedEventIds.add(eventId);
-        return;
-      }
-    } catch (_) {}
-
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final myPubkey = AppSettings.instance.myPubkey;
-    final senderPubkey = event['pubkey']?.toString() ?? '';
-
-    if (kind == 1 || kind == 4 || kind == 7 || kind == 1059) {
-      if (kind == 7) {
-        if (senderPubkey == myPubkey) {
+      // Persistent dedup: skip events already processed in a previous
+      // session, BEFORE doing expensive NIP-17 unwrap. This is what
+      // makes cold start fast after the first session.
+      try {
+        if (_processedEvents.containsKey(eventId)) {
           _processedEventIds.add(eventId);
           return;
         }
-        if (now - createdAt > 60) {
-          _processedEventIds.add(eventId);
-          return;
-        }
-      }
+      } catch (_) {}
 
-      if (kind == 1 || kind == 4 || kind == 1059) {
-        final bool success = await _processIncomingEvent(event);
-        if (success) {
-          _processedEventIds.add(eventId);
-          try {
-            _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
-          } catch (_) {}
-        }
-      }
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final myPubkey = AppSettings.instance.myPubkey;
+      final senderPubkey = event['pubkey']?.toString() ?? '';
 
-      if (kind == 7) {
-        final bool success = await _handleReceiptEvent(event);
-        if (success) {
-          _processedEventIds.add(eventId);
-          try {
-            _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
-          } catch (_) {}
+      if (kind == 1 || kind == 4 || kind == 7 || kind == 1059) {
+        if (kind == 7) {
+          if (senderPubkey == myPubkey) {
+            _processedEventIds.add(eventId);
+            return;
+          }
+          if (now - createdAt > 60) {
+            _processedEventIds.add(eventId);
+            return;
+          }
+        }
+
+        if (kind == 1 || kind == 4 || kind == 1059) {
+          final bool success = await _processIncomingEvent(event);
+          if (success) {
+            _processedEventIds.add(eventId);
+            try {
+              _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+            } catch (_) {}
+          }
+        }
+
+        if (kind == 7) {
+          final bool success = await _handleReceiptEvent(event);
+          if (success) {
+            _processedEventIds.add(eventId);
+            try {
+              _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+            } catch (_) {}
+          }
         }
       }
+    } finally {
+      _inFlightEventIds.remove(eventId);
     }
   }
 
@@ -542,8 +560,8 @@ class RelayManager {
 
       final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
 
-      final bool alreadyExists = await ChatManager.instance.isMessageExists(actualEventId, chatKey);
-      if (alreadyExists) return true;
+      final bool preExisting = await ChatManager.instance.isMessageExists(actualEventId, chatKey);
+      if (preExisting) return true;
 
       final settingsBox = Hive.box('settings');
       final int cutOffTime = settingsBox.get('cut_off_$peerPubkey', defaultValue: 0);
@@ -639,10 +657,14 @@ class RelayManager {
         giftWrapId: eventId,
       );
 
-      await ChatManager.instance.saveMessage(chatMessage);
+      final bool newlySaved = await ChatManager.instance.saveMessage(chatMessage);
       await ChatManager.instance.repairReplyContent(actualEventId, decrypted, chatKey);
       await ChatManager.instance.repairPendingReplies(chatKey);
-      await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExists);
+
+      // If saveMessage only updated an existing entry (i.e. this is a
+      // duplicate), do not increment the unread badge.
+      final bool alreadyExistsActual = !newlySaved;
+      await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExistsActual);
 
       if (onMessageReceived != null) onMessageReceived!();
       return true;
@@ -1150,6 +1172,7 @@ class RelayManager {
           contact.lastChatTime = timestamp;
           contact.lastMessage = message.length > 50 ? '${message.substring(0, 50)}...' : message;
         }
+
         if (!isFromMe && currentlyChattingWith != peerPubkey && !alreadyExists) {
           contact.unreadCount++;
         }

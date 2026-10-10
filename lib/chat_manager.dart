@@ -55,7 +55,12 @@ class ChatManager {
     return false;
   }
 
-  Future<void> saveMessage(ChatMessage message) async {
+  /// Returns `true` if the message was newly inserted, `false` if it
+  /// already existed and was updated in place. Callers use this to
+  /// avoid double-incrementing the unread badge when a duplicate event
+  /// arrives from multiple relays (race condition).
+  Future<bool> saveMessage(ChatMessage message) async {
+    bool wasNew = false;
     await _lock.synchronized(() async {
       try {
         final chatsBox = Hive.box('chats');
@@ -97,6 +102,7 @@ class ChatManager {
           );
         } else {
           messages.add(message);
+          wasNew = true;
           messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
           if (message.senderPubkey != AppSettings.instance.myPubkey) {
@@ -110,6 +116,7 @@ class ChatManager {
         DebugLogger.log('[Message] Save failed | $e', type: 'ERROR');
       }
     });
+    return wasNew;
   }
 
   void _triggerNotification(ChatMessage message) async {
