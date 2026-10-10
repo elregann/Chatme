@@ -87,13 +87,26 @@ class ECDH {
     }
   }
 
+  /// Verifies the point lies on the secp256k1 curve.
+  ///
+  /// Only performs the curve equation check `y² ≡ x³ + 7 (mod p)`.
+  ///
+  /// The subgroup check `point * n == infinity` is intentionally
+  /// omitted: secp256k1 has cofactor 1, so every non-identity point
+  /// on the curve already lies in the prime-order subgroup. The check
+  /// would always return true while costing an extra full scalar
+  /// multiplication (~20–80ms per call on mid-range hardware).
+  ///
+  /// Removing this redundant check cuts ECDH cost roughly in half,
+  /// which translates directly to faster NIP-17 unwrap during account
+  /// restore (every NIP-17 event triggers two ECDH operations, so the
+  /// saving compounds across the entire restore flow).
   static bool _isValidPoint(ecc.ECPoint point) {
     final x = point.x!.toBigInteger()!;
     final y = point.y!.toBigInteger()!;
     final left = (y * y) % Secp256k1Constants.p;
     final right = (x.modPow(BigInt.from(3), Secp256k1Constants.p) + Secp256k1Constants.b) % Secp256k1Constants.p;
-    if (left != right) return false;
-    return (point * Secp256k1Constants.n)!.isInfinity;
+    return left == right;
   }
 
   static bool _isValidHex(String hex) =>
