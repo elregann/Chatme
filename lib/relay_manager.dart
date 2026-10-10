@@ -346,24 +346,34 @@ class RelayManager {
 
     if (kind == 1 || kind == 4 || kind == 7 || kind == 1059) {
       if (kind == 7) {
-        if (senderPubkey == myPubkey) return;
-        if (now - createdAt > 60) return;
+        if (senderPubkey == myPubkey) {
+          _processedEventIds.add(eventId);
+          return;
+        }
+        if (now - createdAt > 60) {
+          _processedEventIds.add(eventId);
+          return;
+        }
       }
 
-      _processedEventIds.add(eventId);
-
       if (kind == 1 || kind == 4 || kind == 1059) {
-        await _processIncomingEvent(event);
-        try {
-          _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
-        } catch (_) {}
+        final bool success = await _processIncomingEvent(event);
+        if (success) {
+          _processedEventIds.add(eventId);
+          try {
+            _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+          } catch (_) {}
+        }
       }
 
       if (kind == 7) {
-        await _handleReceiptEvent(event);
-        try {
-          _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
-        } catch (_) {}
+        final bool success = await _handleReceiptEvent(event);
+        if (success) {
+          _processedEventIds.add(eventId);
+          try {
+            _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+          } catch (_) {}
+        }
       }
     }
   }
@@ -425,7 +435,7 @@ class RelayManager {
     }
   }
 
-  Future<void> _processIncomingEvent(Map<String, dynamic> event) async {
+  Future<bool> _processIncomingEvent(Map<String, dynamic> event) async {
     try {
       final eventId = event['id']?.toString() ?? '';
       final myPubkey = AppSettings.instance.myPubkey;
@@ -459,7 +469,7 @@ class RelayManager {
           peerPubkey = isFromMe ? receiverPubkey : actualSenderPubkey;
         } catch (e) {
           DebugLogger.log('[NIP-17] Unwrap failed | $e', type: 'ERROR');
-          return;
+          return false;
         }
       } else {
         actualSenderPubkey = event['pubkey']?.toString() ?? '';
@@ -476,7 +486,7 @@ class RelayManager {
         }
       }
 
-      if (peerPubkey.isEmpty || peerPubkey == myPubkey) return;
+      if (peerPubkey.isEmpty || peerPubkey == myPubkey) return true;
 
       if (decrypted.startsWith('CALL_SIGNAL:')) {
         try {
@@ -494,13 +504,13 @@ class RelayManager {
                 '[Call] Stale CALL_SIGNAL ignored '
                     '(type=$type, age=${ageSec}s, ttl=${ttlSec}s)',
               );
-              return;
+              return true;
             }
 
             if ((type == 'answer' || type == 'candidate') &&
                 CallManager.instance.callState == CallState.idle) {
               DebugLogger.log('[Call] Cold CALL_SIGNAL ignored (type=$type, no active call)');
-              return;
+              return true;
             }
 
             final syntheticEvent = {
@@ -517,7 +527,7 @@ class RelayManager {
               } catch (e) {
                 DebugLogger.log('[Call] onSignalReceived error | $e', type: 'ERROR');
               }
-              return;
+              return true;
             }
 
             if (actualSenderPubkey != myPubkey) {
@@ -527,18 +537,18 @@ class RelayManager {
         } catch (e) {
           DebugLogger.log('[Call] CALL_SIGNAL parse failed | $e', type: 'ERROR');
         }
-        return;
+        return true;
       }
 
       final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
 
       final bool alreadyExists = await ChatManager.instance.isMessageExists(actualEventId, chatKey);
-      if (alreadyExists) return;
+      if (alreadyExists) return true;
 
       final settingsBox = Hive.box('settings');
       final int cutOffTime = settingsBox.get('cut_off_$peerPubkey', defaultValue: 0);
 
-      if (timestamp <= cutOffTime) return;
+      if (timestamp <= cutOffTime) return true;
 
       if (decrypted.isEmpty) {
         decrypted = '[Encrypted Message]';
@@ -553,9 +563,8 @@ class RelayManager {
           final emoji = parts[1];
           final targetMessageId = parts[2];
           if (targetMessageId.isNotEmpty) {
-            await _updateMessageReaction(targetMessageId, actualSenderPubkey, emoji, chatKey);
-            if (onMessageReceived != null) onMessageReceived!();
-            return;
+            final bool applied = await _updateMessageReaction(targetMessageId, actualSenderPubkey, emoji, chatKey);
+            return applied ? true : false;
           }
         }
       }
@@ -567,13 +576,12 @@ class RelayManager {
           final targetMessageId = parts[1];
           final status = parts[2];
           if (targetMessageId.isNotEmpty) {
-            await ChatManager.instance.updateMessageStatus(
+            final bool applied = await ChatManager.instance.updateMessageStatus(
               targetMessageId,
               status,
               chatKey: chatKey,
             );
-            if (onMessageReceived != null) onMessageReceived!();
-            return;
+            return applied ? true : false;
           }
         }
       }
@@ -588,9 +596,8 @@ class RelayManager {
           }
         }
         if (targetId != null) {
-          await _updateMessageReaction(targetId, actualSenderPubkey, content, chatKey);
-          if (onMessageReceived != null) onMessageReceived!();
-          return;
+          final bool applied = await _updateMessageReaction(targetId, actualSenderPubkey, content, chatKey);
+          return applied ? true : false;
         }
       }
 
@@ -638,18 +645,20 @@ class RelayManager {
       await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExists);
 
       if (onMessageReceived != null) onMessageReceived!();
+      return true;
     } catch (e) {
       DebugLogger.log('[Message] Incoming event error | $e', type: 'ERROR');
+      return false;
     }
   }
 
-  Future<void> _handleReceiptEvent(Map<String, dynamic> event) async {
+  Future<bool> _handleReceiptEvent(Map<String, dynamic> event) async {
     try {
       final tags = event['tags'] as List? ?? [];
       final senderPubkey = event['pubkey']?.toString() ?? '';
       final myPubkey = AppSettings.instance.myPubkey;
 
-      if (senderPubkey == myPubkey) return;
+      if (senderPubkey == myPubkey) return true;
 
       String? originalMessageId;
       String? targetP;
@@ -663,14 +672,14 @@ class RelayManager {
         }
       }
 
-      if (originalMessageId == null || targetP != myPubkey || !isReadStatus) return;
+      if (originalMessageId == null || targetP != myPubkey || !isReadStatus) return true;
 
       final chatKey = ChatManager.instance.getChatKey(myPubkey, senderPubkey);
       final message = await ChatManager.instance.getMessageById(originalMessageId, chatKey);
 
-      if (message == null) return;
+      if (message == null) return false;
 
-      if (message.senderPubkey != myPubkey) return;
+      if (message.senderPubkey != myPubkey) return true;
 
       await ChatManager.instance.updateMessageStatus(
         originalMessageId,
@@ -679,8 +688,10 @@ class RelayManager {
       );
 
       onMessageReceived?.call();
+      return true;
     } catch (e) {
       DebugLogger.log('[Receipt] Handle error | $e', type: 'ERROR');
+      return false;
     }
   }
 
@@ -1154,7 +1165,7 @@ class RelayManager {
     }
   }
 
-  Future<void> _updateMessageReaction(
+  Future<bool> _updateMessageReaction(
       String messageId,
       String reactorPubkey,
       String emoji,
@@ -1163,7 +1174,7 @@ class RelayManager {
     try {
       final box = Hive.box('chats');
       final dynamic raw = box.get(chatKey);
-      if (raw is! List) return;
+      if (raw is! List) return false;
 
       final messages = raw.cast<ChatMessage>().toList();
       final index = messages.indexWhere((m) => m.id == messageId);
@@ -1181,11 +1192,14 @@ class RelayManager {
         await box.put(chatKey, messages);
 
         if (onMessageReceived != null) onMessageReceived!();
+        return true;
       } else {
         DebugLogger.log('[Reaction] Target message not found: $messageId', type: 'WARN');
+        return false;
       }
     } catch (e) {
       DebugLogger.log('[Reaction] Update failed | $e', type: 'ERROR');
+      return false;
     }
   }
 

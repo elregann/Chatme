@@ -209,21 +209,27 @@ class ChatManager {
     }
   }
 
-  Future<void> updateMessageStatus(String messageId, String newStatus, {String? chatKey}) async {
+  Future<bool> updateMessageStatus(String messageId, String newStatus, {String? chatKey}) async {
+    bool found = false;
     await _lock.synchronized<void>(() async {
       try {
         final chatsBox = Hive.box('chats');
         if (chatKey != null && chatsBox.containsKey(chatKey)) {
-          await _processStatusUpdate(chatsBox, chatKey, messageId, newStatus);
+          found = await _processStatusUpdate(chatsBox, chatKey, messageId, newStatus);
         } else {
           for (final key in chatsBox.keys) {
-            await _processStatusUpdate(chatsBox, key.toString(), messageId, newStatus);
+            final res = await _processStatusUpdate(chatsBox, key.toString(), messageId, newStatus);
+            if (res) {
+              found = true;
+              break;
+            }
           }
         }
       } catch (e) {
         DebugLogger.log('[Message] Status update failed | $e', type: 'ERROR');
       }
     });
+    return found;
   }
 
   /// Updates the status of a message identified by its **Gift Wrap ID**.
@@ -261,14 +267,16 @@ class ChatManager {
     });
   }
 
-  Future<void> _processStatusUpdate(Box box, String key, String id, String status) async {
+  Future<bool> _processStatusUpdate(Box box, String key, String id, String status) async {
     final dynamic rawData = box.get(key);
     if (rawData is List) {
       List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
+      bool found = false;
       bool updated = false;
 
       for (var i = 0; i < messages.length; i++) {
         if (messages[i].id == id) {
+          found = true;
           if (_getStatusWeight(status) > _getStatusWeight(messages[i].status)) {
             messages[i] = messages[i].copyWithStatus(status);
             updated = true;
@@ -277,7 +285,9 @@ class ChatManager {
         }
       }
       if (updated) await box.put(key, messages);
+      return found;
     }
+    return false;
   }
 
   Future<List<ChatMessage>> getPendingMessages() async {
