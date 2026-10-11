@@ -28,22 +28,29 @@ class RelayManager {
 
   Function(Map<String, dynamic>)? onSignalReceived;
 
+  /// Recommended free relays optimised for NIP-17 gift-wrap (kind 1059).
+  /// Ordered by relevance for DM delivery.
   final List<String> relays = [
-    'wss://nip17.com',
+    'wss://messaging.coracle.social', // dedicated messaging / NIP-17
     'wss://nos.lol',
-    'wss://nostr.mom',
     'wss://relay.damus.io',
-    'wss://relay.mostr.pub',
-    'wss://relay.noswhere.com',
     'wss://relay.primal.net',
   ];
 
   final Map<String, WebSocketChannel> _connections = {};
   final Map<String, bool> _connectionStatus = {};
-  final Map<String, Timer> _pingTimers = {};
   final Map<String, int> _reconnectAttempts = {};
   final Set<String> _reconnectScheduled = {};
   final Set<String> _processedEventIds = {};
+
+  /// Relays that completed NIP-42 AUTH (confirmed by OK true).
+  final Set<String> _authenticatedRelays = {};
+
+  /// Challenges already answered this connection (prevents double-sign).
+  final Set<String> _answeredAuthChallenges = {};
+
+  /// AUTH event id → relayUrl, waiting for OK confirmation.
+  final Map<String, String> _pendingAuthEventIds = {};
 
   /// In-flight guard: event IDs currently being processed (not yet
   /// finished). Prevents a race condition where the same event arrives
@@ -122,10 +129,6 @@ class RelayManager {
     _cleanupTimer?.cancel();
     _queueTimer?.cancel();
     _isProcessingQueue = false;
-    for (var timer in _pingTimers.values) {
-      timer.cancel();
-    }
-    _pingTimers.clear();
 
     for (var url in _connections.keys.toList()) {
       _closeConnection(url);
@@ -135,6 +138,9 @@ class RelayManager {
     _connectionStatus.clear();
     _reconnectAttempts.clear();
     _reconnectScheduled.clear();
+    _authenticatedRelays.clear();
+    _answeredAuthChallenges.clear();
+    _pendingAuthEventIds.clear();
     _isInitialized = false;
     _isConnecting = false;
     _isConnected.value = false;
@@ -144,6 +150,8 @@ class RelayManager {
   Future<void> _connectToRelay(String relayUrl, String myPubkey, int latestTime) async {
     try {
       _closeConnection(relayUrl);
+      _authenticatedRelays.remove(relayUrl);
+      _pendingAuthEventIds.removeWhere((_, u) => u == relayUrl);
 
       final channel = WebSocketChannel.connect(Uri.parse(relayUrl));
       _connections[relayUrl] = channel;
@@ -154,51 +162,7 @@ class RelayManager {
         }
       });
 
-      final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      int syncSince = nowTimestamp - 2592000;
-
-      // latestTime already computed once in connect(), not per relay.
-      if (latestTime > 0) {
-        final computed = (latestTime ~/ 1000) - 3600;
-        // NIP-59 randomises gift-wrap `created_at` up to 2 days into
-        // the past. Always look back at least 3 days.
-        final minimum = nowTimestamp - 259200; // 3 days
-        syncSince = computed < minimum ? computed : minimum;
-        DebugLogger.log('[Sync] Fetching since ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}');
-      }
-
-      final List<int> neededKinds = [1, 4, 7, 1059];
-
-      final subToMe = jsonEncode(["REQ", "${_subscriptionId!}_incoming", {
-        "kinds": neededKinds,
-        "#p": [myPubkey],
-        "since": syncSince
-      }]);
-
-      final subFromMe = jsonEncode(["REQ", "${_subscriptionId!}_outgoing", {
-        "kinds": neededKinds,
-        "authors": [myPubkey],
-        "since": syncSince
-      }]);
-
-      channel.sink.add(subToMe);
-      channel.sink.add(subFromMe);
-
-      // Subscribe only to profiles of contacts we already know about.
-      final contactsBox = Hive.box<Contact>('contacts');
-      final authorList = <String>[
-        ...contactsBox.keys.map((k) => k.toString()),
-        myPubkey,
-      ];
-
-      final subProfiles = jsonEncode(["REQ", "${_subscriptionId!}_profiles", {
-        "kinds": [0],
-        "authors": authorList,
-      }]);
-      channel.sink.add(subProfiles);
-
-      _startPingTimer(relayUrl, channel);
-
+      // Listen first so AUTH challenges are never missed.
       channel.stream.listen(
             (data) {
           _connectionStatus[relayUrl] = true;
@@ -218,6 +182,13 @@ class RelayManager {
         cancelOnError: true,
       );
 
+      // Send REQs immediately. AUTH-required relays will CLOSED them;
+      // we re-send after AUTH is confirmed via OK.
+      _sendSubscriptions(relayUrl, myPubkey, latestTime);
+
+      // No application-level PING — NIP-01 does not define it.
+      // Keep-alive is handled by the WebSocket layer / normal traffic.
+
       _connectionStatus[relayUrl] = true;
       _updateConnectionStatus();
       DebugLogger.log('[Relay] Connected: $relayUrl');
@@ -228,19 +199,87 @@ class RelayManager {
           _reconnectAttempts[relayUrl] = 0;
         }
       });
-
     } catch (e) {
       DebugLogger.log('[Relay] Connection failed: $relayUrl | $e', type: 'ERROR');
       _handleError(relayUrl, e);
     }
   }
 
+  /// Build and send the three core subscriptions for a relay.
+  /// Safe to call multiple times (e.g. after successful NIP-42 AUTH).
+  void _sendSubscriptions(String relayUrl, String myPubkey, int latestTime) {
+    final channel = _connections[relayUrl];
+    if (channel == null) return;
+
+    final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    int syncSince = nowTimestamp - 2592000; // fallback 30 days
+
+    if (latestTime > 0) {
+      final computed = (latestTime ~/ 1000) - 3600;
+      // NIP-59 randomises gift-wrap `created_at` up to 2 days into the past.
+      // Always look back at least 3 days.
+      final minimum = nowTimestamp - 259200; // 3 days
+      syncSince = computed < minimum ? computed : minimum;
+      DebugLogger.log(
+        '[Sync] $relayUrl since ${DateTime.fromMillisecondsSinceEpoch(syncSince * 1000)}',
+      );
+    }
+
+    // Keep kind 1 for mentions/reactions context, 4 for legacy, 7 reactions, 1059 gift-wrap.
+    final List<int> neededKinds = [1, 4, 7, 1059];
+
+    final subToMe = jsonEncode([
+      "REQ",
+      "${_subscriptionId!}_incoming",
+      {
+        "kinds": neededKinds,
+        "#p": [myPubkey],
+        "since": syncSince,
+      }
+    ]);
+
+    final subFromMe = jsonEncode([
+      "REQ",
+      "${_subscriptionId!}_outgoing",
+      {
+        "kinds": neededKinds,
+        "authors": [myPubkey],
+        "since": syncSince,
+      }
+    ]);
+
+    channel.sink.add(subToMe);
+    channel.sink.add(subFromMe);
+
+    // Profiles of known contacts + ourselves.
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      final authorList = <String>[
+        ...contactsBox.keys.map((k) => k.toString()),
+        myPubkey,
+      ];
+
+      final subProfiles = jsonEncode([
+        "REQ",
+        "${_subscriptionId!}_profiles",
+        {
+          "kinds": [0],
+          "authors": authorList,
+        }
+      ]);
+      channel.sink.add(subProfiles);
+    } catch (e) {
+      DebugLogger.log('[Relay] Profile sub failed on $relayUrl | $e', type: 'ERROR');
+    }
+  }
+
   void _closeConnection(String url) {
     try {
-      _pingTimers[url]?.cancel();
       _connections[url]?.sink.close();
       _connections.remove(url);
       _connectionStatus.remove(url);
+      _authenticatedRelays.remove(url);
+      _pendingAuthEventIds.removeWhere((_, u) => u == url);
     } catch (e) {
       DebugLogger.log('[Relay] Close connection error | $e', type: 'ERROR');
     }
@@ -249,15 +288,101 @@ class RelayManager {
   Future<void> _handleData(dynamic data, String url) async {
     try {
       final message = data.toString();
-      if (message.contains('"EOSE"') || message.contains('"PONG"')) return;
+      if (message.contains('"EOSE"')) return;
 
       final decoded = jsonDecode(message);
-      if (decoded is List && decoded.length > 2) {
-        if (decoded[0] == "EVENT") await _handleEvent(decoded, url);
-        if (decoded[0] == "OK") _handleOk(decoded, url);
+      if (decoded is! List || decoded.isEmpty) return;
+
+      final type = decoded[0];
+
+      // ["AUTH", "<challenge>"]
+      if (type == "AUTH" && decoded.length >= 2) {
+        await _handleAuthChallenge(url, decoded[1].toString());
+        return;
+      }
+
+      // ["CLOSED", <subId>, <reason?>]
+      if (type == "CLOSED" && decoded.length >= 2) {
+        final subId = decoded[1].toString();
+        final reason = decoded.length >= 3 ? decoded[2].toString() : '';
+        DebugLogger.log('[Relay] CLOSED $subId on $url | $reason');
+
+        // Only re-sub after AUTH is *confirmed* (OK true). Do not re-sub
+        // while AUTH is still pending — that causes the loop you saw.
+        final lower = reason.toLowerCase();
+        if (lower.contains('auth-required') &&
+            _authenticatedRelays.contains(url) &&
+            !_pendingAuthEventIds.values.contains(url)) {
+          final myPubkey = AppSettings.instance.myPubkey;
+          if (myPubkey.isNotEmpty) {
+            _sendSubscriptions(url, myPubkey, _computeLatestContactTime());
+          }
+        }
+        return;
+      }
+
+      if (type == "NOTICE" && decoded.length >= 2) {
+        DebugLogger.log('[Relay] NOTICE on $url | ${decoded[1]}');
+        return;
+      }
+
+      if (decoded.length > 2) {
+        if (type == "EVENT") await _handleEvent(decoded, url);
+        if (type == "OK") _handleOk(decoded, url);
       }
     } catch (e) {
       DebugLogger.log('[Relay] Data handling error | $e', type: 'ERROR');
+    }
+  }
+
+  /// Sign and send kind-22242 AUTH response. Wait for OK before re-subscribing.
+  Future<void> _handleAuthChallenge(String relayUrl, String challenge) async {
+    final challengeKey = '$relayUrl::$challenge';
+    if (_answeredAuthChallenges.contains(challengeKey)) return;
+    _answeredAuthChallenges.add(challengeKey);
+
+    final myPubkey = AppSettings.instance.myPubkey;
+    final myPrivkey = AppSettings.instance.myPrivkey;
+    if (myPubkey.isEmpty || myPrivkey.isEmpty) {
+      DebugLogger.log('[AUTH] Missing keys on $relayUrl', type: 'ERROR');
+      return;
+    }
+
+    final channel = _connections[relayUrl];
+    if (channel == null) return;
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+      // NIP-42 example uses trailing slash on relay URL.
+      final relayTag = relayUrl.endsWith('/') ? relayUrl : '$relayUrl/';
+
+      final unsignedEvent = {
+        'kind': 22242,
+        'pubkey': myPubkey,
+        'created_at': now,
+        'tags': [
+          ['relay', relayTag],
+          ['challenge', challenge],
+        ],
+        'content': '',
+      };
+
+      final eventId = NostrHelpers.generateEventId(unsignedEvent);
+      final signature = NostrSigner.sign(eventId, myPrivkey);
+      final signedEvent = {
+        ...unsignedEvent,
+        'id': eventId,
+        'sig': signature,
+      };
+
+      _pendingAuthEventIds[eventId] = relayUrl;
+      channel.sink.add(jsonEncode(["AUTH", signedEvent]));
+      DebugLogger.log('[AUTH] Sent challenge response on $relayUrl (id=$eventId)');
+      // Do NOT re-sub here. Wait for ["OK", eventId, true, ...] in _handleOk.
+    } catch (e) {
+      DebugLogger.log('[AUTH] Failed on $relayUrl | $e', type: 'ERROR');
+      _answeredAuthChallenges.remove(challengeKey);
     }
   }
 
@@ -719,11 +844,31 @@ class RelayManager {
 
   void _handleOk(List<dynamic> decoded, String url) {
     try {
-      if (decoded.length > 2 && decoded[2] == true) {
-        final giftWrapId = decoded[1].toString();
-        ChatManager.instance.updateMessageStatusByGiftWrap(giftWrapId, 'sent');
+      if (decoded.length < 3) return;
+      final eventId = decoded[1].toString();
+      final accepted = decoded[2] == true;
+      final msg = decoded.length >= 4 ? decoded[3].toString() : '';
+
+      // NIP-42: AUTH response must get an OK.
+      if (_pendingAuthEventIds.containsKey(eventId)) {
+        final relayUrl = _pendingAuthEventIds.remove(eventId)!;
+        if (accepted) {
+          _authenticatedRelays.add(relayUrl);
+          DebugLogger.log('[AUTH] Confirmed on $relayUrl');
+          final myPubkey = AppSettings.instance.myPubkey;
+          if (myPubkey.isNotEmpty) {
+            _sendSubscriptions(relayUrl, myPubkey, _computeLatestContactTime());
+          }
+        } else {
+          DebugLogger.log('[AUTH] Rejected on $relayUrl | $msg', type: 'ERROR');
+        }
+        return;
+      }
+
+      if (accepted) {
+        ChatManager.instance.updateMessageStatusByGiftWrap(eventId, 'sent');
         onMessageReceived?.call();
-        if (onMessageDelivered != null) onMessageDelivered!(giftWrapId);
+        if (onMessageDelivered != null) onMessageDelivered!(eventId);
       }
     } catch (e) {
       DebugLogger.log('[Relay] OK handler error | $e', type: 'ERROR');
@@ -1233,19 +1378,6 @@ class RelayManager {
       }
     }
     return '';
-  }
-
-  void _startPingTimer(String url, WebSocketChannel ch) {
-    _pingTimers[url]?.cancel();
-    _pingTimers[url] = Timer.periodic(const Duration(seconds: 30), (t) {
-      if (_connectionStatus[url] == true) {
-        try {
-          ch.sink.add(jsonEncode(["PING", "p"]));
-        } catch (e) {
-          t.cancel();
-        }
-      }
-    });
   }
 
   void _startCleanupTimer() {
