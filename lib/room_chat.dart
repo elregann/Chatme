@@ -39,11 +39,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   final TextEditingController _messageController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
-  // Replaces ScrollController. Works with ScrollablePositionedList.
   final ItemScrollController _itemScrollController = ItemScrollController();
   final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
 
-  // Cache of the current chat messages, kept in sync by the ValueListenableBuilder.
   List<ChatMessage> _cachedMessages = [];
 
   bool _isSending = false;
@@ -54,10 +52,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   ChatMessage? _replyingTo;
   final Set<String> _highlightedIds = {};
 
-  double _dragOffset = 0.0;
+  // #23 — drag offset uses ValueNotifier so only the bubble subtree rebuilds.
+  final ValueNotifier<double> _dragOffsetNotifier = ValueNotifier<double>(0.0);
   String? _draggingId;
 
   int _newMessagesCount = 0;
+
+  // #2 — re-entrancy guard for _markAllAsRead.
+  bool _isMarkingRead = false;
+  bool _markReadAgain = false;
+  bool _suppressChatRebuild = false;
+  Widget? _lastChatListWidget;
 
   bool _isShortText(String text, BuildContext context) {
     const double timeWidth = 55;
@@ -105,7 +110,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         setState(() => _newMessagesCount++);
       }
 
-      _maybeAutoScroll();
       setState(() {});
     };
 
@@ -136,14 +140,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     _itemPositionsListener.itemPositions.removeListener(_handlePositionsChanged);
 
+    _dragOffsetNotifier.dispose();
     _focusNode.dispose();
     _messageController.dispose();
 
     super.dispose();
   }
 
-  /// Replaces the old `_handleScroll`. Derives near-bottom / show-button
-  /// state from the current visible item positions instead of pixel offsets.
   void _handlePositionsChanged() {
     final positions = _itemPositionsListener.itemPositions.value;
     if (positions.isEmpty) return;
@@ -187,10 +190,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     }
     if (maxIndex >= _cachedMessages.length) return;
 
-    // Only hide when the very first (newest) message is visible.
-    // Using `minIndex == 0` instead of `minIndex < 3` prevents
-    // rapid on/off flicker while the user is scrolling slowly
-    // near the bottom of the chat.
     if (minIndex == 0) {
       _floatingDateTimer?.cancel();
       if (_showFloatingDate) _hideFloatingDate();
@@ -199,9 +198,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final label = _getDateLabel(_cachedMessages[maxIndex].timestamp);
 
-    // Show the pill if it was hidden, or refresh the label if it changed.
-    // If the label is the same and the pill is already visible, we do
-    // nothing — this avoids redundant setState calls that caused flicker.
     if (label != _floatingDate || !_showFloatingDate) {
       setState(() {
         _floatingDate = label;
@@ -209,8 +205,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       });
     }
 
-    // Re-arm the hide timer on every scroll notification. The pill only
-    // disappears once the user has stopped scrolling for ~1.5s.
     _floatingDateTimer?.cancel();
     _floatingDateTimer = Timer(
       const Duration(milliseconds: 1500),
@@ -235,9 +229,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     }
   }
 
-  /// Jumps to the message identified by [messageId] regardless of how far
-  /// it is from the current viewport. Works for any index thanks to
-  /// `ItemScrollController`.
   void _scrollToMessage(String? messageId) {
     if (messageId == null) return;
     if (!_itemScrollController.isAttached) return;
@@ -269,29 +260,60 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
+  /// #2 — re-entrancy guard + per-message try/catch + rebuild suppression
+  /// during the local status write phase.
   Future<void> _markAllAsRead() async {
     if (!mounted) return;
-
-    final peerPubkey = widget.contact.pubkey;
-    final messages = await ChatManager.instance.getMessages(peerPubkey);
-
-    bool updated = false;
-
-    for (final m in messages) {
-      if (m.senderPubkey == peerPubkey && m.status != 'read') {
-        await widget.relayManager.sendReceipt(
-          m.id,
-          peerPubkey,
-          'read',
-        );
-        await ChatManager.instance.updateMessageStatus(m.id, 'read');
-        updated = true;
-      }
+    if (_isMarkingRead) {
+      _markReadAgain = true;
+      return;
     }
+    _isMarkingRead = true;
+    final peerPubkey = widget.contact.pubkey;
 
-    if (updated && mounted) {
-      await ChatManager.instance.clearUnreadCount(peerPubkey);
-      setState(() {});
+    try {
+      do {
+        _markReadAgain = false;
+
+        final messages = await ChatManager.instance.getMessages(peerPubkey);
+        final unread = messages
+            .where((m) => m.senderPubkey == peerPubkey && m.status != 'read')
+            .toList();
+        if (unread.isEmpty) continue;
+
+        final sentIds = <String>[];
+        for (final m in unread) {
+          if (!mounted) break;
+          try {
+            await widget.relayManager.sendReceipt(m.id, peerPubkey, 'read');
+            sentIds.add(m.id);
+          } catch (e) {
+            DebugLogger.log('[Chat] sendReceipt failed | $e', type: 'ERROR');
+          }
+        }
+        if (sentIds.isEmpty) continue;
+
+        _suppressChatRebuild = true;
+        try {
+          for (final id in sentIds) {
+            try {
+              await ChatManager.instance.updateMessageStatus(id, 'read');
+            } catch (e) {
+              DebugLogger.log('[Chat] updateMessageStatus failed | $e', type: 'ERROR');
+            }
+          }
+        } finally {
+          _suppressChatRebuild = false;
+        }
+
+        await ChatManager.instance.clearUnreadCount(peerPubkey);
+        if (mounted) setState(() {});
+      } while (_markReadAgain && mounted);
+    } catch (e) {
+      DebugLogger.log('[Chat] markAllAsRead failed | $e', type: 'ERROR');
+    } finally {
+      _isMarkingRead = false;
+      _suppressChatRebuild = false;
     }
   }
 
@@ -352,6 +374,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         plaintext: text,
         replyToId: replyId,
         replyToContent: replyContent,
+        // #4: replyToSenderPubkey is not forwarded to RelayManager;
+        // the receiver side resolves the name via _resolveReplySenderPubkey.
         messageTimestampMs: messageTs,
       );
 
@@ -504,66 +528,74 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  void _handleReaction(String emoji) async {
-    if (_messageForReaction == null) return;
+  /// #1 — re-read the list right before writing so we don't clobber messages
+  /// that arrived while `await sendReaction` was in flight.
+  Future<void> _handleReaction(String emoji) async {
+    final targetMessage = _messageForReaction;
+    _messageForReaction = null;
+    if (targetMessage == null) return;
 
-    final targetMessage = _messageForReaction!;
     HapticFeedback.lightImpact();
 
     try {
       final myPubkey = AppSettings.instance.myPubkey;
       final chatKey = targetMessage.chatKey;
       final targetId = targetMessage.id;
-
       final box = Hive.box('chats');
-      final dynamic raw = box.get(chatKey);
 
-      if (raw is List) {
-        final messages = raw.cast<ChatMessage>().toList();
-        final index = messages.indexWhere((m) => m.id == targetId);
+      ChatMessage? findTarget() {
+        final dynamic r = box.get(chatKey);
+        if (r is! List) return null;
+        for (final m in r.cast<ChatMessage>()) {
+          if (m.id == targetId) return m;
+        }
+        return null;
+      }
 
-        if (index != -1) {
-          final msg = messages[index];
-          final bool isMessageReady = (msg.status == 'sent' || msg.status == 'read') &&
-              !msg.id.startsWith('temp_') &&
-              !msg.id.startsWith('pending_');
+      final before = findTarget();
+      if (before == null) return;
 
-          Map<String, String> updatedReactions = {
-            ...msg.reactions,
-            myPubkey: emoji,
-          };
-          Map<String, String> updatedPendingReactions = Map.from(msg.pendingReactions);
+      final bool isMessageReady =
+          (before.status == 'sent' || before.status == 'read') &&
+              !targetId.startsWith('temp_') &&
+              !targetId.startsWith('pending_');
 
-          if (isMessageReady) {
-            final bool success = await widget.relayManager.sendReaction(
-              messageId: targetId,
-              receiverPubkey: widget.contact.pubkey,
-              emoji: emoji,
-            );
-            if (!success) {
-              updatedPendingReactions[myPubkey] = emoji;
-            }
-          } else {
-            updatedPendingReactions[myPubkey] = emoji;
-          }
-
-          final updatedMessage = msg.copyWith(
-            reactions: updatedReactions,
-            pendingReactions: updatedPendingReactions,
+      bool delivered = false;
+      if (isMessageReady) {
+        try {
+          delivered = await widget.relayManager.sendReaction(
+            messageId: targetId,
+            receiverPubkey: widget.contact.pubkey,
+            emoji: emoji,
           );
-
-          messages[index] = updatedMessage;
-          await box.put(chatKey, messages);
-
-          if (mounted) setState(() {});
+        } catch (e) {
+          DebugLogger.log('[Reaction] sendReaction failed | $e', type: 'ERROR');
         }
       }
 
-      _messageForReaction = null;
+      final dynamic raw = box.get(chatKey);
+      if (raw is! List) return;
+      final messages = raw.cast<ChatMessage>().toList();
+      final index = messages.indexWhere((m) => m.id == targetId);
+      if (index == -1) return;
+      final msg = messages[index];
 
+      final pending = Map<String, String>.from(msg.pendingReactions);
+      if (delivered) {
+        pending.remove(myPubkey);
+      } else {
+        pending[myPubkey] = emoji;
+      }
+
+      messages[index] = msg.copyWith(
+        reactions: {...msg.reactions, myPubkey: emoji},
+        pendingReactions: pending,
+      );
+      await box.put(chatKey, messages);
+
+      if (mounted) setState(() {});
     } catch (e) {
       DebugLogger.log('[Reaction] Handle failed | $e', type: 'ERROR');
-      _messageForReaction = null;
     }
   }
 
@@ -641,11 +673,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
                 Divider(height: 0.5, thickness: 0.5, color: borderColor),
                 const SizedBox(height: 12),
-
                 Flexible(
                   child: GridView.builder(
                     shrinkWrap: true,
@@ -689,11 +719,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     },
                   ),
                 ),
-
                 const SizedBox(height: 12),
                 Divider(height: 0.5, thickness: 0.5, color: borderColor),
                 const SizedBox(height: 12),
-
                 Row(
                   children: [
                     Expanded(
@@ -757,6 +785,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     if (c != null) return AppSettings.getContactDisplayName(c);
     return AppSettings.formatDisplayName(senderPubkey);
   }
+
+  /// #4 — resolve the original sender via replyToId in local data.
+  String _resolveReplySenderPubkey(ChatMessage message) {
+    final replyId = message.replyToId;
+    if (replyId != null) {
+      final i = _cachedMessages.indexWhere((m) => m.id == replyId);
+      if (i != -1) return _cachedMessages[i].senderPubkey;
+    }
+    return message.replyToSenderPubkey ?? message.senderPubkey;
+  }
+
+  /// #5
+  bool _canReplyTo(ChatMessage m) =>
+      !m.id.startsWith('temp_') && !m.id.startsWith('pending_');
 
   @override
   Widget build(BuildContext context) {
@@ -882,7 +924,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       ),
       body: Column(
         children: [
-
           ValueListenableBuilder<CallState>(
             valueListenable: CallManager.instance.callStateNotifier,
             builder: (context, callState, _) {
@@ -897,11 +938,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               );
             },
           ),
-
           Expanded(
             child: ValueListenableBuilder(
               valueListenable: Hive.box('chats').listenable(),
               builder: (context, Box box, _) {
+                // #2 — freeze rebuild during the local status write phase.
+                if (_suppressChatRebuild && _lastChatListWidget != null) {
+                  return _lastChatListWidget!;
+                }
+
                 final dynamic rawData = box.get(chatKey);
                 if (rawData is List) {
                   final List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
@@ -911,9 +956,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   _cachedMessages = [];
                 }
 
-                if (_cachedMessages.isEmpty) return _buildEmptyState();
+                if (_cachedMessages.isEmpty) {
+                  return _lastChatListWidget = _buildEmptyState();
+                }
 
-                return Stack(
+                return _lastChatListWidget = Stack(
                   alignment: Alignment.topCenter,
                   children: [
                     NotificationListener<ScrollNotification>(
@@ -1276,148 +1323,106 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  Widget _wrapMyDismissible(ChatMessage message) {
+  // #12 + #23 — thin wrappers; all logic lives in _wrapDismissible.
+  Widget _wrapMyDismissible(ChatMessage message) =>
+      _wrapDismissible(message, Alignment.centerRight);
+
+  Widget _wrapTheirDismissible(ChatMessage message) =>
+      _wrapDismissible(message, Alignment.centerLeft);
+
+  /// #12 & #23 — only the bubble subtree rebuilds during a drag; the
+  /// bubble itself is reused via the ValueListenableBuilder `child`.
+  Widget _wrapDismissible(ChatMessage message, Alignment alignment) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isDragging = _draggingId == message.id;
 
     return GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        if (details.delta.dx < 0 || _dragOffset < 0) {
-          setState(() {
-            _draggingId = message.id;
-            double resistance = 0.6;
-            if (_dragOffset < -30) resistance = 0.3;
-            _dragOffset += details.delta.dx * resistance;
-            if (_dragOffset < -70) _dragOffset = -70;
-          });
-        }
-      },
-      onHorizontalDragEnd: (details) {
-        if (_dragOffset <= -45) {
-          HapticFeedback.mediumImpact();
-          setState(() => _replyingTo = message);
-          _focusNode.requestFocus();
-        }
-        setState(() {
-          _dragOffset = 0;
-          _draggingId = null;
-        });
-      },
-      child: Transform.translate(
-        offset: Offset(isDragging ? _dragOffset : 0, 0),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: _buildMessageBubble(message),
-            ),
-            if (isDragging)
-              Positioned(
-                top: 0,
-                bottom: 0,
-                right: -32,
-                child: Opacity(
-                  opacity: ((-_dragOffset) / 40).clamp(0.0, 1.0),
-                  child: Transform.scale(
-                    scale: ((-_dragOffset) / 50).clamp(0.0, 1.0),
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark ? Colors.white10 : Colors.black12,
-                          width: 0.5,
+      onHorizontalDragUpdate: (d) => _onSwipeUpdate(message, d),
+      onHorizontalDragEnd: (_) => _onSwipeEnd(message),
+      onHorizontalDragCancel: _resetSwipe,
+      child: ValueListenableBuilder<double>(
+        valueListenable: _dragOffsetNotifier,
+        child: Align(
+          alignment: alignment,
+          child: _buildMessageBubble(message),
+        ),
+        builder: (context, offset, bubble) {
+          final isDragging = _draggingId == message.id;
+          final dx = isDragging ? offset : 0.0;
+
+          return Transform.translate(
+            offset: Offset(dx, 0),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                bubble!,
+                if (isDragging)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    right: -32,
+                    child: Opacity(
+                      opacity: ((-dx) / 40).clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: ((-dx) / 50).clamp(0.0, 1.0),
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          margin: const EdgeInsets.only(bottom: 2),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isDark ? Colors.white10 : Colors.black12,
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.reply_rounded,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                            size: 16,
+                          ),
                         ),
-                      ),
-                      child: Icon(
-                        Icons.reply_rounded,
-                        color: isDark ? Colors.white70 : Colors.black87,
-                        size: 16,
                       ),
                     ),
                   ),
-                ),
-              ),
-          ],
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _wrapTheirDismissible(ChatMessage message) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isDragging = _draggingId == message.id;
+  /// #23 — update offset without setState.
+  void _onSwipeUpdate(ChatMessage message, DragUpdateDetails details) {
+    if (_draggingId != null && _draggingId != message.id) return;
 
-    return GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        if (details.delta.dx < 0 || _dragOffset < 0) {
-          setState(() {
-            _draggingId = message.id;
-            double resistance = 0.6;
-            if (_dragOffset < -30) resistance = 0.3;
-            _dragOffset += details.delta.dx * resistance;
-            if (_dragOffset < -70) _dragOffset = -70;
-          });
-        }
-      },
-      onHorizontalDragEnd: (details) {
-        if (_dragOffset <= -45) {
-          HapticFeedback.mediumImpact();
-          setState(() => _replyingTo = message);
-          _focusNode.requestFocus();
-        }
-        setState(() {
-          _dragOffset = 0;
-          _draggingId = null;
-        });
-      },
-      child: Transform.translate(
-        offset: Offset(isDragging ? _dragOffset : 0, 0),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _buildMessageBubble(message),
-            ),
-            if (isDragging)
-              Positioned(
-                top: 0,
-                bottom: 0,
-                right: -32,
-                child: Opacity(
-                  opacity: ((-_dragOffset) / 40).clamp(0.0, 1.0),
-                  child: Transform.scale(
-                    scale: ((-_dragOffset) / 50).clamp(0.0, 1.0),
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark ? Colors.white10 : Colors.black12,
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.reply_rounded,
-                        color: isDark ? Colors.white70 : Colors.black87,
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+    final current = _dragOffsetNotifier.value;
+    if (details.delta.dx >= 0 && current >= 0) return;
+
+    _draggingId = message.id;
+    final resistance = current < -30 ? 0.3 : 0.6;
+    _dragOffsetNotifier.value =
+        (current + details.delta.dx * resistance).clamp(-70.0, 0.0).toDouble();
+  }
+
+  /// #5 — reply only if the message already has a final id.
+  void _onSwipeEnd(ChatMessage message) {
+    final shouldReply =
+        _draggingId == message.id && _dragOffsetNotifier.value <= -45;
+    _resetSwipe();
+
+    if (!shouldReply || !_canReplyTo(message)) return;
+
+    HapticFeedback.mediumImpact();
+    setState(() => _replyingTo = message);
+    _focusNode.requestFocus();
+  }
+
+  /// #12 — used by both onHorizontalDragEnd and onHorizontalDragCancel.
+  void _resetSwipe() {
+    _draggingId = null;
+    _dragOffsetNotifier.value = 0.0;
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -1559,14 +1564,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
+  /// #4 — quoted name uses the resolver.
   Widget _buildReplyInBubble(ChatMessage message, bool isMe) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final String senderName = _getReplyName(
-      message.replyToSenderPubkey ?? message.senderPubkey,
-    );
+    final String senderName = _getReplyName(_resolveReplySenderPubkey(message));
 
     final nameColor = isNostrCyber ? const Color(0xFFD0BCFF) : const Color(0xFF1976D2);
     final bgColor = isNostrCyber ? Colors.white.withAlpha(20) : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
@@ -1740,11 +1744,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
               Divider(height: 0.5, thickness: 0.5, color: borderColor),
               const SizedBox(height: 16),
-
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,
@@ -1763,9 +1765,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
               Row(
                 children: [
                   Expanded(
