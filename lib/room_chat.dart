@@ -1,5 +1,3 @@
-// room_chat.dart
-
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -7,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:anchored_list/anchored_list.dart';
 import 'call_manager.dart';
 import 'call_overlay.dart';
 import 'relay_manager.dart';
@@ -39,26 +37,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   final TextEditingController _messageController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
-  final ItemScrollController _itemScrollController = ItemScrollController();
-  final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
+  final AnchoredListController _anchoredController = AnchoredListController();
+  final ScrollController _scrollController = ScrollController();
 
   List<ChatMessage> _cachedMessages = [];
+  int _previousMessageCount = -1;
 
   bool _isSending = false;
   bool _showScrollButton = false;
   bool _userIsNearBottom = true;
   bool _isUserScrolling = false;
+  bool _isCompensatingScroll = false;
 
   ChatMessage? _replyingTo;
   final Set<String> _highlightedIds = {};
 
-  // #23 — drag offset uses ValueNotifier so only the bubble subtree rebuilds.
   final ValueNotifier<double> _dragOffsetNotifier = ValueNotifier<double>(0.0);
   String? _draggingId;
 
   int _newMessagesCount = 0;
 
-  // #2 — re-entrancy guard for _markAllAsRead.
   bool _isMarkingRead = false;
   bool _markReadAgain = false;
   bool _suppressChatRebuild = false;
@@ -113,7 +111,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       setState(() {});
     };
 
-    _itemPositionsListener.itemPositions.addListener(_handlePositionsChanged);
+    _anchoredController.itemPositions.addListener(_handlePositionsChanged);
+    _scrollController.addListener(_handleScrollChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
@@ -138,7 +137,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _floatingDateTimer?.cancel();
     _scrollIdleTimer?.cancel();
 
-    _itemPositionsListener.itemPositions.removeListener(_handlePositionsChanged);
+    _anchoredController.itemPositions.removeListener(_handlePositionsChanged);
+    _anchoredController.dispose();
+    _scrollController.dispose();
 
     _dragOffsetNotifier.dispose();
     _focusNode.dispose();
@@ -148,7 +149,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   void _handlePositionsChanged() {
-    final positions = _itemPositionsListener.itemPositions.value;
+    if (_isCompensatingScroll) return;
+
+    final positions = _anchoredController.itemPositions.value;
     if (positions.isEmpty) return;
 
     _isUserScrolling = true;
@@ -157,16 +160,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _scrollIdleTimer = Timer(const Duration(milliseconds: 120), () {
       _isUserScrolling = false;
     });
+  }
 
-    int minIndex = _cachedMessages.length;
-    int maxIndex = 0;
-    for (final p in positions) {
-      if (p.index < minIndex) minIndex = p.index;
-      if (p.index > maxIndex) maxIndex = p.index;
-    }
+  void _handleScrollChanged() {
+    if (!_scrollController.hasClients) return;
 
-    final bool nearBottom = minIndex <= 2;
-    final bool showButton = !nearBottom && minIndex >= 8;
+    final double viewportHeight = _scrollController.position.viewportDimension;
+    if (viewportHeight <= 0) return;
+
+    final bool nearBottom = _scrollController.position.pixels <= 100;
+    final bool showButton = !nearBottom && _scrollController.position.pixels > (viewportHeight * 0.2);
 
     if (nearBottom != _userIsNearBottom || showButton != _showScrollButton) {
       setState(() {
@@ -179,7 +182,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   void _updateFloatingDate() {
     if (_cachedMessages.isEmpty) return;
 
-    final positions = _itemPositionsListener.itemPositions.value;
+    final positions = _anchoredController.itemPositions.value;
     if (positions.isEmpty) return;
 
     int maxIndex = 0;
@@ -218,12 +221,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   void _maybeAutoScroll({bool force = false}) {
-    if (!_itemScrollController.isAttached) return;
+    if (!_anchoredController.isAttached) return;
     if (_isUserScrolling && !force) return;
 
     if (force || _userIsNearBottom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_itemScrollController.isAttached) return;
+        if (!mounted || !_anchoredController.isAttached) return;
         _scrollToBottom(force: force);
       });
     }
@@ -231,17 +234,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   void _scrollToMessage(String? messageId) {
     if (messageId == null) return;
-    if (!_itemScrollController.isAttached) return;
+    if (!_anchoredController.isAttached) return;
     if (_cachedMessages.isEmpty) return;
 
     final index = _cachedMessages.indexWhere((m) => m.id == messageId);
     if (index == -1) return;
 
-    _itemScrollController.scrollTo(
-      index: index,
+    _anchoredController.animateToIndex(
+      index,
+      alignment: 0.3,
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeInOut,
-      alignment: 0.3,
     );
 
     setState(() => _highlightedIds.add(messageId));
@@ -251,17 +254,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   void _scrollToBottom({bool force = false}) {
-    if (!_itemScrollController.isAttached) return;
+    if (!_anchoredController.isAttached) return;
     setState(() => _newMessagesCount = 0);
-    _itemScrollController.scrollTo(
-      index: 0,
+    _anchoredController.animateToIndex(
+      0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
     );
   }
 
-  /// #2 — re-entrancy guard + per-message try/catch + rebuild suppression
-  /// during the local status write phase.
   Future<void> _markAllAsRead() async {
     if (!mounted) return;
     if (_isMarkingRead) {
@@ -374,8 +375,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         plaintext: text,
         replyToId: replyId,
         replyToContent: replyContent,
-        // #4: replyToSenderPubkey is not forwarded to RelayManager;
-        // the receiver side resolves the name via _resolveReplySenderPubkey.
         messageTimestampMs: messageTs,
       );
 
@@ -528,8 +527,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  /// #1 — re-read the list right before writing so we don't clobber messages
-  /// that arrived while `await sendReaction` was in flight.
   Future<void> _handleReaction(String emoji) async {
     final targetMessage = _messageForReaction;
     _messageForReaction = null;
@@ -786,7 +783,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     return AppSettings.formatDisplayName(senderPubkey);
   }
 
-  /// #4 — resolve the original sender via replyToId in local data.
   String _resolveReplySenderPubkey(ChatMessage message) {
     final replyId = message.replyToId;
     if (replyId != null) {
@@ -796,7 +792,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     return message.replyToSenderPubkey ?? message.senderPubkey;
   }
 
-  /// #5
   bool _canReplyTo(ChatMessage m) =>
       !m.id.startsWith('temp_') && !m.id.startsWith('pending_');
 
@@ -942,7 +937,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             child: ValueListenableBuilder(
               valueListenable: Hive.box('chats').listenable(),
               builder: (context, Box box, _) {
-                // #2 — freeze rebuild during the local status write phase.
                 if (_suppressChatRebuild && _lastChatListWidget != null) {
                   return _lastChatListWidget!;
                 }
@@ -955,6 +949,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                 } else {
                   _cachedMessages = [];
                 }
+
+                final int newCount = _cachedMessages.length;
+                if (_previousMessageCount >= 0 && newCount > _previousMessageCount) {
+                  final int delta = newCount - _previousMessageCount;
+                  if (!_userIsNearBottom) {
+                    if (_anchoredController.isAttached) {
+                      _isCompensatingScroll = true;
+                      _anchoredController.itemsInsertedAbove(delta);
+
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _isCompensatingScroll = false;
+                          _handlePositionsChanged();
+                        }
+                      });
+                    }
+                  }
+                }
+                _previousMessageCount = newCount;
 
                 if (_cachedMessages.isEmpty) {
                   return _lastChatListWidget = _buildEmptyState();
@@ -971,10 +984,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                         }
                         return false;
                       },
-                      child: ScrollablePositionedList.builder(
+                      child: AnchoredList.builder(
+                        controller: _anchoredController,
+                        scrollController: _scrollController,
                         itemCount: _cachedMessages.length,
-                        itemScrollController: _itemScrollController,
-                        itemPositionsListener: _itemPositionsListener,
                         reverse: true,
                         physics: const ClampingScrollPhysics(),
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -1323,15 +1336,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  // #12 + #23 — thin wrappers; all logic lives in _wrapDismissible.
   Widget _wrapMyDismissible(ChatMessage message) =>
       _wrapDismissible(message, Alignment.centerRight);
 
   Widget _wrapTheirDismissible(ChatMessage message) =>
       _wrapDismissible(message, Alignment.centerLeft);
 
-  /// #12 & #23 — only the bubble subtree rebuilds during a drag; the
-  /// bubble itself is reused via the ValueListenableBuilder `child`.
   Widget _wrapDismissible(ChatMessage message, Alignment alignment) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -1393,7 +1403,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  /// #23 — update offset without setState.
   void _onSwipeUpdate(ChatMessage message, DragUpdateDetails details) {
     if (_draggingId != null && _draggingId != message.id) return;
 
@@ -1406,7 +1415,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         (current + details.delta.dx * resistance).clamp(-70.0, 0.0).toDouble();
   }
 
-  /// #5 — reply only if the message already has a final id.
   void _onSwipeEnd(ChatMessage message) {
     final shouldReply =
         _draggingId == message.id && _dragOffsetNotifier.value <= -45;
@@ -1419,7 +1427,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _focusNode.requestFocus();
   }
 
-  /// #12 — used by both onHorizontalDragEnd and onHorizontalDragCancel.
   void _resetSwipe() {
     _draggingId = null;
     _dragOffsetNotifier.value = 0.0;
@@ -1564,7 +1571,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
-  /// #4 — quoted name uses the resolver.
   Widget _buildReplyInBubble(ChatMessage message, bool isMe) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;

@@ -25,6 +25,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.4.1"
+  anchored_list:
+    dependency: "direct main"
+    description:
+      name: anchored_list
+      sha256: "366c5c32a152ed7ffeeefb02511bd06aeccbf5ec0e8f47faf2df95619d067236"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.1"
   archive:
     dependency: transitive
     description:
