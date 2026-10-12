@@ -1,71 +1,20 @@
 // notification_handler.dart
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:isolate';
 import 'dart:ui' show IsolateNameServer;
-import 'package:crypto/crypto.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'chat_manager.dart';
-import 'core/crypto/nip17.dart';
-import 'core/crypto/nip04.dart';
+import 'chat_notification_handler.dart' as chat_notif;
+import 'call_notification_handler.dart';
 
-/// Background FCM handler (runs in separate isolate).
+// Re-export background handler so entry-point works correctly
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  await Hive.initFlutter();
-
-  final senderPubkey = message.data['senderPubkey'] ?? '';
-  final senderName = message.data['senderName'] ?? 'New Message';
-  final ciphertext = message.data['ciphertext'] ?? '';
-  final ephemeralPubkey = message.data['ephemeralPubkey'] ?? '';
-  final eventId = message.data['eventId'] ?? '';
-
-  if (senderPubkey.isEmpty || eventId.isEmpty) return;
-
-  final settingsBox = await Hive.openBox('settings');
-  final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
-  final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
-
-  String plaintext = 'You have a new message';
-  if (ciphertext.isNotEmpty && myPrivkey.isNotEmpty) {
-    try {
-      if (ephemeralPubkey.isNotEmpty) {
-        final giftWrapEvent = {
-          'pubkey': ephemeralPubkey,
-          'content': ciphertext,
-          'kind': 1059,
-        };
-        final nip17Result = await Nip17.unwrap(
-          giftWrapEvent: giftWrapEvent,
-          receiverPrivkey: myPrivkey,
-          receiverPubkey: myPubkey,
-        );
-        if (nip17Result.plaintext.isNotEmpty) {
-          plaintext = nip17Result.plaintext;
-        }
-      } else {
-        final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
-        if (decrypted.isNotEmpty) plaintext = decrypted;
-      }
-    } catch (_) {}
-  }
-
-  // Mark as notified so the foreground handler does not duplicate
-  await settingsBox.put('notified_$eventId', true);
-
-  await NotificationHandler.showChatNotification(
-    senderPubkey: senderPubkey,
-    senderName: senderName,
-    message: plaintext,
-    showActions: false,
-  );
+  return await chat_notif.firebaseMessagingBackgroundHandler(message);
 }
 
 @pragma('vm:entry-point')
@@ -79,38 +28,22 @@ class NotificationHandler {
   static final StreamController<Map<String, String>> onNotificationReply =
   StreamController<Map<String, String>>.broadcast();
 
-  // In-memory message history per contact (for MessagingStyle stacking)
-  static final Map<String, List<Map<String, String>>> _messageHistory = {};
-
   // Callback registry
   static void Function(String senderPubkey, String replyText)? onReplyCallback;
 
   // Channel & action constants
-  static const String _channelId = 'chat_me_urgent_channel';
-  static const String _channelName = 'Messages & Calls';
-  static const String _channelDescription = 'Notifications for chats and calls';
-  static const String _replyActionId = 'REPLY_ACTION';
-  static const String _markReadActionId = 'MARK_READ_ACTION';
-
-  // Notification grouping (all chat notifications share a single group)
-  static const String _groupKey = 'chatme_chat_group';
-  static const int _summaryNotificationId = 999999;
+  static const String _channelId = chat_notif.ChatNotificationHandler.channelId;
+  static const String _channelName = chat_notif.ChatNotificationHandler.channelName;
+  static const String _channelDescription = chat_notif.ChatNotificationHandler.channelDescription;
 
   // Track FCM subscriptions and init state
   static final List<StreamSubscription> _fcmSubscriptions = [];
   static bool _initialized = false;
 
-  /// Pubkey of the chat room currently open. Used to suppress notifications
-  /// for messages from that peer when the app is in foreground.
-  static String? activeChatPubkey;
-
-  /// Returns true if a notification from this sender should be suppressed
-  /// because the user is already viewing the chat in foreground.
-  static bool _shouldSuppressNotification(String senderPubkey) {
-    if (activeChatPubkey == null) return false;
-    if (senderPubkey != activeChatPubkey) return false;
-    final state = WidgetsBinding.instance.lifecycleState;
-    return state == AppLifecycleState.resumed;
+  /// Pubkey of the chat room currently open.
+  static String? get activeChatPubkey => chat_notif.ChatNotificationHandler.activeChatPubkey;
+  static set activeChatPubkey(String? value) {
+    chat_notif.ChatNotificationHandler.activeChatPubkey = value;
   }
 
   /// Initialize notification handler. Safe to call multiple times.
@@ -177,7 +110,9 @@ class NotificationHandler {
 
       // Foreground FCM: display as local notification
       _fcmSubscriptions.add(
-        FirebaseMessaging.onMessage.listen(_handleForegroundMessage),
+        FirebaseMessaging.onMessage.listen((message) {
+          chat_notif.ChatNotificationHandler.handleForegroundMessage(message, _plugin);
+        }),
       );
 
       // App resumed from background via notification tap
@@ -220,32 +155,6 @@ class NotificationHandler {
     }
   }
 
-  /// Handle foreground FCM message.
-  static void _handleForegroundMessage(RemoteMessage message) {
-    final senderPubkey = message.data['senderPubkey'] ?? '';
-    final senderName = message.data['senderName'] ?? 'New Message';
-    final body = message.notification?.body ?? message.data['body'] ?? '';
-    final eventId = message.data['eventId'] ?? '';
-
-    if (eventId.isNotEmpty) {
-      try {
-        final settingsBox = Hive.box('settings');
-        if (settingsBox.get('notified_$eventId') == true) {
-          return;
-        }
-        settingsBox.put('notified_$eventId', true);
-      } catch (_) {}
-    }
-
-    if (senderPubkey.isNotEmpty && body.isNotEmpty) {
-      showChatNotification(
-        senderPubkey: senderPubkey,
-        senderName: senderName,
-        message: body,
-      );
-    }
-  }
-
   /// Notification tap or action button pressed (foreground).
   @pragma('vm:entry-point')
   static void _onNotificationResponse(NotificationResponse response) {
@@ -265,12 +174,6 @@ class NotificationHandler {
     _onNotificationResponse(response);
   }
 
-  /// Stable notification ID derived from pubkey (survives app restarts).
-  static int _notificationId(String pubkey) {
-    final digest = sha256.convert(utf8.encode(pubkey)).bytes;
-    return ((digest[0] << 24) | (digest[1] << 16) | (digest[2] << 8) | digest[3]).abs() % 1000000;
-  }
-
   /// Show a chat notification with MessagingStyle stacking.
   static Future<void> showChatNotification({
     required String senderPubkey,
@@ -278,136 +181,25 @@ class NotificationHandler {
     required String message,
     bool showActions = true,
   }) async {
-    // Mobile-only feature: skip on web (plugin not supported)
     if (kIsWeb) return;
-
-    // Suppress if user is already viewing this chat in foreground
-    if (_shouldSuppressNotification(senderPubkey)) {
-      return;
-    }
-
-    // Append to history for this contact
-    final history = _messageHistory.putIfAbsent(senderPubkey, () => []);
-    history.add({
-      'sender': senderName,
-      'message': message,
-      'time': DateTime.now().millisecondsSinceEpoch.toString(),
-    });
-
-    // Cap history at 10 messages per contact
-    if (history.length > 10) {
-      history.removeAt(0);
-    }
-
-    // Build MessagingStyle messages
-    final List<Message> styleMessages = history
-        .map((m) => Message(
-      m['message']!,
-      DateTime.fromMillisecondsSinceEpoch(int.parse(m['time']!)),
-      Person(name: m['sender']!, key: senderPubkey, important: false),
-    ))
-        .toList();
-
-    final MessagingStyleInformation messagingStyle = MessagingStyleInformation(
-      const Person(name: 'You', key: 'me'),
-      conversationTitle: senderName,
-      groupConversation: false,
-      messages: styleMessages,
+    await chat_notif.ChatNotificationHandler.showChatNotification(
+      senderPubkey: senderPubkey,
+      senderName: senderName,
+      message: message,
+      showActions: showActions,
+      pluginInstance: _plugin,
     );
-
-    // Action: inline reply
-    const AndroidNotificationAction replyAction = AndroidNotificationAction(
-      _replyActionId,
-      'Reply',
-      inputs: [AndroidNotificationActionInput(label: 'Type a message...')],
-      showsUserInterface: false,
-      cancelNotification: false,
-    );
-
-    // Action: mark as read
-    const AndroidNotificationAction markReadAction = AndroidNotificationAction(
-      _markReadActionId,
-      'Mark as Read',
-      cancelNotification: true,
-    );
-
-    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      _channelId,
-      _channelName,
-      channelDescription: _channelDescription,
-      importance: Importance.high,
-      priority: Priority.high,
-      category: AndroidNotificationCategory.message,
-      visibility: NotificationVisibility.private,
-      styleInformation: messagingStyle,
-      actions: showActions ? [replyAction, markReadAction] : [],
-      groupKey: _groupKey,
-      icon: '@mipmap/ic_launcher',
-      autoCancel: true,
-      ongoing: false,
-      onlyAlertOnce: false,
-    );
-
-    final NotificationDetails details = NotificationDetails(android: androidDetails);
-    final int notifId = _notificationId(senderPubkey);
-
-    try {
-      await _plugin.show(notifId, senderName, message, details, payload: senderPubkey);
-      await _showSummaryIfNeeded();
-    } catch (e) {
-      debugPrint('[Notification] Show failed | $e');
-    }
-  }
-
-  /// Show or update the group summary notification.
-  static Future<void> _showSummaryIfNeeded() async {
-    final activeCount = _messageHistory.length;
-    if (activeCount < 2) return;
-
-    final total = _messageHistory.values.fold<int>(0, (sum, list) => sum + list.length);
-
-    const AndroidNotificationDetails summaryDetails = AndroidNotificationDetails(
-      _channelId,
-      _channelName,
-      channelDescription: _channelDescription,
-      importance: Importance.high,
-      priority: Priority.high,
-      category: AndroidNotificationCategory.message,
-      groupKey: _groupKey,
-      setAsGroupSummary: true,
-      icon: '@mipmap/ic_launcher',
-      autoCancel: true,
-    );
-
-    try {
-      await _plugin.show(
-        _summaryNotificationId,
-        'ChatMe',
-        '$total new messages from $activeCount conversation${activeCount > 1 ? "s" : ""}',
-        const NotificationDetails(android: summaryDetails),
-      );
-    } catch (e) {
-      debugPrint('[Notification] Summary show failed | $e');
-    }
+    await chat_notif.ChatNotificationHandler.showSummaryIfNeeded(_plugin);
   }
 
   /// Dismiss notification for a specific contact.
   static Future<void> clearNotification(String senderPubkey) async {
-    final int notifId = _notificationId(senderPubkey);
-    await _plugin.cancel(notifId);
-    _messageHistory.remove(senderPubkey);
-
-    if (_messageHistory.length < 2) {
-      await _plugin.cancel(_summaryNotificationId);
-    } else {
-      await _showSummaryIfNeeded();
-    }
+    await chat_notif.ChatNotificationHandler.clearNotification(senderPubkey, _plugin);
   }
 
   /// Dismiss all chat notifications.
   static Future<void> clearAllNotifications() async {
-    await _plugin.cancelAll();
-    _messageHistory.clear();
+    await chat_notif.ChatNotificationHandler.clearAllNotifications(_plugin);
   }
 
   /// Simple notification for calls / non-chat events.
@@ -417,29 +209,15 @@ class NotificationHandler {
     required String body,
     String? payload,
   }) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      _channelId,
-      _channelName,
+    await CallNotificationHandler.showNotification(
+      id: id,
+      title: title,
+      body: body,
+      payload: payload,
+      plugin: _plugin,
+      channelId: _channelId,
+      channelName: _channelName,
       channelDescription: _channelDescription,
-      importance: Importance.high,
-      priority: Priority.high,
-      category: AndroidNotificationCategory.call,
-      visibility: NotificationVisibility.public,
-      fullScreenIntent: true,
-      autoCancel: true,
-      icon: '@mipmap/ic_launcher',
     );
-
-    try {
-      await _plugin.show(
-        id,
-        title,
-        body,
-        const NotificationDetails(android: androidDetails),
-        payload: payload,
-      );
-    } catch (e) {
-      debugPrint('[Notification] Show simple failed | $e');
-    }
   }
 }
