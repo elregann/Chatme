@@ -102,9 +102,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     widget.relayManager.onMessageReceived = () async {
       if (!mounted) return;
 
-      _markAllAsRead();
-
-      if (!_userIsNearBottom) {
+      if (_userIsNearBottom) {
+        _markAllAsRead();
+      } else {
         setState(() => _newMessagesCount++);
       }
 
@@ -172,10 +172,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final bool showButton = !nearBottom && _scrollController.position.pixels > (viewportHeight * 0.2);
 
     if (nearBottom != _userIsNearBottom || showButton != _showScrollButton) {
+      final bool wasAwayFromBottom = !_userIsNearBottom;
       setState(() {
         _userIsNearBottom = nearBottom;
         _showScrollButton = showButton;
       });
+      if (nearBottom && wasAwayFromBottom) {
+        setState(() => _newMessagesCount = 0);
+        _markAllAsRead();
+      }
     }
   }
 
@@ -256,6 +261,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   void _scrollToBottom({bool force = false}) {
     if (!_anchoredController.isAttached) return;
     setState(() => _newMessagesCount = 0);
+    _markAllAsRead();
     _anchoredController.animateToIndex(
       0,
       duration: const Duration(milliseconds: 300),
@@ -1053,29 +1059,61 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                         right: 16,
                         child: GestureDetector(
                           onTap: () => _scrollToBottom(),
-                          child: Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isDark ? Colors.white10 : Colors.black12,
-                                width: 0.5,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isDark ? Colors.white10 : Colors.black12,
+                                    width: 0.5,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withAlpha(20),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    )
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  size: 24,
+                                ),
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha(20),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                )
-                              ],
-                            ),
-                            child: Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: isDark ? Colors.white70 : Colors.black87,
-                              size: 24,
-                            ),
+                              if (_newMessagesCount > 0)
+                                Positioned(
+                                  right: -2,
+                                  top: -2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 20,
+                                      minHeight: 20,
+                                    ),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        _newMessagesCount > 99 ? '99+' : '$_newMessagesCount',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
