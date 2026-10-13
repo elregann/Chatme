@@ -10,6 +10,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/crypto/nip17.dart';
 import 'core/crypto/nip04.dart';
+import 'core/utils/notification_profile.dart';
 import 'models/contact.dart';
 
 /// Background FCM handler for chat (runs in separate isolate).
@@ -133,6 +134,7 @@ class ChatNotificationHandler {
   }
 
   /// Show a chat notification with MessagingStyle stacking.
+  /// Name + avatar are resolved with the same rules as the in-app UI.
   static Future<void> showChatNotification({
     required String senderPubkey,
     required String senderName,
@@ -143,6 +145,15 @@ class ChatNotificationHandler {
     if (shouldSuppressNotification(senderPubkey)) {
       return;
     }
+
+    final profile = await NotificationProfile.resolve(senderPubkey);
+    final String displayName = profile.name;
+    final ByteArrayAndroidIcon? avatarIcon = profile.avatarPng != null
+        ? ByteArrayAndroidIcon(profile.avatarPng!)
+        : null;
+    final ByteArrayAndroidBitmap? avatarLargeIcon = profile.avatarPng != null
+        ? ByteArrayAndroidBitmap(profile.avatarPng!)
+        : null;
 
     // Fix Stale Message Bug: Check if unreadCount for this contact is 0 or box doesn't have unread history,
     // if so, clear stale history so old read messages don't reappear alongside new ones.
@@ -159,7 +170,7 @@ class ChatNotificationHandler {
     // Append to history for this contact
     final history = _messageHistory.putIfAbsent(senderPubkey, () => []);
     history.add({
-      'sender': senderName,
+      'sender': displayName,
       'message': message,
       'time': DateTime.now().millisecondsSinceEpoch.toString(),
     });
@@ -174,13 +185,18 @@ class ChatNotificationHandler {
         .map((m) => Message(
       m['message']!,
       DateTime.fromMillisecondsSinceEpoch(int.parse(m['time']!)),
-      Person(name: m['sender']!, key: senderPubkey, important: false),
+      Person(
+        name: m['sender']!,
+        key: senderPubkey,
+        important: false,
+        icon: avatarIcon,
+      ),
     ))
         .toList();
 
     final MessagingStyleInformation messagingStyle = MessagingStyleInformation(
       const Person(name: 'You', key: 'me'),
-      conversationTitle: senderName,
+      conversationTitle: displayName,
       groupConversation: false,
       messages: styleMessages,
     );
@@ -213,6 +229,7 @@ class ChatNotificationHandler {
       actions: showActions ? [replyAction, markReadAction] : [],
       groupKey: groupKey,
       icon: '@mipmap/ic_launcher',
+      largeIcon: avatarLargeIcon,
       autoCancel: true,
       ongoing: false,
       onlyAlertOnce: false,
@@ -223,7 +240,7 @@ class ChatNotificationHandler {
 
     if (pluginInstance != null) {
       try {
-        await pluginInstance.show(notifId, senderName, message, details, payload: senderPubkey);
+        await pluginInstance.show(notifId, displayName, message, details, payload: senderPubkey);
       } catch (e) {
         debugPrint('[Notification] Show failed | $e');
       }
