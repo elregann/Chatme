@@ -57,11 +57,17 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Mark as notified so the foreground handler does not duplicate
   await settingsBox.put('notified_$eventId', true);
 
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin.initialize(const InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+  ));
+
   await ChatNotificationHandler.showChatNotification(
     senderPubkey: senderPubkey,
     senderName: senderName,
     message: plaintext,
     showActions: false,
+    pluginInstance: plugin,
   );
 }
 
