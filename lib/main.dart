@@ -1,6 +1,5 @@
 // main.dart
 
-import 'package:remixicon/remixicon.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'dart:isolate';
@@ -8,12 +7,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:remixicon/remixicon.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'models/call_log.dart';
@@ -22,7 +21,6 @@ import 'notification_handler.dart';
 import 'services/network_manager.dart';
 import 'services/background_service.dart';
 import 'core/utils/debug_logger.dart';
-
 import 'room_chat.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
