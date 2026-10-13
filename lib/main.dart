@@ -142,23 +142,33 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               plaintext: input,
               relayManager: _relayManager,
             );
-          } else if (actionId == 'MARK_READ_ACTION' && payload != null) {
-            await NotificationHandler.clearNotification(payload);
-            await ChatManager.instance.clearUnreadCount(payload);
-
-            final myPubkey = AppSettings.instance.myPubkey;
-            final chatKey = ChatManager.instance.getChatKey(myPubkey, payload);
-            final messages = await ChatManager.instance.getMessages(payload);
-
-            for (final m in messages) {
-              if (m.senderPubkey == payload && m.status != 'read') {
-                await ChatManager.instance.updateMessageStatus(
-                  m.id, 'read', chatKey: chatKey,
-                );
-                await _relayManager.sendReceipt(m.id, payload, 'read');
-              }
+          } else if (actionId == 'MARK_READ_ACTION') {
+            if (payload == null || payload.isEmpty) {
+              return;
             }
-            _relayManager.onMessageReceived?.call();
+
+            try {
+              _relayManager.connectIfNeeded();
+              await Future.delayed(const Duration(milliseconds: 500));
+              await NotificationHandler.clearNotification(payload);
+              await ChatManager.instance.clearUnreadCount(payload);
+
+              final myPubkey = AppSettings.instance.myPubkey;
+              final chatKey = ChatManager.instance.getChatKey(myPubkey, payload);
+              final messages = await ChatManager.instance.getMessages(payload);
+
+              for (final m in messages) {
+                if (m.senderPubkey == payload && m.status != 'read') {
+                  await ChatManager.instance.updateMessageStatus(
+                    m.id, 'read', chatKey: chatKey,
+                  );
+                  await _relayManager.sendReceipt(m.id, payload, 'read');
+                }
+              }
+              _relayManager.onMessageReceived?.call();
+            } catch (e) {
+              DebugLogger.log('[Notification] MARK_READ_ACTION failed | $e', type: 'ERROR');
+            }
           }
         }
       });
@@ -217,22 +227,31 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   }
 
   void _navigateToChat(String pubkey) {
-    if (mounted) {
-      final contactsBox = Hive.box<Contact>('contacts');
-      final contact = contactsBox.get(pubkey) ?? Contact(
-        pubkey: pubkey,
-        name: AppSettings.formatDisplayName(pubkey),
-      );
+    if (pubkey.isEmpty) return;
 
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (context) => ChatDetailScreen(
-            contact: contact,
-            relayManager: _relayManager,
+    // Robust cold-start navigation check: ensure navigator is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (navigatorKey.currentState != null) {
+        final contactsBox = Hive.box<Contact>('contacts');
+        final contact = contactsBox.get(pubkey) ?? Contact(
+          pubkey: pubkey,
+          name: AppSettings.formatDisplayName(pubkey),
+        );
+
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => ChatDetailScreen(
+              contact: contact,
+              relayManager: _relayManager,
+            ),
           ),
-        ),
-      );
-    }
+        );
+      } else {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _navigateToChat(pubkey);
+        });
+      }
+    });
   }
 
   @override

@@ -10,6 +10,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/crypto/nip17.dart';
 import 'core/crypto/nip04.dart';
+import 'models/contact.dart';
 
 /// Background FCM handler for chat (runs in separate isolate).
 @pragma('vm:entry-point')
@@ -136,6 +137,18 @@ class ChatNotificationHandler {
     if (shouldSuppressNotification(senderPubkey)) {
       return;
     }
+
+    // Fix Stale Message Bug: Check if unreadCount for this contact is 0 or box doesn't have unread history,
+    // if so, clear stale history so old read messages don't reappear alongside new ones.
+    try {
+      if (Hive.isBoxOpen('contacts')) {
+        final contactsBox = Hive.box<Contact>('contacts');
+        final contact = contactsBox.get(senderPubkey);
+        if (contact != null && contact.unreadCount <= 1) {
+          _messageHistory.remove(senderPubkey);
+        }
+      }
+    } catch (_) {}
 
     // Append to history for this contact
     final history = _messageHistory.putIfAbsent(senderPubkey, () => []);
