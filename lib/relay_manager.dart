@@ -967,7 +967,7 @@ class RelayManager {
         }),
       ).timeout(const Duration(seconds: 10));
 
-      DebugLogger.log('[Cloudflare] Status ${response.statusCode}');
+      DebugLogger.log('[Cloudflare] Status ${response.statusCode}${response.statusCode != 200 ? ' | body: ${response.body}' : ''}');
     } catch (e) {
       DebugLogger.log('[Cloudflare] Error | $e', type: 'WARN');
     }
