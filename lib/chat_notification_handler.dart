@@ -61,7 +61,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(const InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    android: AndroidInitializationSettings('@drawable/ic_stat_chatme'),
   ));
 
   await ChatNotificationHandler.showChatNotification(
@@ -231,7 +231,8 @@ class ChatNotificationHandler {
       styleInformation: messagingStyle,
       actions: showActions ? [replyAction, markReadAction] : [],
       groupKey: groupKey,
-      icon: '@mipmap/ic_launcher',
+      icon: '@drawable/ic_stat_chatme',
+      color: const Color(0xFF2196F3),
       shortcutId: 'chat_shortcut_$senderPubkey',
       autoCancel: true,
       ongoing: false,
@@ -266,7 +267,8 @@ class ChatNotificationHandler {
       category: AndroidNotificationCategory.message,
       groupKey: groupKey,
       setAsGroupSummary: true,
-      icon: '@mipmap/ic_launcher',
+      icon: '@drawable/ic_stat_chatme',
+      color: Color(0xFF2196F3),
       autoCancel: true,
     );
 

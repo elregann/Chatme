@@ -25,7 +25,7 @@ class CallNotificationHandler {
       visibility: NotificationVisibility.public,
       fullScreenIntent: true,
       autoCancel: true,
-      icon: '@mipmap/ic_launcher',
+      icon: '@drawable/ic_stat_chatme',
     );
 
     try {

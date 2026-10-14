@@ -83,7 +83,7 @@ class NotificationHandler {
 
       // Setup local notification plugin
       const AndroidInitializationSettings androidSettings =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
+      AndroidInitializationSettings('@drawable/ic_stat_chatme');
       const InitializationSettings initSettings =
       InitializationSettings(android: androidSettings);
 
