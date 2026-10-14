@@ -12,6 +12,7 @@ import 'core/crypto/nip17.dart';
 import 'core/crypto/nip04.dart';
 import 'core/utils/notification_profile.dart';
 import 'models/contact.dart';
+import 'core/utils/shortcut_helper.dart';
 
 /// Background FCM handler for chat (runs in separate isolate).
 @pragma('vm:entry-point')
@@ -193,9 +194,14 @@ class ChatNotificationHandler {
 
     final MessagingStyleInformation messagingStyle = MessagingStyleInformation(
       const Person(name: 'You', key: 'me'),
-      conversationTitle: displayName,
       groupConversation: false,
       messages: styleMessages,
+    );
+
+    await ShortcutHelper.pushConversationShortcut(
+      id: senderPubkey,
+      name: displayName,
+      avatarBytes: profile.avatarPng,
     );
 
     // Action: inline reply
@@ -226,6 +232,7 @@ class ChatNotificationHandler {
       actions: showActions ? [replyAction, markReadAction] : [],
       groupKey: groupKey,
       icon: '@mipmap/ic_launcher',
+      shortcutId: 'chat_shortcut_$senderPubkey',
       autoCancel: true,
       ongoing: false,
       onlyAlertOnce: false,
