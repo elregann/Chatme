@@ -147,7 +147,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
             try {
               _relayManager.connectIfNeeded();
-              await Future.delayed(const Duration(milliseconds: 500));
+              await Future.delayed(const Duration(milliseconds: 800));
               await NotificationHandler.clearNotification(payload);
               await ChatManager.instance.clearUnreadCount(payload);
 

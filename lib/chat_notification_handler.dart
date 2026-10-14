@@ -151,9 +151,6 @@ class ChatNotificationHandler {
     final ByteArrayAndroidIcon? avatarIcon = profile.avatarPng != null
         ? ByteArrayAndroidIcon(profile.avatarPng!)
         : null;
-    final ByteArrayAndroidBitmap? avatarLargeIcon = profile.avatarPng != null
-        ? ByteArrayAndroidBitmap(profile.avatarPng!)
-        : null;
 
     // Fix Stale Message Bug: Check if unreadCount for this contact is 0 or box doesn't have unread history,
     // if so, clear stale history so old read messages don't reappear alongside new ones.
@@ -229,7 +226,6 @@ class ChatNotificationHandler {
       actions: showActions ? [replyAction, markReadAction] : [],
       groupKey: groupKey,
       icon: '@mipmap/ic_launcher',
-      largeIcon: avatarLargeIcon,
       autoCancel: true,
       ongoing: false,
       onlyAlertOnce: false,
