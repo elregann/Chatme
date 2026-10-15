@@ -530,6 +530,18 @@ class RelayManager {
       final callerPubkey = event['pubkey'];
 
       if (signalData['type'] == 'offer') {
+        try {
+          final declinedAt = Hive.box('settings')
+              .get('declined_call_$callerPubkey', defaultValue: 0) as int;
+          final offerMs = (event['created_at'] as int? ?? 0) * 1000;
+          if (declinedAt > 0 && offerMs <= declinedAt) {
+            DebugLogger.log('[Call] Offer ignored: already declined');
+            return;
+          }
+        } catch (e) {
+          debugPrint('[OfferCheck] error | $e');
+        }
+
         String finalDisplayName = AppSettings.formatDisplayName(callerPubkey);
         try {
           final contactBox = Hive.box<Contact>('contacts');

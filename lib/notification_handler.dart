@@ -10,6 +10,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'chat_manager.dart';
 import 'chat_notification_handler.dart' as chat_notif;
 import 'call_notification_handler.dart';
+import 'core/utils/background_call_signal.dart';
 
 // Re-export background handler so entry-point works correctly
 @pragma('vm:entry-point')
@@ -179,8 +180,17 @@ class NotificationHandler {
 
   /// Background action button handler.
   @pragma('vm:entry-point')
-  static void _onBackgroundNotificationResponse(NotificationResponse response) {
+  static Future<void> _onBackgroundNotificationResponse(NotificationResponse response) async {
+    // Forward to the app if it is alive (UI cleanup, pending call state).
     _onNotificationResponse(response);
+
+    // Decline: always tell the caller directly, with a fresh connection.
+    if (response.actionId == CallNotificationHandler.declineActionId) {
+      final callerPubkey = response.payload;
+      if (callerPubkey != null && callerPubkey.isNotEmpty) {
+        await BackgroundCallSignal.sendHangup(callerPubkey);
+      }
+    }
   }
 
   /// Show a chat notification with MessagingStyle stacking.

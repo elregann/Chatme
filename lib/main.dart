@@ -146,7 +146,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
           } else if (actionId == CallNotificationHandler.answerActionId) {
             _answerPendingCall(callerPubkey: payload?.toString());
           } else if (actionId == CallNotificationHandler.declineActionId) {
-            await _declinePendingCall();
+            await _declinePendingCall(callerPubkey: payload?.toString());
           } else if (actionId == 'MARK_READ_ACTION') {
             if (payload == null || payload.isEmpty) {
               return;
@@ -265,13 +265,32 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _declinePendingCall() async {
+  Future<void> _declinePendingCall({String? callerPubkey}) async {
     final pending = CallManager.instance.pendingIncoming;
-    if (pending == null) return;
-    CallManager.instance.pendingIncoming = null;
+    final target = pending?.callerPubkey ?? callerPubkey;
+    if (target == null || target.isEmpty) return;
 
-    await _relayManager.sendCallSignal(pending.callerPubkey, {'type': 'hangup'});
-    await CallManager.instance.stopCall(byUser: true);
+    try {
+      await Hive.box('settings').put(
+        'declined_call_$target',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {}
+
+    CallManager.instance.pendingIncoming = null;
+    CallManager.instance.autoAnswerPubkey = null;
+
+    if (pending == null) {
+      // Cold start: relays may not be connected yet, give them a moment.
+      _relayManager.connectIfNeeded();
+      await Future.delayed(const Duration(milliseconds: 1500));
+    }
+
+    await _relayManager.sendCallSignal(target, {'type': 'hangup'});
+
+    if (pending != null) {
+      await CallManager.instance.stopCall(byUser: true);
+    }
   }
 
   void _navigateToChat(String pubkey) {
