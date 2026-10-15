@@ -13,6 +13,7 @@ import 'core/crypto/nip04.dart';
 import 'core/utils/notification_profile.dart';
 import 'models/contact.dart';
 import 'core/utils/shortcut_helper.dart';
+import 'call_notification_handler.dart';
 
 /// Background FCM handler for chat (runs in separate isolate).
 @pragma('vm:entry-point')
@@ -27,6 +28,20 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final eventId = message.data['eventId'] ?? '';
 
   if (senderPubkey.isEmpty || eventId.isEmpty) return;
+
+  // Incoming call: ring and show Answer / Decline, skip chat handling.
+  if (message.data['type'] == 'call') {
+    final callPlugin = FlutterLocalNotificationsPlugin();
+    await callPlugin.initialize(const InitializationSettings(
+      android: AndroidInitializationSettings('@drawable/ic_stat_chatme'),
+    ));
+    await CallNotificationHandler.showIncomingCall(
+      plugin: callPlugin,
+      callerPubkey: senderPubkey,
+      callerName: senderName,
+    );
+    return;
+  }
 
   final settingsBox = await Hive.openBox('settings');
   final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;

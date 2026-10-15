@@ -28,6 +28,9 @@ import 'tab_contact.dart';
 import 'tab_profile.dart';
 import 'tab_chat.dart';
 import 'tab_calls.dart';
+import 'call.dart';
+import 'call_manager.dart';
+import 'call_notification_handler.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -140,6 +143,10 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               plaintext: input,
               relayManager: _relayManager,
             );
+          } else if (actionId == CallNotificationHandler.answerActionId) {
+            _answerPendingCall(callerPubkey: payload?.toString());
+          } else if (actionId == CallNotificationHandler.declineActionId) {
+            await _declinePendingCall();
           } else if (actionId == 'MARK_READ_ACTION') {
             if (payload == null || payload.isEmpty) {
               return;
@@ -222,6 +229,49 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     } catch (e) {
       DebugLogger.log("Battery optimization request failed: $e", type: 'ERROR');
     }
+  }
+
+  void _answerPendingCall({String? callerPubkey}) {
+    final pending = CallManager.instance.pendingIncoming;
+    if (pending == null) {
+      // Cold start: the offer has not arrived yet. Remember the tap.
+      if (callerPubkey != null && callerPubkey.isNotEmpty) {
+        CallManager.instance.autoAnswerPubkey = callerPubkey;
+        CallManager.instance.autoAnswerAtMs = DateTime.now().millisecondsSinceEpoch;
+        _relayManager.connectIfNeeded();
+      }
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null) {
+        // Navigator not ready yet (cold start): retry shortly.
+        Future.delayed(const Duration(milliseconds: 500), _answerPendingCall);
+        return;
+      }
+
+      CallManager.instance.pendingIncoming = null;
+      CallScreenNavigator.showCallScreen(
+        context: ctx,
+        peerName: pending.callerName,
+        peerPubkey: pending.callerPubkey,
+        isIncoming: true,
+        relay: _relayManager,
+        peerColor: pending.callerColor,
+        remoteSdp: pending.remoteSdp,
+        autoAccept: true,
+      );
+    });
+  }
+
+  Future<void> _declinePendingCall() async {
+    final pending = CallManager.instance.pendingIncoming;
+    if (pending == null) return;
+    CallManager.instance.pendingIncoming = null;
+
+    await _relayManager.sendCallSignal(pending.callerPubkey, {'type': 'hangup'});
+    await CallManager.instance.stopCall(byUser: true);
   }
 
   void _navigateToChat(String pubkey) {

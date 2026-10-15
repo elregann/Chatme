@@ -93,6 +93,15 @@ class NotificationHandler {
         onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationResponse,
       );
 
+      // Cold start: app was launched by tapping Answer on a call notification.
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      final launchResponse = launch?.notificationResponse;
+      if (launch?.didNotificationLaunchApp == true &&
+          launchResponse?.actionId == CallNotificationHandler.answerActionId) {
+        debugPrint('[Notification] Launched by Answer tap');
+        _onNotificationResponse(launchResponse!);
+      }
+
       // Create notification channel
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         _channelId,
@@ -200,6 +209,24 @@ class NotificationHandler {
   /// Dismiss all chat notifications.
   static Future<void> clearAllNotifications() async {
     await chat_notif.ChatNotificationHandler.clearAllNotifications(_plugin);
+  }
+
+  /// Incoming call heads-up with Answer / Decline.
+  static Future<void> showIncomingCall({
+    required String callerPubkey,
+    required String callerName,
+  }) async {
+    if (kIsWeb) return;
+    await CallNotificationHandler.showIncomingCall(
+      plugin: _plugin,
+      callerPubkey: callerPubkey,
+      callerName: callerName,
+    );
+  }
+
+  static Future<void> cancelIncomingCall() async {
+    if (kIsWeb) return;
+    await CallNotificationHandler.cancelIncomingCall(_plugin);
   }
 
   /// Simple notification for calls / non-chat events.

@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'call_manager.dart';
+import 'notification_handler.dart';
 import 'call.dart';
 import 'main.dart';
 import 'chat_manager.dart';
@@ -550,20 +551,38 @@ class RelayManager {
           incomingPeerColor,
         );
 
-        if (navigatorKey.currentContext != null) {
-          Navigator.push(
-            navigatorKey.currentContext!,
-            MaterialPageRoute(
-              builder: (context) => CallScreen(
-                peerName: finalDisplayName,
-                peerPubkey: callerPubkey,
-                isIncoming: true,
-                relay: this,
-                peerColor: incomingPeerColor,
-                remoteSdp: signalData['data'],
-                onClose: () {},
-              ),
-            ),
+        final cm = CallManager.instance;
+        cm.currentCallDirection = CallType.incoming;
+
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final bool answeredFromNotification =
+            cm.autoAnswerPubkey == callerPubkey &&
+                nowMs - cm.autoAnswerAtMs < 40000;
+        cm.autoAnswerPubkey = null;
+
+        if (answeredFromNotification && navigatorKey.currentContext != null) {
+          NotificationHandler.cancelIncomingCall();
+          CallScreenNavigator.showCallScreen(
+            context: navigatorKey.currentContext!,
+            peerName: finalDisplayName,
+            peerPubkey: callerPubkey,
+            isIncoming: true,
+            relay: this,
+            peerColor: incomingPeerColor,
+            remoteSdp: signalData['data'],
+            autoAccept: true,
+          );
+        } else {
+          cm.pendingIncoming = PendingIncomingCall(
+            callerPubkey: callerPubkey,
+            callerName: finalDisplayName,
+            callerColor: incomingPeerColor,
+            remoteSdp: signalData['data'],
+          );
+
+          NotificationHandler.showIncomingCall(
+            callerPubkey: callerPubkey,
+            callerName: finalDisplayName,
           );
         }
       } else if (signalData['type'] == 'answer') {
@@ -571,6 +590,8 @@ class RelayManager {
       } else if (signalData['type'] == 'candidate') {
         CallManager.instance.addCandidate(signalData['data']);
       } else if (signalData['type'] == 'hangup') {
+        CallManager.instance.pendingIncoming = null;
+        NotificationHandler.cancelIncomingCall();
         CallManager.instance.stopCall();
       }
     } catch (e) {
@@ -946,6 +967,7 @@ class RelayManager {
     required String senderName,
     required String ciphertext,
     required String ephemeralPubkey,
+    String type = 'chat',
   }) async {
     const workerUrl = 'https://chatme-notifier.cintanyanessa.workers.dev/';
     const secretKey = 'chatme2026secret';
@@ -964,6 +986,7 @@ class RelayManager {
           'senderName': senderName,
           'ciphertext': ciphertext,
           'ephemeralPubkey': ephemeralPubkey,
+          'type': type,
         }),
       ).timeout(const Duration(seconds: 10));
 
@@ -1290,6 +1313,26 @@ class RelayManager {
         if (_connectionStatus[entry.key] == true) {
           entry.value.sink.add(jsonEncode(["EVENT", wrapped.giftWrap]));
         }
+      }
+
+      // Wake up the receiver's device when it is closed or in background.
+      // Only the offer rings a phone; other signals stay relay-only.
+      if (signalData['type'] == 'offer') {
+        final contactsBox = Hive.box<Contact>('contacts');
+        final myContact = contactsBox.get(myPubkey);
+        final callerName = (myContact != null && myContact.isSaved)
+            ? myContact.displayName
+            : AppSettings.formatDisplayName(myPubkey);
+
+        _triggerCloudflareNotification(
+          receiverPubkey: recipientPubkey,
+          senderPubkey: myPubkey,
+          eventId: 'call_${DateTime.now().millisecondsSinceEpoch}',
+          senderName: callerName,
+          ciphertext: '',
+          ephemeralPubkey: '',
+          type: 'call',
+        );
       }
     } catch (e) {
       DebugLogger.log('[Call] Send signal failed | $e', type: 'ERROR');

@@ -16,6 +16,7 @@ class CallScreen extends StatefulWidget {
   final dynamic relay;
   final Color peerColor;
   final String? remoteSdp;
+  final bool autoAccept;
   final VoidCallback onClose;
 
   const CallScreen({
@@ -26,6 +27,7 @@ class CallScreen extends StatefulWidget {
     required this.relay,
     required this.peerColor,
     this.remoteSdp,
+    this.autoAccept = false,
     required this.onClose,
   })  : assert(peerPubkey != '',
   'CallScreen: peerPubkey must not be empty. '
@@ -78,10 +80,14 @@ class _CallScreenState extends State<CallScreen> {
           _startOutgoingCall();
         });
       } else {
-        // Panggil inisialisasi state incoming agar CallManager tahu ini panggilan masuk (mencegah missed call tercatat sebagai outgoing)
         _callManager.currentCallDirection = CallType.incoming;
         _callManager.setSessionInfo(widget.peerName, widget.peerPubkey, widget.peerColor);
         _startMissedCallTimeout();
+        if (widget.autoAccept) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _acceptIncomingCall();
+          });
+        }
       }
     }
   }
@@ -754,6 +760,7 @@ class CallScreenNavigator {
     required dynamic relay,
     required Color peerColor,
     String? remoteSdp,
+    bool autoAccept = false,
     VoidCallback? onCallEnded,
   }) async {
     if (_isShowing) {
@@ -776,6 +783,7 @@ class CallScreenNavigator {
             relay: relay,
             peerColor: peerColor,
             remoteSdp: remoteSdp,
+            autoAccept: autoAccept,
             onClose: onCallEnded ?? () {},
           ),
         ),

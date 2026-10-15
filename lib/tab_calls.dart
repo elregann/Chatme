@@ -227,7 +227,7 @@ class _CallsScreenState extends State<CallsScreen> {
           ],
         ),
         trailing: IconButton(
-          icon: const Icon(Remix.phone_fill, color: Colors.green),
+          icon: const Icon(Icons.phone, color: Colors.green),
           tooltip: 'Call',
           onPressed: () => _callPeer(context, log.peerPubkey, displayName),
         ),

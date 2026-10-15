@@ -34,6 +34,8 @@ class CallConstants {
     return {
       'iceServers': [
         {'urls': 'stun:stun.l.google.com:19302'},
+        {'urls': 'stun:stun1.l.google.com:19302'},
+        {'urls': 'stun:stun.cloudflare.com:3478'},
         {'urls': 'stun:stun.relay.metered.ca:80'},
         {
           'urls': [
@@ -92,10 +94,33 @@ class CallEvent {
   String toString() => '$event - ${timestamp.toIso8601String()} ${data != null ? '- $data' : ''}';
 }
 
+/// Incoming offer waiting for the user to tap Answer on the notification.
+class PendingIncomingCall {
+  final String callerPubkey;
+  final String callerName;
+  final Color callerColor;
+  final String remoteSdp;
+  final int receivedAtMs;
+
+  PendingIncomingCall({
+    required this.callerPubkey,
+    required this.callerName,
+    required this.callerColor,
+    required this.remoteSdp,
+  }) : receivedAtMs = DateTime.now().millisecondsSinceEpoch;
+}
+
 class CallManager {
   // Singleton
   static final CallManager instance = CallManager._internal();
   CallManager._internal();
+
+  /// Set when an offer arrives and cleared when answered, declined or hung up.
+  PendingIncomingCall? pendingIncoming;
+
+  /// Set when Answer was tapped before the offer arrived (cold start).
+  String? autoAnswerPubkey;
+  int autoAnswerAtMs = 0;
 
   // WebRTC state
   rtc.RTCPeerConnection? _peerConnection;
