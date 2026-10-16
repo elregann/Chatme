@@ -14,6 +14,7 @@ import 'core/utils/notification_profile.dart';
 import 'models/contact.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'call_notification_handler.dart';
+import 'core/utils/bg_inbox.dart';
 
 /// Background FCM handler for chat (runs in separate isolate).
 @pragma('vm:entry-point')
@@ -48,6 +49,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
 
   String plaintext = 'You have a new message';
+  String rumorId = '';
   if (ciphertext.isNotEmpty && myPrivkey.isNotEmpty) {
     try {
       if (ephemeralPubkey.isNotEmpty) {
@@ -64,15 +66,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         if (nip17Result.plaintext.isNotEmpty) {
           plaintext = nip17Result.plaintext;
         }
+        rumorId = nip17Result.rumorId;
       } else {
         final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
         if (decrypted.isNotEmpty) plaintext = decrypted;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[BgFcm] decode failed | $e');
+    }
   }
 
   // Mark as notified so the foreground handler does not duplicate
   await settingsBox.put('notified_$eventId', true);
+
+  if (rumorId.isNotEmpty) {
+    try {
+      await BgInbox.addUnread(senderPubkey, rumorId);
+    } catch (e) {
+      debugPrint('[BgFcm] record failed | $e');
+    }
+  }
 
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(const InitializationSettings(
@@ -83,7 +96,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     senderPubkey: senderPubkey,
     senderName: senderName,
     message: plaintext,
-    showActions: false,
+    showActions: true,
     pluginInstance: plugin,
   );
 }
@@ -93,7 +106,7 @@ class ChatNotificationHandler {
   static final Map<String, List<Map<String, String>>> _messageHistory = {};
 
   // Channel & action constants
-  static const String channelId = 'chat_me_urgent_channel';
+  static const String channelId = 'chat_me_urgent_channel_v2';
   static const String channelName = 'Messages & Calls';
   static const String channelDescription = 'Notifications for chats and calls';
   static const String replyActionId = 'REPLY_ACTION';
@@ -223,7 +236,7 @@ class ChatNotificationHandler {
     const AndroidNotificationAction replyAction = AndroidNotificationAction(
       replyActionId,
       'Reply',
-      inputs: [AndroidNotificationActionInput(label: 'Type a message...')],
+      inputs: [AndroidNotificationActionInput(label: 'Message')],
       showsUserInterface: false,
       cancelNotification: false,
     );
@@ -232,6 +245,7 @@ class ChatNotificationHandler {
     const AndroidNotificationAction markReadAction = AndroidNotificationAction(
       markReadActionId,
       'Mark as Read',
+      showsUserInterface: false,
       cancelNotification: true,
     );
 

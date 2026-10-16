@@ -21,6 +21,7 @@ import 'notification_handler.dart';
 import 'services/network_manager.dart';
 import 'services/background_service.dart';
 import 'core/utils/debug_logger.dart';
+import 'core/utils/bg_inbox.dart';
 import 'room_chat.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
@@ -180,6 +181,8 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     }
 
     NotificationHandler.init(relayManager: _relayManager);
+    // Wait for relays to deliver the messages before applying the read note.
+    Future.delayed(const Duration(seconds: 6), _applyPendingReads);
     _relayManager.precacheAllProfilePictures();
     WidgetsBinding.instance.addObserver(this);
 
@@ -290,6 +293,40 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
     if (pending != null) {
       await CallManager.instance.stopCall(byUser: true);
+    }
+  }
+
+  /// Applies "mark as read" taps done while the app was closed.
+  Future<void> _applyPendingReads() async {
+    try {
+      // Ids recorded while the app was closed are obsolete now.
+      await BgInbox.clearAllUnread();
+
+      final reads = await BgInbox.takeReads();
+      for (final entry in reads.entries) {
+        final peer = entry.key;
+        final readIds = entry.value.toSet();
+        final myPubkey = AppSettings.instance.myPubkey;
+        final chatKey = ChatManager.instance.getChatKey(myPubkey, peer);
+
+        final messages = await ChatManager.instance.getMessages(peer);
+        bool stillUnread = false;
+        for (final m in messages) {
+          if (m.senderPubkey != peer) continue;
+          if (readIds.contains(m.id)) {
+            if (m.status != 'read') {
+              await ChatManager.instance.updateMessageStatus(
+                m.id, 'read', chatKey: chatKey,
+              );
+            }
+          } else if (m.status != 'read') {
+            stillUnread = true;
+          }
+        }
+        if (!stillUnread) await ChatManager.instance.clearUnreadCount(peer);
+      }
+    } catch (e) {
+      DebugLogger.log('[Notification] Apply pending reads failed | $e', type: 'ERROR');
     }
   }
 
