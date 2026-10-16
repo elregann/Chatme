@@ -277,6 +277,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     }
     _isMarkingRead = true;
     final peerPubkey = widget.contact.pubkey;
+    final myPubkey = AppSettings.instance.myPubkey;
+    final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
 
     try {
       do {
@@ -304,7 +306,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         try {
           for (final id in sentIds) {
             try {
-              await ChatManager.instance.updateMessageStatus(id, 'read');
+              // Pass chatKey directly to avoid a full scan of all chat boxes.
+              await ChatManager.instance.updateMessageStatus(id, 'read', chatKey: chatKey);
             } catch (e) {
               DebugLogger.log('[Chat] updateMessageStatus failed | $e', type: 'ERROR');
             }

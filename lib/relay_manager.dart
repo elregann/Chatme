@@ -757,7 +757,13 @@ class RelayManager {
               status,
               chatKey: chatKey,
             );
-            return applied ? true : false;
+            // Notify the UI so the sender's chat screen reflects the new
+            // 'read' status immediately — without this the Hive update was
+            // silent and the double-tick never turned blue in foreground.
+            if (applied) onMessageReceived?.call();
+            // Always mark the receipt event as processed so the same gift
+            // wrap is not retried from other relays.
+            return true;
           }
         }
       }
@@ -857,7 +863,10 @@ class RelayManager {
       final chatKey = ChatManager.instance.getChatKey(myPubkey, senderPubkey);
       final message = await ChatManager.instance.getMessageById(originalMessageId, chatKey);
 
-      if (message == null) return false;
+      // Message not found — could be out-of-order delivery, but returning
+      // false here causes repeated retries from other relays with no effect.
+      // Return true so the event is marked processed.
+      if (message == null) return true;
 
       if (message.senderPubkey != myPubkey) return true;
 
