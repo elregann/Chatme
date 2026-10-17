@@ -591,6 +591,10 @@ class RelayManager {
             callerColor: incomingPeerColor,
             remoteSdp: signalData['data'],
           );
+          cm.activePeerPubkey = callerPubkey;
+          cm.activePeerName = finalDisplayName;
+          cm.activePeerColor = incomingPeerColor;
+          cm.currentCallDirection = CallType.incoming;
 
           NotificationHandler.showIncomingCall(
             callerPubkey: callerPubkey,

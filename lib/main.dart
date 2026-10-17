@@ -272,9 +272,13 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   Future<void> _declinePendingCall({String? callerPubkey}) async {
     final pending = CallManager.instance.pendingIncoming;
     final target = pending?.callerPubkey ?? callerPubkey;
+    final callerName = pending?.callerName ?? 'Kontak';
     if (target == null || target.isEmpty) return;
 
     try {
+      if (!Hive.isBoxOpen('settings')) {
+        await Hive.openBox('settings');
+      }
       await Hive.box('settings').put(
         'declined_call_$target',
         DateTime.now().millisecondsSinceEpoch,
@@ -292,8 +296,44 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
     await _relayManager.sendCallSignal(target, {'type': 'hangup'});
 
-    if (pending != null) {
-      await CallManager.instance.stopCall(byUser: true);
+    // Explicitly save CallLog and incoming call ChatMessage so it appears in room chat and calls tab immediately
+    try {
+      if (!Hive.isBoxOpen('call_logs')) {
+        await Hive.openBox<CallLog>('call_logs');
+      }
+      final callLogEntry = CallLog(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        peerPubkey: target,
+        peerName: callerName,
+        direction: 'incoming',
+        mediaType: 'voice',
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        durationSeconds: 0,
+      );
+      Hive.box<CallLog>('call_logs').add(callLogEntry);
+    } catch (e) {
+      debugPrint('[Call] Error saving CallLog on decline: $e');
+    }
+
+    try {
+      final myPubkey = AppSettings.instance.myPubkey;
+      if (myPubkey.isNotEmpty) {
+        final chatKey = ChatManager.instance.getChatKey(myPubkey, target);
+        const callMsgContent = '[CALL]:incoming:voice:duration:0';
+        final chatMsg = ChatMessage(
+          id: 'call_${DateTime.now().millisecondsSinceEpoch}',
+          senderPubkey: target,
+          receiverPubkey: myPubkey,
+          content: callMsgContent,
+          plaintext: callMsgContent,
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+          status: 'read',
+          chatKey: chatKey,
+        );
+        ChatManager.instance.saveMessage(chatMsg);
+      }
+    } catch (e) {
+      debugPrint('[Call] Error saving ChatMessage call record on decline: $e');
     }
   }
 
