@@ -181,8 +181,9 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     }
 
     NotificationHandler.init(relayManager: _relayManager);
-    // Wait for relays to deliver the messages before applying the read note.
-    Future.delayed(const Duration(seconds: 6), _applyPendingReads);
+    _applyPendingReads();
+    // Re-check after relays deliver initial batch
+    Future.delayed(const Duration(seconds: 4), _applyPendingReads);
     _relayManager.precacheAllProfilePictures();
     WidgetsBinding.instance.addObserver(this);
 
@@ -302,7 +303,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       // Ids recorded while the app was closed are obsolete now.
       await BgInbox.clearAllUnread();
 
-      final reads = await BgInbox.takeReads();
+      final reads = await BgInbox.peekReads();
       for (final entry in reads.entries) {
         final peer = entry.key;
         final readIds = entry.value.toSet();
@@ -319,6 +320,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
                 m.id, 'read', chatKey: chatKey,
               );
             }
+            await BgInbox.consumeRead(peer, m.id);
           } else if (m.status != 'read') {
             stillUnread = true;
           }

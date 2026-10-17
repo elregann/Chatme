@@ -10,6 +10,7 @@ import 'core/utils/debug_logger.dart';
 import 'models/chat_message.dart';
 import 'services/nostr_service.dart';
 import 'relay_manager.dart';
+import 'core/utils/bg_inbox.dart';
 
 class ChatManager {
   static final ChatManager _instance = ChatManager._internal();
@@ -72,6 +73,16 @@ class ChatManager {
         List<ChatMessage> messages = (rawData is List)
             ? rawData.cast<ChatMessage>().toList()
             : [];
+
+        // If this message was marked as read while in background, preserve 'read' status
+        if (message.status != 'read') {
+          try {
+            if (await BgInbox.isMarkedRead(message.senderPubkey, message.id)) {
+              message = message.copyWith(status: 'read');
+              await BgInbox.consumeRead(message.senderPubkey, message.id);
+            }
+          } catch (_) {}
+        }
 
         final existingIndex = messages.indexWhere((m) => m.id == message.id);
 

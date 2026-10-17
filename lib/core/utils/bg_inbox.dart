@@ -57,6 +57,48 @@ class BgInbox {
     }
   }
 
+  /// Check if a specific message ID was marked as read while app was in background.
+  static Future<bool> isMarkedRead(String peer, String id) async {
+    try {
+      final dir = await _dir();
+      final file = File('${dir.path}/r_${peer}_$id');
+      return await file.exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Remove a specific read marker once applied to Hive.
+  static Future<void> consumeRead(String peer, String id) async {
+    try {
+      final dir = await _dir();
+      final file = File('${dir.path}/r_${peer}_$id');
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  /// Returns {peer: [ids]} for every recorded read without removing them prematurely.
+  static Future<Map<String, List<String>>> peekReads() async {
+    final dir = await _dir();
+    final result = <String, List<String>>{};
+    try {
+      await for (final entity in dir.list()) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!name.startsWith('r_')) continue;
+        final rest = name.substring(2);
+        final sep = rest.indexOf('_');
+        if (sep <= 0) continue;
+        result
+            .putIfAbsent(rest.substring(0, sep), () => [])
+            .add(rest.substring(sep + 1));
+      }
+    } catch (_) {}
+    return result;
+  }
+
   /// Returns {peer: [ids]} for every recorded read and removes the notes.
   static Future<Map<String, List<String>>> takeReads() async {
     final dir = await _dir();

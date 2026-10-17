@@ -763,7 +763,7 @@ class RelayManager {
             if (applied) onMessageReceived?.call();
             // Always mark the receipt event as processed so the same gift
             // wrap is not retried from other relays.
-            return true;
+            return true; // return applied;
           }
         }
       }
@@ -826,8 +826,10 @@ class RelayManager {
       await ChatManager.instance.repairPendingReplies(chatKey);
 
       // If saveMessage only updated an existing entry (i.e. this is a
-      // duplicate), do not increment the unread badge.
-      final bool alreadyExistsActual = !newlySaved;
+      // duplicate), or if the message is already marked as read, do not increment the unread badge.
+      final savedMsg = await ChatManager.instance.getMessageById(actualEventId, chatKey);
+      final bool isAlreadyRead = savedMsg?.status == 'read';
+      final bool alreadyExistsActual = !newlySaved || isAlreadyRead;
       await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExistsActual);
 
       if (onMessageReceived != null) onMessageReceived!();
