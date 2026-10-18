@@ -581,23 +581,22 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: GestureDetector(
                       onTap: () => Navigator.pop(context, true),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
-                          color: Colors.red.withAlpha(15),
+                          color: Colors.red,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.red.withAlpha(40), width: 0.5),
                         ),
-                        child: Center(
+                        child: const Center(
                           child: Text(
                             'Delete all',
                             style: TextStyle(
                               fontSize: 13,
-                              color: Colors.red.withAlpha(200),
+                              color: Colors.white,
                               fontWeight: FontWeight.w500,
                             ),
                           ),

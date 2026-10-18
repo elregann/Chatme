@@ -271,10 +271,193 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
               ),
             ),
 
+            if (hasHandle) ...[
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: _isLoading ? null : _showDisconnectDialog,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.withAlpha(40), width: 0.5),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.link_off_rounded, size: 16, color: Colors.red.withAlpha(200)),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Disconnect ID',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.red.withAlpha(200)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+
             const SizedBox(height: 40),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _showDisconnectDialog() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
+    final textPrimary = isDark ? Colors.white : Colors.black;
+    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final currentHandle = AppSettings.instance.myNip05;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: bgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Disconnect ID',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          currentHandle,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withAlpha(15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.withAlpha(30), width: 0.5),
+                    ),
+                    child: Icon(Icons.link_off_rounded, size: 18, color: Colors.red.withAlpha(200)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Divider(height: 0.5, thickness: 0.5, color: borderColor),
+              const SizedBox(height: 16),
+              Text(
+                'Your unique username will be released and removed from your profile. This action cannot be undone.',
+                style: TextStyle(fontSize: 13, color: textSecondary, height: 1.5),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context, false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: borderColor, width: 0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Keep ID',
+                            style: TextStyle(fontSize: 13, color: textSecondary),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context, true),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'Disconnect',
+                            style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() => _isLoading = true);
+      try {
+        const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
+        final db = FirebaseDatabase.instanceFor(app: Firebase.app(), databaseURL: rtdbUrl);
+        final pubkey = AppSettings.instance.myPubkey;
+        final oldNip05 = AppSettings.instance.myNip05;
+
+        if (oldNip05.isNotEmpty) {
+          final oldName = oldNip05.split('@')[0];
+          await db.ref("usernames/$oldName").remove();
+          await db.ref("users/$pubkey").remove();
+        }
+
+        await AppSettings.instance.updateNip05('', false);
+        try {
+          await widget.relayManager?.broadcastProfileKind0();
+        } catch (_) {}
+
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _controller.clear();
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Global ID disconnected', style: TextStyle(color: Colors.white)),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to disconnect: $e', style: const TextStyle(color: Colors.white)),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 }
