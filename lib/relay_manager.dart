@@ -1206,7 +1206,7 @@ class RelayManager {
     }
   }
 
-  Future<void> broadcastProfileKind0({String? photoUrl}) async {
+  Future<void> broadcastProfileKind0({String? photoUrl, bool removePhoto = false}) async {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
       final myPrivkey = AppSettings.instance.myPrivkey;
@@ -1214,11 +1214,20 @@ class RelayManager {
           ? AppSettings.instance.myNip05.split('@')[0]
           : AppSettings.formatDisplayName(myPubkey);
 
+      String? effectivePhotoUrl = photoUrl;
+      if (removePhoto) {
+        effectivePhotoUrl = null;
+      } else if (photoUrl == null) {
+        effectivePhotoUrl = AppSettings.instance.myPhotoUrl.isNotEmpty
+            ? AppSettings.instance.myPhotoUrl
+            : null;
+      }
+
       final content = jsonEncode({
         'name': myName,
         if (AppSettings.instance.myNip05.isNotEmpty)
           'nip05': AppSettings.instance.myNip05,
-        if (photoUrl != null) 'picture': photoUrl,
+        if (effectivePhotoUrl != null && effectivePhotoUrl.isNotEmpty) 'picture': effectivePhotoUrl,
       });
 
       final unsignedEvent = {
@@ -1239,8 +1248,8 @@ class RelayManager {
         }
       }
 
-      if (photoUrl != null && photoUrl.isNotEmpty) {
-        _profilePics.put(myPubkey, photoUrl);
+      if (effectivePhotoUrl != null && effectivePhotoUrl.isNotEmpty) {
+        _profilePics.put(myPubkey, effectivePhotoUrl);
       } else {
         _profilePics.delete(myPubkey);
       }

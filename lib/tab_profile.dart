@@ -155,7 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     AppSettings.instance.savePhotoPath('');
                     AppSettings.instance.savePhotoUrl('');
                     // Broadcast to the relay that the photo has been deleted
-                    widget.relayManager.broadcastProfileKind0(photoUrl: null);
+                    widget.relayManager.broadcastProfileKind0(removePhoto: true);
                   },
                   child: Container(
                     width: double.infinity,
@@ -775,7 +775,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.12.4-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.12.5-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),
