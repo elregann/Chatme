@@ -183,7 +183,8 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     NotificationHandler.init(relayManager: _relayManager);
     _applyPendingReads();
     // Re-check after relays deliver initial batch
-    Future.delayed(const Duration(seconds: 4), _applyPendingReads);
+    Future.delayed(const Duration(seconds: 6), _applyPendingReads);
+    _applyPendingDeclines();
     _relayManager.precacheAllProfilePictures();
     WidgetsBinding.instance.addObserver(this);
 
@@ -272,7 +273,11 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   Future<void> _declinePendingCall({String? callerPubkey}) async {
     final pending = CallManager.instance.pendingIncoming;
     final target = pending?.callerPubkey ?? callerPubkey;
-    final callerName = pending?.callerName ?? 'Kontak';
+    final callerName = pending?.callerName ??
+        (callerPubkey != null && callerPubkey.isNotEmpty
+            ? (Hive.box<Contact>('contacts').get(callerPubkey)?.displayName ??
+            AppSettings.formatDisplayName(callerPubkey))
+            : 'Kontak');
     if (target == null || target.isEmpty) return;
 
     try {
@@ -335,6 +340,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('[Call] Error saving ChatMessage call record on decline: $e');
     }
+    CallManager.instance.clearIdleSession();
   }
 
   /// Applies "mark as read" taps done while the app was closed.
@@ -369,6 +375,46 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       }
     } catch (e) {
       DebugLogger.log('[Notification] Apply pending reads failed | $e', type: 'ERROR');
+    }
+  }
+
+  /// Saves records of calls declined from the notification while the app was closed.
+  Future<void> _applyPendingDeclines() async {
+    try {
+      final declined = await BgInbox.takeDeclinedCalls();
+      for (final d in declined) {
+        final peer = d.key;
+        final ts = d.value;
+        final contact = Hive.box<Contact>('contacts').get(peer);
+        final name = contact?.displayName ?? AppSettings.formatDisplayName(peer);
+
+        await Hive.box<CallLog>('call_logs').add(CallLog(
+          id: ts.toString(),
+          peerPubkey: peer,
+          peerName: name,
+          direction: 'incoming',
+          mediaType: 'voice',
+          timestamp: ts,
+          durationSeconds: 0,
+        ));
+
+        final myPubkey = AppSettings.instance.myPubkey;
+        if (myPubkey.isNotEmpty) {
+          const content = '[CALL]:incoming:voice:duration:0';
+          await ChatManager.instance.saveMessage(ChatMessage(
+            id: 'call_$ts',
+            senderPubkey: peer,
+            receiverPubkey: myPubkey,
+            content: content,
+            plaintext: content,
+            timestamp: ts,
+            status: 'read',
+            chatKey: ChatManager.instance.getChatKey(myPubkey, peer),
+          ));
+        }
+      }
+    } catch (e) {
+      DebugLogger.log('[Call] Apply declined calls failed | $e', type: 'ERROR');
     }
   }
 

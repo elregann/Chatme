@@ -13,6 +13,7 @@ import 'chat_manager.dart';
 import 'chat_notification_handler.dart' as chat_notif;
 import 'core/utils/background_call_signal.dart';
 import 'core/utils/background_chat_actions.dart';
+import 'core/utils/bg_inbox.dart';
 
 /// Entry point for FCM messages received while the app is in background or
 /// closed. The real work lives in chat_notification_handler.dart.
@@ -47,6 +48,10 @@ Future<void> backgroundNotificationResponseHandler(NotificationResponse response
   if (peerPubkey == null || peerPubkey.isEmpty) return;
 
   if (response.actionId == CallNotificationHandler.declineActionId) {
+    // App is not running: leave a note so it saves the call record when opened.
+    if (!appIsAlive) {
+      await BgInbox.recordDeclinedCall(peerPubkey);
+    }
     // Always tell the caller directly: relying on the app's own connection
     // fails when the app is only paused in the background.
     await BackgroundCallSignal.sendHangup(peerPubkey);

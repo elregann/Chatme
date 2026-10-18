@@ -234,6 +234,16 @@ class CallManager {
     activePeerColor = color;
   }
 
+  /// Clears session info left behind by a declined (never answered) call.
+  /// Does nothing while a call is in progress.
+  void clearIdleSession() {
+    if (_sharedCallState != CallState.idle) return;
+    activePeerName = null;
+    activePeerPubkey = null;
+    activePeerColor = null;
+    currentCallDirection = CallType.outgoing;
+  }
+
   // State management
   void _setCallState(CallState newState) {
     if (_sharedCallState == newState) return;

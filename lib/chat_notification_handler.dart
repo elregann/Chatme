@@ -44,6 +44,16 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     return;
   }
 
+  // Caller hung up or timed out: dismiss the ringing notification.
+  if (message.data['type'] == 'call_cancel') {
+    final cancelPlugin = FlutterLocalNotificationsPlugin();
+    await cancelPlugin.initialize(const InitializationSettings(
+      android: AndroidInitializationSettings('@drawable/ic_stat_chatme'),
+    ));
+    await cancelPlugin.cancel(CallNotificationHandler.incomingCallNotificationId);
+    return;
+  }
+
   final settingsBox = await Hive.openBox('settings');
   final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
   final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;

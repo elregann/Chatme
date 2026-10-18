@@ -1327,6 +1327,11 @@ class RelayManager {
 
       if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
 
+      // Capture now: the state changes while the signal is being wrapped.
+      final bool callerNotConnected =
+          CallManager.instance.currentCallDirection == CallType.outgoing &&
+              CallManager.instance.callState != CallState.active;
+
       final plaintext = 'CALL_SIGNAL:${jsonEncode(signalData)}';
 
       final wrapped = await Nip17.wrap(
@@ -1361,6 +1366,22 @@ class RelayManager {
           type: 'call',
         );
       }
+
+      // The caller gave up before the call was answered (cancel or timeout):
+      // also dismiss the ringing notification on the receiver's device.
+      // Only the caller's side sends this; a receiver declining is skipped.
+      if (signalData['type'] == 'hangup' && callerNotConnected) {
+        _triggerCloudflareNotification(
+          receiverPubkey: recipientPubkey,
+          senderPubkey: myPubkey,
+          eventId: 'cancel_${DateTime.now().millisecondsSinceEpoch}',
+          senderName: 'ChatMe',
+          ciphertext: '',
+          ephemeralPubkey: '',
+          type: 'call_cancel',
+        );
+      }
+
     } catch (e) {
       DebugLogger.log('[Call] Send signal failed | $e', type: 'ERROR');
     }

@@ -119,4 +119,31 @@ class BgInbox {
     }
     return result;
   }
+
+  /// Note that a call from [peer] was declined while the app was closed.
+  static Future<void> recordDeclinedCall(String peer) async {
+    final dir = await _dir();
+    await File('${dir.path}/d_${peer}_${DateTime.now().millisecondsSinceEpoch}')
+        .create();
+  }
+
+  /// Returns (peer, time in ms) for every declined-call note and removes them.
+  static Future<List<MapEntry<String, int>>> takeDeclinedCalls() async {
+    final dir = await _dir();
+    final result = <MapEntry<String, int>>[];
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!name.startsWith('d_')) continue;
+      final rest = name.substring(2);
+      final sep = rest.lastIndexOf('_');
+      if (sep <= 0) continue;
+      final ts = int.tryParse(rest.substring(sep + 1)) ?? 0;
+      result.add(MapEntry(rest.substring(0, sep), ts));
+      try {
+        await entity.delete();
+      } catch (_) {}
+    }
+    return result;
+  }
 }
