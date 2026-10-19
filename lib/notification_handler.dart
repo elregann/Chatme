@@ -137,6 +137,18 @@ class NotificationHandler {
         _onNotificationResponse(launchResponse!);
       }
 
+      // Cold start: the app was opened by tapping a chat or "Missed Call"
+      // notification. The ringing call notification is excluded.
+      if (launch?.didNotificationLaunchApp == true &&
+          launchResponse != null &&
+          (launchResponse.actionId == null || launchResponse.actionId!.isEmpty) &&
+          launchResponse.id != CallNotificationHandler.incomingCallNotificationId) {
+        final String? tappedPeer = launchResponse.payload;
+        if (tappedPeer != null && tappedPeer.isNotEmpty) {
+          onNotificationClick.add(tappedPeer);
+        }
+      }
+
       // Chat notification channel
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         _channelId,

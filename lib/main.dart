@@ -378,44 +378,94 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Saves records of calls declined from the notification while the app was closed.
+  /// Saves records of calls declined or missed while the app was closed.
   Future<void> _applyPendingDeclines() async {
     try {
+      final myPubkey = AppSettings.instance.myPubkey;
+      final declinedAt = <String, int>{};
+
+      // 1) Calls declined from the notification.
       final declined = await BgInbox.takeDeclinedCalls();
       for (final d in declined) {
-        final peer = d.key;
-        final ts = d.value;
-        final contact = Hive.box<Contact>('contacts').get(peer);
-        final name = contact?.displayName ?? AppSettings.formatDisplayName(peer);
+        declinedAt[d.key] = d.value;
+        await _markCallHandled(d.key, d.value);
+        await _saveCallRecord(d.key, d.value, 'incoming');
+      }
 
-        await Hive.box<CallLog>('call_logs').add(CallLog(
-          id: ts.toString(),
-          peerPubkey: peer,
-          peerName: name,
-          direction: 'incoming',
-          mediaType: 'voice',
-          timestamp: ts,
-          durationSeconds: 0,
-        ));
+      // 2) Calls that went unanswered (caller cancelled or timed out).
+      final missed = await BgInbox.takeMissedCalls();
+      for (final m in missed) {
+        final peer = m.key;
+        final ts = m.value;
 
-        final myPubkey = AppSettings.instance.myPubkey;
+        // Mark the call as handled first: the relay will replay its old
+        // offer/hangup signals, and those must not ring or log again.
+        await _markCallHandled(peer, ts);
+
+        // The user declined this call: it is not a missed call.
+        final declinedTs = declinedAt[peer];
+        if (declinedTs != null && (ts - declinedTs).abs() < 60000) continue;
+
+        // The app already recorded this missed call through the relay.
         if (myPubkey.isNotEmpty) {
-          const content = '[CALL]:incoming:voice:duration:0';
-          await ChatManager.instance.saveMessage(ChatMessage(
-            id: 'call_$ts',
-            senderPubkey: peer,
-            receiverPubkey: myPubkey,
-            content: content,
-            plaintext: content,
-            timestamp: ts,
-            status: 'read',
-            chatKey: ChatManager.instance.getChatKey(myPubkey, peer),
-          ));
+          final existing = await ChatManager.instance.getMessages(peer);
+          final alreadyLogged = existing.any((msg) =>
+          msg.senderPubkey == peer &&
+              msg.plaintext.startsWith('[CALL]:missed:') &&
+              (msg.timestamp - ts).abs() < 60000);
+          if (alreadyLogged) continue;
         }
+
+        await _saveCallRecord(peer, ts, 'missed');
       }
     } catch (e) {
-      DebugLogger.log('[Call] Apply declined calls failed | $e', type: 'ERROR');
+      DebugLogger.log('[Call] Apply pending call notes failed | $e', type: 'ERROR');
     }
+  }
+
+  /// Makes the offer filter ignore signals of a call that is already over.
+  Future<void> _markCallHandled(String peer, int ts) async {
+    try {
+      final box = Hive.box('settings');
+      final old = (box.get('declined_call_$peer', defaultValue: 0) as int);
+      if (ts > old) await box.put('declined_call_$peer', ts);
+    } catch (_) {}
+  }
+
+  /// Saves a call record in the Calls tab and in the chat room.
+  Future<void> _saveCallRecord(String peer, int ts, String direction) async {
+    final contact = Hive.box<Contact>('contacts').get(peer);
+    final name = contact?.displayName ?? AppSettings.formatDisplayName(peer);
+
+    await Hive.box<CallLog>('call_logs').add(CallLog(
+      id: ts.toString(),
+      peerPubkey: peer,
+      peerName: name,
+      direction: direction,
+      mediaType: 'voice',
+      timestamp: ts,
+      durationSeconds: 0,
+    ));
+
+    final myPubkey = AppSettings.instance.myPubkey;
+    if (myPubkey.isEmpty) return;
+
+    // Any notification for this call was already shown from the background.
+    try {
+      await Hive.box('settings').put('notified_call_$ts', true);
+    } catch (_) {}
+
+    final content = '[CALL]:$direction:voice:duration:0';
+    await ChatManager.instance.saveMessage(ChatMessage(
+      id: 'call_$ts',
+      senderPubkey: peer,
+      receiverPubkey: myPubkey,
+      content: content,
+      plaintext: content,
+      timestamp: ts,
+      status: 'read',
+      chatKey: ChatManager.instance.getChatKey(myPubkey, peer),
+    ));
   }
 
   void _navigateToChat(String pubkey) {

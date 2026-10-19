@@ -51,6 +51,19 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       android: AndroidInitializationSettings('@drawable/ic_stat_chatme'),
     ));
     await cancelPlugin.cancel(CallNotificationHandler.incomingCallNotificationId);
+
+    // Leave a note: the app saves the missed call (and shows its notification)
+    // the next time it opens. This isolate never writes to Hive.
+    await BgInbox.recordMissedCall(senderPubkey);
+
+    // Show "Missed Call" like a chat notification (same style, avatar and name).
+    await ChatNotificationHandler.showChatNotification(
+      senderPubkey: senderPubkey,
+      senderName: senderName,
+      message: 'Missed Call',
+      showActions: false,
+      pluginInstance: cancelPlugin,
+    );
     return;
   }
 
