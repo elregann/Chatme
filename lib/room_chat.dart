@@ -1833,7 +1833,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
@@ -1853,16 +1853,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withAlpha(15),
+                          color: Colors.blue,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.blue.withAlpha(40), width: 0.5),
                         ),
-                        child: Center(
+                        child: const Center(
                           child: Text(
                             'Save',
                             style: TextStyle(
                               fontSize: 13,
-                              color: Colors.blue.withAlpha(200),
+                              color: Colors.white,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
