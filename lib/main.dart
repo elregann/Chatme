@@ -418,9 +418,32 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
         await _saveCallRecord(peer, ts, 'missed');
       }
+
+      // 3) Replies sent from a notification: refresh the chat list preview.
+      final repliedPeers = await BgInbox.takeSentReplies();
+      for (final peer in repliedPeers) {
+        await _refreshChatPreview(peer);
+      }
     } catch (e) {
       DebugLogger.log('[Call] Apply pending call notes failed | $e', type: 'ERROR');
     }
+  }
+
+  /// Sets the chat list preview to the newest message of the chat.
+  Future<void> _refreshChatPreview(String peer) async {
+    try {
+      final messages = await ChatManager.instance.getMessages(peer);
+      if (messages.isEmpty) return;
+      final last = messages.last;
+      final box = Hive.box<Contact>('contacts');
+      final contact = box.get(peer);
+      if (contact == null) return;
+      if (last.timestamp >= contact.lastChatTime) {
+        contact.lastMessage = last.plaintext;
+        contact.lastChatTime = last.timestamp;
+        await box.put(peer, contact);
+      }
+    } catch (_) {}
   }
 
   /// Makes the offer filter ignore signals of a call that is already over.

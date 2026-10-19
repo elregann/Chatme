@@ -173,4 +173,30 @@ class BgInbox {
     }
     return result;
   }
+
+  /// Note that a reply was sent from a notification while the app was closed.
+  static Future<void> recordSentReply(String peer) async {
+    final dir = await _dir();
+    await File('${dir.path}/s_${peer}_${DateTime.now().millisecondsSinceEpoch}')
+        .create();
+  }
+
+  /// Returns the peers that got a reply while the app was closed, and removes the notes.
+  static Future<List<String>> takeSentReplies() async {
+    final dir = await _dir();
+    final peers = <String>{};
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!name.startsWith('s_')) continue;
+      final rest = name.substring(2);
+      final sep = rest.lastIndexOf('_');
+      if (sep <= 0) continue;
+      peers.add(rest.substring(0, sep));
+      try {
+        await entity.delete();
+      } catch (_) {}
+    }
+    return peers.toList();
+  }
 }

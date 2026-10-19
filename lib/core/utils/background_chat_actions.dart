@@ -140,6 +140,8 @@ class BackgroundChatActions {
       messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       await chatsBox.put(chatKey, messages);
 
+      await BgInbox.recordSentReply(peerPubkey);
+
       _broadcastToRelays([
         jsonEncode(['EVENT', wrappedRecipient.giftWrap]),
         jsonEncode(['EVENT', wrappedSelf.giftWrap]),

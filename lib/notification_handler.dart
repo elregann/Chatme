@@ -222,6 +222,7 @@ class NotificationHandler {
     required String senderName,
     required String message,
     bool showActions = true,
+    bool replyOnly = false,
   }) async {
     if (kIsWeb) return;
     await chat_notif.ChatNotificationHandler.showChatNotification(
@@ -229,6 +230,7 @@ class NotificationHandler {
       senderName: senderName,
       message: message,
       showActions: showActions,
+      replyOnly: replyOnly,
       pluginInstance: _plugin,
     );
     await chat_notif.ChatNotificationHandler.showSummaryIfNeeded(_plugin);

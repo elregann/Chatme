@@ -52,8 +52,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     ));
     await cancelPlugin.cancel(CallNotificationHandler.incomingCallNotificationId);
 
-    // Leave a note: the app saves the missed call (and shows its notification)
-    // the next time it opens. This isolate never writes to Hive.
+    // Leave a note: the app saves the missed call the next
+    // time it opens. This isolate never writes to Hive.
     await BgInbox.recordMissedCall(senderPubkey);
 
     // Show "Missed Call" like a chat notification (same style, avatar and name).
@@ -61,7 +61,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       senderPubkey: senderPubkey,
       senderName: senderName,
       message: 'Missed Call',
-      showActions: false,
+      showActions: true,
+      replyOnly: true,
       pluginInstance: cancelPlugin,
     );
     return;
@@ -192,6 +193,7 @@ class ChatNotificationHandler {
     required String senderName,
     required String message,
     bool showActions = true,
+    bool replyOnly = false,
     FlutterLocalNotificationsPlugin? pluginInstance,
   }) async {
     if (shouldSuppressNotification(senderPubkey)) {
@@ -281,7 +283,9 @@ class ChatNotificationHandler {
       category: AndroidNotificationCategory.message,
       visibility: NotificationVisibility.private,
       styleInformation: messagingStyle,
-      actions: showActions ? [replyAction, markReadAction] : [],
+      actions: showActions
+          ? (replyOnly ? [replyAction] : [replyAction, markReadAction])
+          : [],
       groupKey: groupKey,
       icon: '@drawable/ic_stat_chatme',
       color: const Color(0xFF2196F3),

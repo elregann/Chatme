@@ -171,6 +171,7 @@ class ChatManager {
         senderPubkey: message.senderPubkey,
         senderName: senderName,
         message: notifBody,
+        replyOnly: isMissedCall,
       );
     } catch (e) {
       DebugLogger.log('[Notification] Trigger failed | $e', type: 'ERROR');
