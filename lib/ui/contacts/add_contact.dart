@@ -1,10 +1,13 @@
+// add_contact.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:remixicon/remixicon.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../models/contact.dart';
 import '../../core/utils/debug_logger.dart';
 import '../../core/utils/key_utils.dart';
-import 'package:remixicon/remixicon.dart';
+import '../../core/utils/shortcut_helper.dart';
 
 class AddContactPage extends StatefulWidget {
   const AddContactPage({super.key});
@@ -201,6 +204,13 @@ class _AddContactPageState extends State<AddContactPage> {
                     );
 
                     await contactsBox.put(pubkey, contact);
+
+                    await ShortcutHelper.pushConversationShortcut(
+                      id: pubkey,
+                      name: contact.displayName,
+                      avatarBytes: null,
+                    );
+
                     HapticFeedback.mediumImpact();
                     navigator.pop(true);
                   } catch (e) {

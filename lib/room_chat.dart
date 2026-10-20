@@ -1,3 +1,5 @@
+// room_chat.dart
+
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -18,6 +20,7 @@ import 'package:remixicon/remixicon.dart';
 import 'core/utils/debug_logger.dart';
 import 'widgets/user_avatar.dart';
 import 'core/utils/key_utils.dart';
+import 'core/utils/shortcut_helper.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -1841,7 +1844,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                         if (nameController.text.trim().isNotEmpty) {
                           targetContact.name = nameController.text.trim();
                           targetContact.isSaved = true;
-                          Hive.box<Contact>('contacts').put(targetContact.pubkey, targetContact).then((_) {
+                          Hive.box<Contact>('contacts').put(targetContact.pubkey, targetContact).then((_) async {
+                            // Sync conversation shortcut supaya label notifikasi Android ikut nama baru
+                            await ShortcutHelper.pushConversationShortcut(
+                              id: targetContact.pubkey,
+                              name: targetContact.displayName,
+                              avatarBytes: null,
+                            );
+
                             HapticFeedback.lightImpact();
                             if (currentContext.mounted) {
                               setState(() {});

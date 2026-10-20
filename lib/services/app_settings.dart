@@ -6,11 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:bip340/bip340.dart' as bip340;
-import '../core/crypto/key_generator.dart';
-import '../core/utils/debug_logger.dart';
-import '../core/utils/key_utils.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import '../core/crypto/key_generator.dart';
+import '../core/utils/shortcut_helper.dart';
+import '../core/utils/debug_logger.dart';
+import '../core/utils/key_utils.dart';
 import '../models/contact.dart';
 
 class AppSettings {
@@ -256,6 +257,13 @@ Backup Date: ${DateTime.now().toString()}
         if (contact != null && !contact.hasGlobalId) {
           contact.name = name;
           await contactsBox.put(pubkey, contact);
+
+          // Keep Android conversation shortcut label in sync with the new global ID
+          await ShortcutHelper.pushConversationShortcut(
+            id: pubkey,
+            name: contact.displayName,
+            avatarBytes: null,
+          );
         }
       }
       await settingsBox.put(flagKey, true);

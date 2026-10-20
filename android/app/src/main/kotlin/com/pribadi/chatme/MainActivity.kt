@@ -82,12 +82,16 @@ class MainActivity: FlutterActivity() {
         }
 
         // Build and configure the shortcut
-        val shortcut = ShortcutInfoCompat.Builder(context, "chat_shortcut_$id")
+        val shortcutId = "chat_shortcut_$id"
+
+        ShortcutManagerCompat.removeDynamicShortcuts(context, listOf(shortcutId))
+
+        val shortcut = ShortcutInfoCompat.Builder(context, shortcutId)
             .setShortLabel(name)
             .setLongLabel(name)
             .setPerson(person)
             .setIntent(intent)
-            .setLongLived(true) // Mandatory requirement for Android Conversation UI
+            .setLongLived(true)
             .build()
 
         ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)

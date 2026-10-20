@@ -72,19 +72,21 @@ class CallNotificationHandler {
       titleColor: Color(0xFFC62828),
     );
 
-    // Caller avatar, shown on the left via conversation-style notification.
+    // Resolve local display name and avatar (same logic as chat notifications)
+    String displayName = callerName;
     Uint8List? avatarBytes;
     try {
       final profile = await NotificationProfile.resolve(callerPubkey);
+      displayName = profile.name;
       avatarBytes = profile.avatarPng;
     } catch (e) {
-      debugPrint('[Notification] Caller avatar failed | $e');
+      debugPrint('[Notification] Caller profile failed | $e');
     }
 
     try {
       await ShortcutHelper.pushConversationShortcut(
         id: callerPubkey,
-        name: callerName,
+        name: displayName,
         avatarBytes: avatarBytes,
       );
     } catch (e) {
@@ -118,7 +120,7 @@ class CallNotificationHandler {
             'Incoming voice call',
             DateTime.now(),
             Person(
-              name: callerName,
+              name: displayName,
               key: callerPubkey,
               important: true,
               icon: avatarBytes != null ? ByteArrayAndroidIcon(avatarBytes) : null,
@@ -132,7 +134,7 @@ class CallNotificationHandler {
     try {
       await plugin.show(
         incomingCallNotificationId,
-        callerName,
+        displayName,
         'Incoming voice call',
         NotificationDetails(android: details),
         payload: callerPubkey,

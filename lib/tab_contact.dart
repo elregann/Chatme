@@ -17,6 +17,7 @@ import 'widgets/user_avatar.dart';
 import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'package:remixicon/remixicon.dart';
+import 'core/utils/shortcut_helper.dart';
 
 class ContactsScreen extends StatefulWidget {
   final RelayManager relayManager;
@@ -96,6 +97,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
         unreadCount: 0,
       );
       await contactsBox.put(normalizedPubkey, contact);
+
+      await ShortcutHelper.pushConversationShortcut(
+        id: normalizedPubkey,
+        name: contact.displayName,
+        avatarBytes: null,
+      );
+
       HapticFeedback.mediumImpact();
 
       if (mounted) {
@@ -257,6 +265,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       if (contact.lastMessage.isNotEmpty || newName.isNotEmpty) {
         await contactsBox.put(contact.pubkey, contact);
+
+        await ShortcutHelper.pushConversationShortcut(
+          id: contact.pubkey,
+          name: contact.displayName,
+          avatarBytes: null,
+        );
       } else {
         await contactsBox.delete(contact.pubkey);
       }

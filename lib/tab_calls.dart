@@ -10,6 +10,7 @@ import 'relay_manager.dart';
 import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'core/utils/ui_utils.dart';
+import 'core/utils/key_utils.dart';
 import 'widgets/user_avatar.dart';
 
 class CallsScreen extends StatefulWidget {
@@ -30,23 +31,42 @@ class _CallsScreenState extends State<CallsScreen> {
 
     String timeStr;
     if (is24Hour) {
-      timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      timeStr =
+      '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     } else {
-      final hour12 = date.hour == 0 ? 12 : (date.hour > 12 ? date.hour - 12 : date.hour);
+      final hour12 =
+      date.hour == 0 ? 12 : (date.hour > 12 ? date.hour - 12 : date.hour);
       final period = date.hour >= 12 ? 'PM' : 'AM';
       timeStr = '$hour12:${date.minute.toString().padLeft(2, '0')} $period';
     }
 
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
       return 'Today, $timeStr';
     }
 
     final yesterday = now.subtract(const Duration(days: 1));
-    if (date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day) {
+    if (date.year == yesterday.year &&
+        date.month == yesterday.month &&
+        date.day == yesterday.day) {
       return 'Yesterday, $timeStr';
     }
 
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${date.day} ${months[date.month - 1]}, $timeStr';
   }
 
@@ -96,45 +116,61 @@ class _CallsScreenState extends State<CallsScreen> {
             },
           ),
           Expanded(
+            // Rebuild when either call logs or contacts change so display
+            // names stay in sync after save / rename / remove.
             child: ValueListenableBuilder(
               valueListenable: Hive.box<CallLog>('call_logs').listenable(),
               builder: (context, Box<CallLog> box, _) {
-                List<CallLog> logs = box.values.toList();
-                logs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+                return ValueListenableBuilder(
+                  valueListenable:
+                  Hive.box<Contact>('contacts').listenable(),
+                  builder: (context, Box<Contact> contactsBox, _) {
+                    final List<CallLog> logs = box.values.toList()
+                      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-                if (logs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.phone,
-                          size: 64,
-                          color: isDark ? Colors.white24 : Colors.black26,
+                    if (logs.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.phone,
+                              size: 64,
+                              color: isDark ? Colors.white24 : Colors.black26,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No call history yet',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color:
+                                isDark ? Colors.white54 : Colors.black45,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No call history yet',
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: isDark ? Colors.white54 : Colors.black45,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+                      );
+                    }
 
-                return ListView.separated(
-                  itemCount: logs.length,
-                  separatorBuilder: (context, index) => Divider(
-                    height: 1,
-                    indent: 72,
-                    color: isDark ? Colors.white10 : Colors.black.withAlpha(10),
-                  ),
-                  itemBuilder: (context, index) {
-                    final log = logs[index];
-                    return _buildCallLogItem(context, log, isDark);
+                    return ListView.separated(
+                      itemCount: logs.length,
+                      separatorBuilder: (context, index) => Divider(
+                        height: 1,
+                        indent: 72,
+                        color: isDark
+                            ? Colors.white10
+                            : Colors.black.withAlpha(10),
+                      ),
+                      itemBuilder: (context, index) {
+                        final log = logs[index];
+                        return _buildCallLogItem(
+                          context,
+                          log,
+                          isDark,
+                          contactsBox,
+                        );
+                      },
+                    );
                   },
                 );
               },
@@ -145,12 +181,18 @@ class _CallsScreenState extends State<CallsScreen> {
     );
   }
 
-  Widget _buildCallLogItem(BuildContext context, CallLog log, bool isDark) {
-    final contactsBox = Hive.box<Contact>('contacts');
+  Widget _buildCallLogItem(
+      BuildContext context,
+      CallLog log,
+      bool isDark,
+      Box<Contact> contactsBox,
+      ) {
+    // Prefer live contact displayName; fall back to shortened npub when
+    // the contact no longer exists (e.g. after remove).
     final contact = contactsBox.get(log.peerPubkey);
-    final displayName = (contact?.name != null && contact!.name.isNotEmpty)
-        ? contact.name
-        : log.peerName;
+    final displayName = contact != null
+        ? contact.displayName
+        : KeyUtils.formatDisplayName(log.peerPubkey);
 
     IconData directionIcon;
     Color iconColor;
@@ -181,7 +223,8 @@ class _CallsScreenState extends State<CallsScreen> {
         log.delete();
       },
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: UserAvatar(
           pubkey: log.peerPubkey,
           name: displayName,
@@ -193,7 +236,9 @@ class _CallsScreenState extends State<CallsScreen> {
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 15,
-            color: log.isMissed ? Colors.red : (isDark ? Colors.white : Colors.black87),
+            color: log.isMissed
+                ? Colors.red
+                : (isDark ? Colors.white : Colors.black87),
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -232,7 +277,7 @@ class _CallsScreenState extends State<CallsScreen> {
           onPressed: () => _callPeer(context, log.peerPubkey, displayName),
         ),
         onTap: () {
-          // Do nothing on row tap, only icon triggers call
+          // Row tap does nothing; only the phone icon starts a call.
         },
       ),
     );

@@ -2,12 +2,14 @@ name: chatme
 description: "Chat App with Nostr"
 publish_to: 'none'
 
-version: 1.12.8+1
+version: 1.13.0+1
 
 environment:
   sdk: '>=3.4.4 <4.0.0'
 
 dependencies:
+  chatme_shortcuts:
+    path: packages/chatme_shortcuts
   flutter:
     sdk: flutter
   firebase_core: ^3.10.1

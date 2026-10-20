@@ -8,20 +8,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'call_manager.dart';
+import 'package:http/http.dart' as http;
 import 'notification_handler.dart';
+import 'call_manager.dart';
 import 'call.dart';
 import 'main.dart';
 import 'chat_manager.dart';
 import 'core/crypto/nip04.dart';
 import 'core/crypto/nip17.dart';
 import 'core/crypto/nostr_protocol.dart';
-import 'services/app_settings.dart';
-import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
-import 'models/chat_message.dart';
+import 'core/utils/shortcut_helper.dart';
+import 'services/app_settings.dart';
 import 'services/nostr_service.dart';
-import 'package:http/http.dart' as http;
+import 'models/chat_message.dart';
+import 'models/contact.dart';
 
 class RelayManager {
   Function? onMessageReceived;
@@ -444,6 +445,13 @@ class RelayManager {
                     if (contact != null && !contact.hasGlobalId) {
                       contact.name = name;
                       await contactsBox.put(pubkey, contact);
+
+                      // Keep Android conversation shortcut label in sync with profile name
+                      await ShortcutHelper.pushConversationShortcut(
+                        id: pubkey,
+                        name: contact.displayName,
+                        avatarBytes: null,
+                      );
                     }
                   } catch (_) {}
                 }
