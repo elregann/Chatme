@@ -579,6 +579,9 @@ class RelayManager {
             cm.autoAnswerPubkey == callerPubkey &&
                 nowMs - cm.autoAnswerAtMs < 40000;
         cm.autoAnswerPubkey = null;
+        final bool openFromLaunch = cm.openCallScreenOnOffer &&
+            nowMs - cm.openCallScreenAtMs < 40000;
+        cm.openCallScreenOnOffer = false;
 
         if (answeredFromNotification && navigatorKey.currentContext != null) {
           NotificationHandler.cancelIncomingCall();
@@ -591,6 +594,26 @@ class RelayManager {
             peerColor: incomingPeerColor,
             remoteSdp: signalData['data'],
             autoAccept: true,
+          );
+        } else if (openFromLaunch && navigatorKey.currentContext != null) {
+          // Keep the call pending, so the notification buttons still work if the
+          // user minimizes the call screen.
+          cm.pendingIncoming = PendingIncomingCall(
+            callerPubkey: callerPubkey,
+            callerName: finalDisplayName,
+            callerColor: incomingPeerColor,
+            remoteSdp: signalData['data'],
+          );
+          // App was opened by the ringing notification: show the call screen.
+          CallScreenNavigator.showCallScreen(
+            context: navigatorKey.currentContext!,
+            peerName: finalDisplayName,
+            peerPubkey: callerPubkey,
+            isIncoming: true,
+            relay: this,
+            peerColor: incomingPeerColor,
+            remoteSdp: signalData['data'],
+            autoAccept: false,
           );
         } else {
           cm.pendingIncoming = PendingIncomingCall(

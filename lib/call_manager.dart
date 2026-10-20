@@ -122,6 +122,16 @@ class CallManager {
   String? autoAnswerPubkey;
   int autoAnswerAtMs = 0;
 
+  /// Set when the app was opened by tapping or launching from the ringing
+  /// call notification: show the call screen as soon as the offer arrives.
+  bool openCallScreenOnOffer = false;
+  int openCallScreenAtMs = 0;
+
+  /// Registered by an open incoming CallScreen, so the notification buttons
+  /// can accept or decline through it.
+  VoidCallback? incomingScreenAccept;
+  VoidCallback? incomingScreenDecline;
+
   // WebRTC state
   rtc.RTCPeerConnection? _peerConnection;
   rtc.MediaStream? _localStream;

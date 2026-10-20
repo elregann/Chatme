@@ -8,6 +8,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:proximity_sensor/proximity_sensor.dart';
 import 'call_manager.dart';
 import 'widgets/user_avatar.dart';
+import 'notification_handler.dart';
 
 class CallScreen extends StatefulWidget {
   final String peerName;
@@ -83,6 +84,8 @@ class _CallScreenState extends State<CallScreen> {
         _callManager.currentCallDirection = CallType.incoming;
         _callManager.setSessionInfo(widget.peerName, widget.peerPubkey, widget.peerColor);
         _startMissedCallTimeout();
+        _callManager.incomingScreenAccept = _acceptIncomingCall;
+        _callManager.incomingScreenDecline = _endCall;
         if (widget.autoAccept) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _acceptIncomingCall();
@@ -223,6 +226,8 @@ class _CallScreenState extends State<CallScreen> {
 
     setState(() {
       _isInitializing = true;
+      NotificationHandler.cancelIncomingCall();
+      _callManager.pendingIncoming = null;
       _isAcceptedByMe = true;
       _hasError = false;
     });
@@ -256,6 +261,12 @@ class _CallScreenState extends State<CallScreen> {
 
     _isEndingCall = true;
     _logCallEvent('call_ending_started', {'isTimeout': isTimeout});
+
+    // Declined or timed out from the screen: stop the ringing notification too.
+    if (widget.isIncoming) {
+      NotificationHandler.cancelIncomingCall();
+      _callManager.pendingIncoming = null;
+    }
 
     try {
       if (!isTimeout && widget.relay != null) {
@@ -390,6 +401,11 @@ class _CallScreenState extends State<CallScreen> {
     _cancelAllTimers();
     _proximitySubscription?.cancel();
     _proximitySubscription = null;
+
+    if (widget.isIncoming) {
+      _callManager.incomingScreenAccept = null;
+      _callManager.incomingScreenDecline = null;
+    }
 
     _isInitializing = false;
     _isEndingCall = false;

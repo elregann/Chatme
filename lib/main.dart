@@ -237,6 +237,12 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   }
 
   void _answerPendingCall({String? callerPubkey}) {
+    final screenAccept = CallManager.instance.incomingScreenAccept;
+    if (screenAccept != null) {
+      screenAccept();
+      return;
+    }
+
     final pending = CallManager.instance.pendingIncoming;
     if (pending == null) {
       // Cold start: the offer has not arrived yet. Remember the tap.
@@ -279,6 +285,19 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
             AppSettings.formatDisplayName(callerPubkey))
             : 'Kontak');
     if (target == null || target.isEmpty) return;
+
+    final screenDecline = CallManager.instance.incomingScreenDecline;
+    if (screenDecline != null) {
+      try {
+        await Hive.box('settings').put(
+          'declined_call_$target',
+          DateTime.now().millisecondsSinceEpoch,
+        );
+      } catch (_) {}
+      CallManager.instance.pendingIncoming = null;
+      screenDecline();
+      return;
+    }
 
     try {
       if (!Hive.isBoxOpen('settings')) {

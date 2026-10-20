@@ -9,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'call_notification_handler.dart';
+import 'call_manager.dart';
 import 'chat_manager.dart';
 import 'chat_notification_handler.dart' as chat_notif;
 import 'core/utils/background_call_signal.dart';
@@ -132,6 +133,17 @@ class NotificationHandler {
       // Cold start: the app was launched by tapping Answer on a call notification.
       final launch = await _plugin.getNotificationAppLaunchDetails();
       final launchResponse = launch?.notificationResponse;
+
+      // Opened by the ringing call notification (tap or full-screen intent):
+      // remember it, so the call screen opens once the offer arrives.
+      if (launch?.didNotificationLaunchApp == true &&
+          launchResponse != null &&
+          launchResponse.id == CallNotificationHandler.incomingCallNotificationId &&
+          (launchResponse.actionId == null || launchResponse.actionId!.isEmpty)) {
+        CallManager.instance.openCallScreenOnOffer = true;
+        CallManager.instance.openCallScreenAtMs = DateTime.now().millisecondsSinceEpoch;
+      }
+
       if (launch?.didNotificationLaunchApp == true &&
           launchResponse?.actionId == CallNotificationHandler.answerActionId) {
         _onNotificationResponse(launchResponse!);
@@ -209,6 +221,7 @@ class NotificationHandler {
   @pragma('vm:entry-point')
   static void _onNotificationResponse(NotificationResponse response) {
     final SendPort? sendPort = IsolateNameServer.lookupPortByName('chatme_notification_port');
+    debugPrint('[LaunchTrace] response id=${response.id} action=${response.actionId}');
     sendPort?.send({
       'actionId': response.actionId,
       'input': response.input,
