@@ -192,7 +192,7 @@ class AppSettings {
         'private_key': myPrivkey,
         'name': myName,
         'backup_date': DateTime.now().toIso8601String(),
-        'app': 'ChatMe',
+        'app': 'Chatme',
         'version': '1.0.0',
       };
 

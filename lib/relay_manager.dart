@@ -442,7 +442,7 @@ class RelayManager {
                   try {
                     final contactsBox = Hive.box<Contact>('contacts');
                     final contact = contactsBox.get(pubkey);
-                    if (contact != null && !contact.hasGlobalId) {
+                    if (contact != null && (!contact.hasGlobalId || !contact.isSaved)) {
                       contact.name = name;
                       await contactsBox.put(pubkey, contact);
 
@@ -554,8 +554,8 @@ class RelayManager {
         try {
           final contactBox = Hive.box<Contact>('contacts');
           final savedContact = contactBox.get(callerPubkey);
-          if (savedContact != null && savedContact.isSaved) {
-            finalDisplayName = savedContact.name;
+          if (savedContact != null) {
+            finalDisplayName = savedContact.displayName;
           }
         } catch (e) {
           DebugLogger.log('[Call] Failed to load contact | $e', type: 'ERROR');
