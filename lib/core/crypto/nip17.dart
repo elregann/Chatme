@@ -8,12 +8,12 @@ import 'nip44.dart';
 import 'nostr_protocol.dart';
 import 'package:bip340/bip340.dart' as bip340;
 
-/// NIP-17 — Private Direct Messages via Gift Wrap.
+/// NIP-17: Private Direct Messages via Gift Wrap.
 ///
 /// Conforms to NIP-17 and NIP-59. Three-layer wrapping:
-///   1. Rumor  (kind 14)  — unsigned plaintext.
-///   2. Seal   (kind 13)  — NIP-44 encrypted Rumor, signed by sender.
-///   3. GiftWrap (kind 1059) — NIP-44 encrypted Seal, signed by ephemeral key.
+///   1. Rumor  (kind 14)  : unsigned plaintext.
+///   2. Seal   (kind 13)  : NIP-44 encrypted Rumor, signed by sender.
+///   3. GiftWrap (kind 1059) : NIP-44 encrypted Seal, signed by ephemeral key.
 ///
 /// Reference: https://github.com/nostr-protocol/nips/blob/master/17.md
 class Nip17 {
@@ -80,7 +80,7 @@ class Nip17 {
         throw Exception('wrapMulti requires at least one receiver');
       }
 
-      // 1. Build ONE Rumor — shared across all envelopes.
+      // 1. Build ONE Rumor, shared across all envelopes.
       final rumor = _buildRumor(
         plaintext: plaintext,
         senderPubkey: senderPubkey,
@@ -118,6 +118,10 @@ class Nip17 {
   }
 
   /// Unwraps a received NIP-17 Gift Wrap event to recover the original plaintext.
+  ///
+  /// Besides decrypting both layers, this verifies the Seal's id and signature
+  /// and that the Rumor's pubkey matches the Seal's pubkey, which NIP-17
+  /// requires to prevent sender impersonation.
   static Future<Nip17Result> unwrap({
     required Map<String, dynamic> giftWrapEvent,
     required String receiverPrivkey,
@@ -148,6 +152,17 @@ class Nip17 {
         throw Exception('Seal event is missing the sender pubkey field');
       }
 
+      // The Seal is the only layer that authenticates the real author.
+      final sealId = seal['id']?.toString() ?? '';
+      if (NostrSigner.calculateEventId(seal) != sealId ||
+          !NostrSigner.verify(
+            sealId,
+            seal['sig']?.toString() ?? '',
+            senderPubkey,
+          )) {
+        throw Exception('Seal signature is invalid');
+      }
+
       final rumorJson = await Nip44.decrypt(
         seal['content']?.toString() ?? '',
         receiverPrivkey,
@@ -162,7 +177,12 @@ class Nip17 {
         );
       }
 
-      // Extract rumor tags — used by the caller to detect reply ('e'),
+      // NIP-17 requires the Seal and Rumor to share the same author pubkey.
+      if (rumor['pubkey']?.toString() != senderPubkey) {
+        throw Exception('Rumor pubkey does not match Seal pubkey');
+      }
+
+      // Extract rumor tags, used by the caller to detect reply ('e'),
       // recipient ('p'), and any custom tags.
       String? replyToId;
       String receiverPubkey = '';
@@ -310,7 +330,7 @@ class Nip17 {
 
   /// Returns a randomised timestamp within the **past** 2 days.
   ///
-  /// MUST be in the past — relays reject events whose `created_at` is more
+  /// MUST be in the past: relays reject events whose `created_at` is more
   /// than ~15 minutes ahead of real time.
   static int _randomisedTimestamp() {
     const twoDaysInSeconds = 172800;

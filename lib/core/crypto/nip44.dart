@@ -7,7 +7,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 import 'ecdh_engine.dart';
 
-/// NIP-44 v2 — Versioned, Padded, and Authenticated Encryption for Nostr.
+/// NIP-44 v2: Versioned, Padded, and Authenticated Encryption for Nostr.
 ///
 /// This implementation conforms to the NIP-44 specification using:
 /// - ECDH (secp256k1) for shared secret derivation
@@ -18,14 +18,20 @@ import 'ecdh_engine.dart';
 ///
 /// Output format: Base64( version(1) || nonce(32) || ciphertext(n) || mac(32) )
 class Nip44 {
-  /// Protocol version byte — always 0x02 for NIP-44 v2.
+  /// Protocol version byte: always 0x02 for NIP-44 v2.
   static const int _version = 2;
 
   /// Minimum allowed plaintext length after unpadding.
   static const int _minPlaintextSize = 1;
 
-  /// Maximum allowed plaintext length (64 KB).
+  /// Maximum allowed plaintext length in bytes (64 KB, the largest value
+  /// the 2-byte length prefix can encode).
   static const int _maxPlaintextSize = 65535;
+
+  /// When true, [_unpad] also verifies that the padding length matches the
+  /// NIP-44 calc_padded_len rule, as the specification requires. Set to false
+  /// only if old messages written with the legacy padding must stay readable.
+  static const bool _strictUnpad = true;
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -47,7 +53,10 @@ class Nip44 {
       ) async {
     try {
       if (plaintext.isEmpty) throw Exception('Plaintext must not be empty');
-      if (plaintext.length > _maxPlaintextSize) {
+
+      // The size limit applies to UTF-8 bytes, not to characters.
+      final plaintextBytes = utf8.encode(plaintext);
+      if (plaintextBytes.length > _maxPlaintextSize) {
         throw Exception(
           'Plaintext exceeds maximum allowed size of $_maxPlaintextSize bytes',
         );
@@ -63,7 +72,7 @@ class Nip44 {
       final messageKeys = _deriveMessageKeys(conversationKey, nonce);
 
       // 4. Pad the plaintext to obscure its true length.
-      final padded = _pad(utf8.encode(plaintext));
+      final padded = _pad(plaintextBytes);
 
       // 5. Encrypt padded plaintext with ChaCha20 (counter starts at 0).
       final ciphertext = await _chacha20Encrypt(
@@ -110,7 +119,8 @@ class Nip44 {
       if (payload.isEmpty) throw Exception('Payload must not be empty');
 
       // 1. Decode from Base64 and validate minimum length.
-      //    Minimum: 1 (version) + 32 (nonce) + 32 (mac) + padded min = 99 bytes
+      //    Minimum: 1 (version) + 32 (nonce) + 32 (mac)
+      //    + 34 (smallest padded buffer: 2 byte prefix + 32) = 99 bytes
       final bytes = base64.decode(payload);
       if (bytes.length < 99) {
         throw Exception('Payload is too short to be a valid NIP-44 v2 message');
@@ -147,7 +157,7 @@ class Nip44 {
 
       if (!_constantTimeEqual(mac, expectedMac)) {
         throw Exception(
-          'MAC verification failed — payload may be corrupted or tampered',
+          'MAC verification failed: payload may be corrupted or tampered',
         );
       }
 
@@ -167,7 +177,7 @@ class Nip44 {
 
   /// Returns [true] if [payload] is a structurally valid NIP-44 v2 Base64 string.
   ///
-  /// This performs a lightweight structural check only — it does not verify
+  /// This performs a lightweight structural check only: it does not verify
   /// the MAC or attempt decryption.
   static bool isValidPayload(String payload) {
     try {
@@ -201,10 +211,10 @@ class Nip44 {
 
   /// Derives the three per-message keys from [conversationKey] and [nonce].
   ///
-  /// Uses HKDF-SHA256 expand with info = "nip44-v2" to produce 76 bytes:
-  /// - Bytes  0–31 : ChaCha20 encryption key (32 bytes)
-  /// - Bytes 32–43 : ChaCha20 nonce (12 bytes)
-  /// - Bytes 44–75 : HMAC-SHA256 authentication key (32 bytes)
+  /// Uses HKDF-SHA256 expand with info = nonce to produce 76 bytes:
+  /// - Bytes 0 to 31  : ChaCha20 encryption key (32 bytes)
+  /// - Bytes 32 to 43 : ChaCha20 nonce (12 bytes)
+  /// - Bytes 44 to 75 : HMAC-SHA256 authentication key (32 bytes)
   static _MessageKeys _deriveMessageKeys(
       Uint8List conversationKey,
       Uint8List nonce,
@@ -242,11 +252,12 @@ class Nip44 {
   // Padding
   // ---------------------------------------------------------------------------
 
-  /// Pads [plaintext] bytes to the next power-of-two bucket size.
+  /// Pads [plaintext] bytes following the NIP-44 chunked padding scheme
+  /// (see [_calcPaddedLength]).
   ///
   /// The first two bytes of the output encode the original length as a
   /// big-endian unsigned 16-bit integer, followed by the plaintext, then
-  /// zero-bytes up to the bucket boundary.
+  /// zero-bytes up to the padded boundary.
   ///
   /// This reduces metadata leakage by ensuring messages of similar lengths
   /// produce ciphertexts of identical size.
@@ -256,8 +267,9 @@ class Nip44 {
       throw Exception('Plaintext length $length is outside the valid range');
     }
 
-    // Determine the smallest power-of-two chunk size >= (length + 2).
-    final targetSize = _calcPaddedLength(length);
+    // Padded plaintext length per NIP-44 calc_padded_len, plus the 2 byte
+    // length prefix, which sits on top of it and is not part of the calculation.
+    final targetSize = 2 + _calcPaddedLength(length);
 
     final padded = Uint8List(targetSize);
     // Write original length as big-endian uint16.
@@ -272,7 +284,9 @@ class Nip44 {
   /// Removes padding from [padded] bytes and returns the original plaintext.
   ///
   /// Reads the original length from the first two bytes and validates it
-  /// against the padded buffer size.
+  /// against the padded buffer size. When [_strictUnpad] is true it also
+  /// verifies that the buffer size equals 2 + calc_padded_len(originalLength),
+  /// which the NIP-44 specification requires.
   static Uint8List _unpad(Uint8List padded) {
     if (padded.length < 2) {
       throw Exception('Padded buffer is too short to contain a length prefix');
@@ -294,30 +308,33 @@ class Nip44 {
       );
     }
 
+    // The padding must be exactly what the encryption side would have produced.
+    if (_strictUnpad &&
+        padded.length != 2 + _calcPaddedLength(originalLength)) {
+      throw Exception('invalid padding');
+    }
+
     return padded.sublist(2, 2 + originalLength);
   }
 
-  /// Calculates the padded output length for a plaintext of [plaintextLength].
+  /// Calculates the padded length for a plaintext of [plaintextLength],
+  /// following the NIP-44 calc_padded_len algorithm.
   ///
-  /// Returns the smallest value in {32, 64, 96, 128, 192, 256, 384, 512, ...}
-  /// that is >= (plaintextLength + 2), following the NIP-44 chunk table.
+  /// The result does not include the 2-byte length prefix. Lengths up to 32
+  /// give 32. Larger lengths are rounded up to a multiple of a chunk size:
+  /// 32 while the next power of two is at most 256, otherwise one eighth of
+  /// that power of two.
   static int _calcPaddedLength(int plaintextLength) {
-    // The +2 accounts for the 16-bit length prefix.
-    final required = plaintextLength + 2;
+    if (plaintextLength <= 32) return 32;
 
-    // Chunk boundaries per the NIP-44 specification.
-    const chunks = [
-      32, 64, 96, 128, 192, 256, 384, 512, 768, 1024,
-      1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384,
-      24576, 32768, 49152, 65535,
-    ];
+    // Smallest power of two that is >= plaintextLength, using the spec's
+    // 1 << (floor(log2(len - 1)) + 1), which equals (len - 1).bitLength here.
+    final nextPower = 1 << (plaintextLength - 1).bitLength;
 
-    for (final chunk in chunks) {
-      if (required <= chunk) return chunk;
-    }
+    // Chunk size per the NIP-44 specification.
+    final chunk = nextPower <= 256 ? 32 : nextPower ~/ 8;
 
-    // Fallback — should never be reached given _maxPlaintextSize enforcement.
-    return 65535;
+    return chunk * (((plaintextLength - 1) ~/ chunk) + 1);
   }
 
   // ---------------------------------------------------------------------------
