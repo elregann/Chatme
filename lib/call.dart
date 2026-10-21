@@ -327,6 +327,7 @@ class _CallScreenState extends State<CallScreen> {
   void _onCallEnded() {
     if (mounted) {
       _logCallEvent('Call ended callback: Closing screen');
+      CallScreenNavigator._endedOnScreen = true;
       if (ModalRoute.of(context)?.isCurrent == true) {
         Navigator.of(context).pop();
       }
@@ -358,6 +359,7 @@ class _CallScreenState extends State<CallScreen> {
           _hasError = false;
           if (mounted) {
             _logCallEvent('closing_screen_due_to_idle_state');
+            CallScreenNavigator._endedOnScreen = true;
             if (ModalRoute.of(context)?.isCurrent == true) {
               Navigator.of(context).pop();
             }
@@ -768,6 +770,10 @@ class CallScreenNavigator {
   /// two CallScreens.
   static bool _isShowing = false;
 
+  /// Set by the call screen when it closes because the call ended (not when the
+  /// user minimizes it).
+  static bool _endedOnScreen = false;
+
   static Future<void> showCallScreen({
     required BuildContext context,
     required String peerName,
@@ -777,6 +783,7 @@ class CallScreenNavigator {
     required Color peerColor,
     String? remoteSdp,
     bool autoAccept = false,
+    bool closeAppWhenCallEnds = false,
     VoidCallback? onCallEnded,
   }) async {
     if (_isShowing) {
@@ -785,6 +792,7 @@ class CallScreenNavigator {
     }
 
     _isShowing = true;
+    _endedOnScreen = false;
     try {
       await Navigator.of(context).push(
         MaterialPageRoute(
@@ -806,6 +814,22 @@ class CallScreenNavigator {
       );
     } finally {
       _isShowing = false;
+      // The call ended while the screen was open and the app was launched by
+      // the ringing notification: leave nothing of ChatMe on screen.
+      if (closeAppWhenCallEnds && _endedOnScreen) {
+        _endedOnScreen = false;
+
+        // Let stopCall finish first: it saves the call records after closing
+        // the connection, and the app must not be closed before that.
+        for (int i = 0;
+        i < 50 && CallManager.instance.callState != CallState.idle;
+        i++) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+        await Future.delayed(const Duration(milliseconds: 700));
+
+        SystemNavigator.pop();
+      }
     }
   }
 }

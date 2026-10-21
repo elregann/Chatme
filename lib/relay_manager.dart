@@ -614,6 +614,7 @@ class RelayManager {
             peerColor: incomingPeerColor,
             remoteSdp: signalData['data'],
             autoAccept: false,
+            closeAppWhenCallEnds: true,
           );
         } else {
           cm.pendingIncoming = PendingIncomingCall(
