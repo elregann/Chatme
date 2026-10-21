@@ -127,6 +127,8 @@ class CallManager {
   bool openCallScreenOnOffer = false;
   int openCallScreenAtMs = 0;
 
+  String? launchCallerPubkey;
+
   /// Registered by an open incoming CallScreen, so the notification buttons
   /// can accept or decline through it.
   VoidCallback? incomingScreenAccept;

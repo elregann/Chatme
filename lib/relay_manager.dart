@@ -604,18 +604,20 @@ class RelayManager {
             callerColor: incomingPeerColor,
             remoteSdp: signalData['data'],
           );
-          // App was opened by the ringing notification: show the call screen.
-          CallScreenNavigator.showCallScreen(
-            context: navigatorKey.currentContext!,
-            peerName: finalDisplayName,
-            peerPubkey: callerPubkey,
-            isIncoming: true,
-            relay: this,
-            peerColor: incomingPeerColor,
-            remoteSdp: signalData['data'],
-            autoAccept: false,
-            closeAppWhenCallEnds: true,
-          );
+          if (cm.launchCallerPubkey == null) {
+            // App was opened by the ringing notification: show the call screen.
+            CallScreenNavigator.showCallScreen(
+              context: navigatorKey.currentContext!,
+              peerName: finalDisplayName,
+              peerPubkey: callerPubkey,
+              isIncoming: true,
+              relay: this,
+              peerColor: incomingPeerColor,
+              remoteSdp: signalData['data'],
+              autoAccept: false,
+              closeAppWhenCallEnds: true,
+            );
+          }
         } else {
           cm.pendingIncoming = PendingIncomingCall(
             callerPubkey: callerPubkey,

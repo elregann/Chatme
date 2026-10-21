@@ -33,9 +33,7 @@ class CallScreen extends StatefulWidget {
   })  : assert(peerPubkey != '',
   'CallScreen: peerPubkey must not be empty. '
       'Use CallScreenNavigator.showCallScreen or '
-      'CallManager.startCallFlow.'),
-        assert(!isIncoming || remoteSdp != null,
-        'CallScreen: incoming calls must provide an SDP offer.');
+      'CallManager.startCallFlow.');
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -56,6 +54,7 @@ class _CallScreenState extends State<CallScreen> {
   final List<String> _callbackIds = [];
   bool _isInitializing = false;
   bool _isEndingCall = false;
+  bool _closing = false;
 
   @override
   void initState() {
@@ -224,21 +223,30 @@ class _CallScreenState extends State<CallScreen> {
 
     _cancelTimer(_errorAutoCloseTimer);
 
+    final pendingSdp = _callManager.pendingIncoming?.remoteSdp;
+
+    NotificationHandler.cancelIncomingCall();
+
     setState(() {
       _isInitializing = true;
-      NotificationHandler.cancelIncomingCall();
       _callManager.pendingIncoming = null;
       _isAcceptedByMe = true;
       _hasError = false;
     });
 
     try {
-      if (widget.remoteSdp == null || widget.remoteSdp!.isEmpty) {
+      String? sdp = widget.remoteSdp ?? pendingSdp;
+      for (int i = 0; (sdp == null || sdp.isEmpty) && i < 150 && mounted; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        sdp = _callManager.pendingIncoming?.remoteSdp;
+      }
+      if (sdp == null || sdp.isEmpty) {
         throw Exception('Invalid remote SDP');
       }
+      _callManager.pendingIncoming = null;
 
       await _callManager.handleOffer(
-        widget.remoteSdp!,
+        sdp,
         widget.peerPubkey,
         widget.relay,
         _onCallConnected,
@@ -324,12 +332,39 @@ class _CallScreenState extends State<CallScreen> {
     _scheduleAutoClose();
   }
 
+  Future<void> _closeScreen() async {
+    if (_closing) return;
+    _closing = true;
+    if (ModalRoute.of(context)?.isFirst != true) {
+      Navigator.of(context).pop();
+      return;
+    }
+    for (int i = 0; i < 50 && _callManager.callState != CallState.idle; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    await Future.delayed(const Duration(milliseconds: 700));
+    SystemNavigator.pop();
+  }
+
+  void _minimize() {
+    if (ModalRoute.of(context)?.isFirst == true) {
+      if (!_isAcceptedByMe) {
+        SystemNavigator.pop();
+        return;
+      }
+      CallManager.instance.launchCallerPubkey = null;
+      Navigator.of(context).pushReplacementNamed('/');
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
   void _onCallEnded() {
     if (mounted) {
       _logCallEvent('Call ended callback: Closing screen');
       CallScreenNavigator._endedOnScreen = true;
       if (ModalRoute.of(context)?.isCurrent == true) {
-        Navigator.of(context).pop();
+        _closeScreen();
       }
     }
   }
@@ -361,7 +396,7 @@ class _CallScreenState extends State<CallScreen> {
             _logCallEvent('closing_screen_due_to_idle_state');
             CallScreenNavigator._endedOnScreen = true;
             if (ModalRoute.of(context)?.isCurrent == true) {
-              Navigator.of(context).pop();
+              _closeScreen();
             }
           }
           break;
@@ -447,11 +482,14 @@ class _CallScreenState extends State<CallScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final isRoot = ModalRoute.of(context)?.isFirst == true;
     return PopScope(
-      canPop: true,
+      canPop: !isRoot,
       onPopInvokedWithResult: (bool didPop, Object? result) {
         if (didPop) {
           _logCallEvent('navigating_to_background');
+        } else {
+          _minimize();
         }
       },
       child: Scaffold(
@@ -468,7 +506,7 @@ class _CallScreenState extends State<CallScreen> {
                       child: IconButton(
                         icon: const Icon(Icons.keyboard_arrow_down, size: 35),
                         color: isDark ? Colors.white70 : Colors.black54,
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: _minimize,
                       ),
                     ),
                   ),

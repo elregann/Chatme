@@ -71,6 +71,8 @@ void main() async {
 
     await AppSettings.instance.load();
 
+    CallManager.instance.launchCallerPubkey = await NotificationHandler.peekCallLaunchPubkey();
+
     if (!kIsWeb) {
       final myPubkey = AppSettings.instance.myPubkey;
       if (myPubkey.isNotEmpty) {
@@ -578,20 +580,27 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
             darkTheme: _buildDarkTheme(),
             initialRoute: '/',
             routes: {
-              '/': (context) => MainScreen(
-                relayManager: _relayManager,
-                onThemeToggle: _toggleTheme,
-                networkManager: _networkManager,
-              ),
-              // NOTE: named route '/call' has been intentionally removed.
-              // CallScreen requires dynamic data (peerPubkey, remoteSdp)
-              // that cannot be supplied via a named route. All valid call
-              // entry points go through CallScreenNavigator.showCallScreen
-              // or CallManager.startCallFlow, which pass real data.
-              //
-              // Removing the route prevents the web URL hash "#/call"
-              // (restored by the browser on refresh/hot restart) from
-              // re-opening an empty CallScreen as a ghost call.
+              '/': (context) {
+                final callerPubkey = CallManager.instance.launchCallerPubkey;
+                if (callerPubkey != null && callerPubkey.isNotEmpty) {
+                  final contact = Hive.box<Contact>('contacts').get(callerPubkey);
+                  return CallScreen(
+                    peerName: contact?.displayName ??
+                        AppSettings.formatDisplayName(callerPubkey),
+                    peerPubkey: callerPubkey,
+                    isIncoming: true,
+                    relay: _relayManager,
+                    peerColor: Color(
+                        int.parse(callerPubkey.substring(0, 8), radix: 16) | 0xFF000000),
+                    onClose: () {},
+                  );
+                }
+                return MainScreen(
+                  relayManager: _relayManager,
+                  onThemeToggle: _toggleTheme,
+                  networkManager: _networkManager,
+                );
+              },
             },
           ),
         );

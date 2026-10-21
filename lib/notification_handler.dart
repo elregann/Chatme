@@ -221,7 +221,6 @@ class NotificationHandler {
   @pragma('vm:entry-point')
   static void _onNotificationResponse(NotificationResponse response) {
     final SendPort? sendPort = IsolateNameServer.lookupPortByName('chatme_notification_port');
-    debugPrint('[LaunchTrace] response id=${response.id} action=${response.actionId}');
     sendPort?.send({
       'actionId': response.actionId,
       'input': response.input,
@@ -257,6 +256,23 @@ class NotificationHandler {
   /// Dismisses all chat notifications.
   static Future<void> clearAllNotifications() async {
     await chat_notif.ChatNotificationHandler.clearAllNotifications(_plugin);
+  }
+
+  static Future<String?> peekCallLaunchPubkey() async {
+    if (kIsWeb) return null;
+    try {
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      final r = launch?.notificationResponse;
+      if (launch?.didNotificationLaunchApp == true &&
+          r != null &&
+          r.id == CallNotificationHandler.incomingCallNotificationId &&
+          (r.actionId == null || r.actionId!.isEmpty)) {
+        return r.payload;
+      }
+    } catch (e) {
+      debugPrint('[Notification] Launch check failed | $e');
+    }
+    return null;
   }
 
   /// Incoming call heads-up with Answer / Decline.
