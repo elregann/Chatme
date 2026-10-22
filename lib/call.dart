@@ -59,6 +59,7 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void initState() {
     super.initState();
+    CallScreenNavigator.openScreens++;
     _setupCallbacks();
 
     _logCallEvent('call_screen_init', {
@@ -77,7 +78,7 @@ class _CallScreenState extends State<CallScreen> {
     } else {
       if (!widget.isIncoming) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _startOutgoingCall();
+          _startAfterTransition(_startOutgoingCall);
         });
       } else {
         _callManager.currentCallDirection = CallType.incoming;
@@ -98,6 +99,7 @@ class _CallScreenState extends State<CallScreen> {
   void dispose() {
     _cancelAllTimers();
     _cleanupResources();
+    CallScreenNavigator.openScreens--;
     super.dispose();
   }
 
@@ -172,6 +174,33 @@ class _CallScreenState extends State<CallScreen> {
           }
         }
     );
+  }
+
+  void _startAfterTransition(VoidCallback action) {
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation == null || animation.isCompleted) {
+      action();
+      return;
+    }
+    bool started = false;
+    void run() {
+      if (started || !mounted) return;
+      started = true;
+      action();
+    }
+
+    late AnimationStatusListener listener;
+    listener = (status) {
+      if (status == AnimationStatus.completed) {
+        animation.removeStatusListener(listener);
+        run();
+      }
+    };
+    animation.addStatusListener(listener);
+    Future.delayed(const Duration(milliseconds: 700), () {
+      animation.removeStatusListener(listener);
+      run();
+    });
   }
 
   Future<void> _startOutgoingCall() async {
@@ -812,6 +841,7 @@ class CallScreenNavigator {
   /// implementation silently did nothing, allowing two offers to stack
   /// two CallScreens.
   static bool _isShowing = false;
+  static int openScreens = 0;
 
   /// Set by the call screen when it closes because the call ended (not when the
   /// user minimizes it).

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:hive/hive.dart';
 import 'models/call_log.dart';
@@ -260,6 +261,14 @@ class CallManager {
     currentCallDirection = CallType.outgoing;
   }
 
+  Future<void> _setNativeCallActive(bool active) async {
+    if (kIsWeb) return;
+    try {
+      await const MethodChannel('com.chatme.app/task')
+          .invokeMethod('setCallActive', active);
+    } catch (_) {}
+  }
+
   // State management
   void _setCallState(CallState newState) {
     if (_sharedCallState == newState) return;
@@ -297,6 +306,12 @@ class CallManager {
       );
     } else if (newState == CallState.idle) {
       NotificationHandler.stopOngoingCall();
+    }
+
+    if (newState == CallState.initializing) {
+      _setNativeCallActive(true);
+    } else if (newState == CallState.idle) {
+      _setNativeCallActive(false);
     }
 
     _sharedNotifier.value = newState;

@@ -72,6 +72,7 @@ void main() async {
     await AppSettings.instance.load();
 
     CallManager.instance.launchCallerPubkey = await NotificationHandler.peekCallLaunchPubkey();
+    await NotificationHandler.stopOngoingCall();
 
     if (!kIsWeb) {
       final myPubkey = AppSettings.instance.myPubkey;
@@ -537,6 +538,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       final ctx = navigatorKey.currentContext;
       final manager = CallManager.instance;
       if (ctx == null || manager.callState == CallState.idle) return;
+      if (CallScreenNavigator.openScreens > 0) return;
       Navigator.of(ctx).push(
         MaterialPageRoute(
           fullscreenDialog: true,

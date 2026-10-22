@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.Person
@@ -22,8 +24,40 @@ class MainActivity: FlutterActivity() {
 
     private val TASK_CHANNEL = "com.chatme.app/task"
 
+
+    companion object {
+        private var retainedEngine: FlutterEngine? = null
+        private var attachedActivity: MainActivity? = null
+        @Volatile private var callActive = false
+    }
+
+    override fun provideFlutterEngine(context: Context): FlutterEngine? = retainedEngine
+
+    override fun shouldDestroyEngineWithHost(): Boolean = !callActive
+
+    override fun onDestroy() {
+        if (attachedActivity === this) attachedActivity = null
+        if (callActive) retainedEngine = flutterEngine
+        super.onDestroy()
+    }
+
+    private fun releaseRetainedEngineIfIdle() {
+        Handler(Looper.getMainLooper()).postDelayed({
+            val engine = retainedEngine
+            if (!callActive && attachedActivity == null && engine != null) {
+                retainedEngine = null
+                engine.destroy()
+            }
+        }, 1500)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
+        if (flutterEngine === retainedEngine) {
+            retainedEngine = null
+        } else {
+            super.configureFlutterEngine(flutterEngine)
+        }
+        attachedActivity = this
 
         // 1. Battery Optimization Channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_CHANNEL).setMethodCallHandler { call, result ->
@@ -63,11 +97,17 @@ class MainActivity: FlutterActivity() {
         }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TASK_CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "moveToBack") {
-                moveTaskToBack(true)
-                result.success(true)
-            } else {
-                result.notImplemented()
+            when (call.method) {
+                "moveToBack" -> {
+                    moveTaskToBack(true)
+                    result.success(true)
+                }
+                "setCallActive" -> {
+                    callActive = (call.arguments as? Boolean) ?: false
+                    if (!callActive) releaseRetainedEngineIfIdle()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
             }
         }
 
@@ -75,6 +115,8 @@ class MainActivity: FlutterActivity() {
     }
 
     private fun createConversationShortcut(id: String, name: String, avatarBytes: ByteArray?) {
+
+        val context = applicationContext
         // Build Person object for the notification avatar
         val personBuilder = Person.Builder()
             .setName(name)
