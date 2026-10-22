@@ -1374,7 +1374,8 @@ class RelayManager {
       // Capture now: the state changes while the signal is being wrapped.
       final bool callerNotConnected =
           CallManager.instance.currentCallDirection == CallType.outgoing &&
-              CallManager.instance.callState != CallState.active;
+              CallManager.instance.callState != CallState.active &&
+              !CallManager.instance.wasCallConnected;
 
       final plaintext = 'CALL_SIGNAL:${jsonEncode(signalData)}';
 

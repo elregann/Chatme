@@ -37,7 +37,7 @@ class CallNotificationHandler {
       visibility: NotificationVisibility.public,
       fullScreenIntent: true,
       autoCancel: true,
-      icon: '@drawable/ic_stat_chatme',
+      icon: '@drawable/ic_stat_call',
     );
 
     try {
@@ -113,7 +113,7 @@ class CallNotificationHandler {
       autoCancel: false,
       ongoing: true,
       timeoutAfter: 30000,
-      icon: '@drawable/ic_stat_chatme',
+      icon: '@drawable/ic_stat_call',
       shortcutId: 'chat_shortcut_$callerPubkey',
       styleInformation: MessagingStyleInformation(
         const Person(name: 'You', key: 'me'),
@@ -198,7 +198,7 @@ class CallNotificationHandler {
       showWhen: true,
       when: startedAtMs,
       usesChronometer: true,
-      icon: '@drawable/ic_stat_chatme',
+      icon: '@drawable/ic_stat_call',
       color: const Color(0xFF2196F3),
       shortcutId: peerPubkey.isEmpty ? null : 'chat_shortcut_$peerPubkey',
       styleInformation: MessagingStyleInformation(

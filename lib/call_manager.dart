@@ -30,6 +30,7 @@ class CallConstants {
   static const int errorAutoCloseSeconds = 3;
   static const int reconnectionAttempts = 3;
   static const int reconnectionDelayBaseMs = 1000;
+  static const int reconnectionDeadlineSeconds = 20;
 
   static Map<String, dynamic> getIceConfig() {
     return {
@@ -177,6 +178,7 @@ class CallManager {
   Timer? _statsTimer;
   Timer? _reconnectTimer;
   Timer? _connectionTimeoutTimer;
+  Timer? _reconnectDeadlineTimer;
 
   final Map<String, ValueChanged<CallState>> _stateChangeCallbacks = {};
   final Map<String, ValueChanged<String?>> _errorCallbacks = {};
@@ -191,6 +193,7 @@ class CallManager {
   rtc.RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
   List<CallEvent> get callLog => List.unmodifiable(_callLog);
   CallState get callState => _sharedCallState;
+  bool get wasCallConnected => _wasCallConnected;
   ValueNotifier<CallState> get callStateNotifier => _sharedNotifier;
 
   // Callback management
@@ -564,11 +567,16 @@ class CallManager {
           state == rtc.RTCIceConnectionState.RTCIceConnectionStateCompleted) {
         _startQualityMonitoring();
         _reconnectAttempts = 0;
+        _reconnectDeadlineTimer?.cancel();
+        _reconnectDeadlineTimer = null;
         _setCallState(CallState.active);
         _connectionTimeoutTimer?.cancel();
       }
       if (state == rtc.RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
         _attemptReconnection();
+      }
+      if (state == rtc.RTCIceConnectionState.RTCIceConnectionStateFailed) {
+        _endAfterConnectionLoss();
       }
     };
 
@@ -817,13 +825,32 @@ class CallManager {
     });
   }
 
+  Future<void> _endAfterConnectionLoss() async {
+    _reconnectDeadlineTimer?.cancel();
+    _reconnectDeadlineTimer = null;
+    if (_sharedCallState == CallState.idle ||
+        _sharedCallState == CallState.ending) {
+      return;
+    }
+    _logCallEvent('connection_lost_ending_call');
+    await stopCall(
+      sendHangupSignal: true,
+      targetPubkey: _currentTargetPubkey,
+      relay: _currentRelay,
+    );
+  }
+
   Future<void> _attemptReconnection() async {
     if (_reconnectAttempts >= CallConstants.reconnectionAttempts) {
-      await stopCall();
+      await _endAfterConnectionLoss();
       return;
     }
     _reconnectAttempts++;
     _setCallState(CallState.reconnecting);
+    _reconnectDeadlineTimer ??= Timer(
+      const Duration(seconds: CallConstants.reconnectionDeadlineSeconds),
+      _endAfterConnectionLoss,
+    );
     final delay = Duration(milliseconds: CallConstants.reconnectionDelayBaseMs * (1 << (_reconnectAttempts - 1)));
     _reconnectTimer = Timer(delay, () async {
       try {
@@ -977,6 +1004,8 @@ class CallManager {
     _statsTimer = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _reconnectDeadlineTimer?.cancel();
+    _reconnectDeadlineTimer = null;
     _durationTimer?.cancel();
     _durationTimer = null;
 

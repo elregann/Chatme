@@ -146,7 +146,6 @@ class _CallScreenState extends State<CallScreen> {
         _hasError = true;
         _errorMessage = 'Call not answered';
       });
-      // Panggil stopCall agar log missed call tersimpan otomatis saat timeout di sisi penerima
       _callManager.stopCall(sendHangupSignal: false);
       _scheduleAutoClose();
     }
@@ -625,6 +624,7 @@ class _CallScreenState extends State<CallScreen> {
     final isIncoming = widget.isIncoming;
     switch (_callManager.callState) {
       case CallState.connecting:   return "Connecting";
+      case CallState.reconnecting: return "Reconnecting";
       case CallState.ringing:      return isIncoming ? "Incoming Call" : "Ringing";
       case CallState.initializing:
       case CallState.idle:         return isIncoming ? "Incoming Call" : "Calling";
@@ -693,7 +693,7 @@ class _CallScreenState extends State<CallScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            if (_callManager.callState == CallState.active || _isAcceptedByMe) ...[
+            if (_showCallControls) ...[
               Positioned(
                 left: 6,
                 child: _unifiedControlBtn(
@@ -740,15 +740,20 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
+  bool get _showCallControls =>
+      _callManager.callState == CallState.active ||
+          _callManager.callState == CallState.reconnecting ||
+          _isAcceptedByMe;
+
   double _calculateCapsuleWidth() {
     if (widget.isIncoming && !_isAcceptedByMe) return 235;
-    if (_callManager.callState == CallState.active || _isAcceptedByMe) return 235;
+    if (_showCallControls) return 235;
     return 72;
   }
 
   Alignment _getHangupButtonAlignment() {
     if (widget.isIncoming && !_isAcceptedByMe) return const Alignment(0.94, 0);
-    if (_callManager.callState == CallState.active || _isAcceptedByMe) return const Alignment(0.95, 0);
+    if (_showCallControls) return const Alignment(0.95, 0);
     return Alignment.center;
   }
 
