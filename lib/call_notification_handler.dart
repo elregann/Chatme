@@ -12,6 +12,9 @@ class CallNotificationHandler {
   static const String answerActionId = 'ANSWER_CALL_ACTION';
   static const String declineActionId = 'DECLINE_CALL_ACTION';
   static const int incomingCallNotificationId = 888888;
+  static const int activeCallNotificationId = 888889;
+  static const String activeCallChannelId = 'chatme_active_call_channel';
+  static const String endCallActionId = 'END_CALL_ACTION';
 
   /// Simple notification for calls / non-chat events.
   static Future<void> showNotification({
@@ -146,5 +149,108 @@ class CallNotificationHandler {
 
   static Future<void> cancelIncomingCall(FlutterLocalNotificationsPlugin plugin) async {
     await plugin.cancel(incomingCallNotificationId);
+  }
+
+  static Future<void> startOngoingCall({
+    required FlutterLocalNotificationsPlugin plugin,
+    required String peerName,
+    required String peerPubkey,
+    required int startedAtMs,
+  }) async {
+    final android = plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return;
+
+    String displayName = peerName;
+    Uint8List? avatarBytes;
+    if (peerPubkey.isNotEmpty) {
+      try {
+        final profile = await NotificationProfile.resolve(peerPubkey);
+        displayName = profile.name;
+        avatarBytes = profile.avatarPng;
+      } catch (e) {
+        debugPrint('[Notification] Ongoing call profile failed | $e');
+      }
+      try {
+        await ShortcutHelper.pushConversationShortcut(
+          id: peerPubkey,
+          name: displayName,
+          avatarBytes: avatarBytes,
+        );
+      } catch (e) {
+        debugPrint('[Notification] Ongoing call shortcut failed | $e');
+      }
+    }
+
+    final details = AndroidNotificationDetails(
+      activeCallChannelId,
+      'Active Calls',
+      channelDescription: 'Ongoing voice call',
+      importance: Importance.low,
+      priority: Priority.low,
+      category: AndroidNotificationCategory.call,
+      visibility: NotificationVisibility.public,
+      ongoing: true,
+      autoCancel: false,
+      onlyAlertOnce: true,
+      playSound: false,
+      enableVibration: false,
+      showWhen: true,
+      when: startedAtMs,
+      usesChronometer: true,
+      icon: '@drawable/ic_stat_chatme',
+      color: const Color(0xFF2196F3),
+      shortcutId: peerPubkey.isEmpty ? null : 'chat_shortcut_$peerPubkey',
+      styleInformation: MessagingStyleInformation(
+        const Person(name: 'You', key: 'me'),
+        groupConversation: false,
+        messages: [
+          Message(
+            'Ongoing voice call',
+            DateTime.now(),
+            Person(
+              name: displayName,
+              key: peerPubkey,
+              important: true,
+              icon: avatarBytes != null ? ByteArrayAndroidIcon(avatarBytes) : null,
+            ),
+          ),
+        ],
+      ),
+      actions: const [
+        AndroidNotificationAction(
+          endCallActionId,
+          'End call',
+          showsUserInterface: false,
+          cancelNotification: false,
+        ),
+      ],
+    );
+
+    try {
+      await android.startForegroundService(
+        activeCallNotificationId,
+        displayName,
+        'Ongoing voice call',
+        notificationDetails: details,
+        payload: peerPubkey,
+        startType: AndroidServiceStartType.startNotSticky,
+        foregroundServiceTypes: {
+          AndroidServiceForegroundType.foregroundServiceTypeMicrophone,
+        },
+      );
+    } catch (e) {
+      debugPrint('[Notification] Ongoing call start failed | $e');
+    }
+  }
+
+  static Future<void> stopOngoingCall(FlutterLocalNotificationsPlugin plugin) async {
+    final android = plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    try {
+      await android?.stopForegroundService();
+    } catch (e) {
+      debugPrint('[Notification] Ongoing call stop failed | $e');
+    }
   }
 }

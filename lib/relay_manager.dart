@@ -33,8 +33,9 @@ class RelayManager {
   /// Recommended free relays optimised for NIP-17 gift-wrap (kind 1059).
   /// Ordered by relevance for DM delivery.
   final List<String> relays = [
-    'wss://messaging.coracle.social', // dedicated messaging / NIP-17
     'wss://nos.lol',
+    'wss://auth.nostr1.com',
+    'wss://messaging.coracle.social', // dedicated messaging / NIP-17
     'wss://relay.damus.io',
     'wss://relay.primal.net',
   ];

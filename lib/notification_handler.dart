@@ -56,6 +56,16 @@ Future<void> backgroundNotificationResponseHandler(NotificationResponse response
     // Always tell the caller directly: relying on the app's own connection
     // fails when the app is only paused in the background.
     await BackgroundCallSignal.sendHangup(peerPubkey);
+  } else if (response.actionId == CallNotificationHandler.endCallActionId) {
+    if (!appIsAlive) {
+      await BackgroundCallSignal.sendHangup(peerPubkey);
+      try {
+        await FlutterLocalNotificationsPlugin()
+            .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+            ?.stopForegroundService();
+      } catch (_) {}
+    }
   } else if (response.actionId == chat_notif.ChatNotificationHandler.markReadActionId) {
     // The app only knows messages already saved in Hive. Messages that arrived
     // through FCM are not there yet, so their receipts are sent from here too.
@@ -222,6 +232,7 @@ class NotificationHandler {
   static void _onNotificationResponse(NotificationResponse response) {
     final SendPort? sendPort = IsolateNameServer.lookupPortByName('chatme_notification_port');
     sendPort?.send({
+      'id': response.id,
       'actionId': response.actionId,
       'input': response.input,
       'payload': response.payload,
@@ -291,6 +302,25 @@ class NotificationHandler {
   static Future<void> cancelIncomingCall() async {
     if (kIsWeb) return;
     await CallNotificationHandler.cancelIncomingCall(_plugin);
+  }
+
+  static Future<void> startOngoingCall({
+    required String peerName,
+    required String peerPubkey,
+    required int startedAtMs,
+  }) async {
+    if (kIsWeb) return;
+    await CallNotificationHandler.startOngoingCall(
+      plugin: _plugin,
+      peerName: peerName,
+      peerPubkey: peerPubkey,
+      startedAtMs: startedAtMs,
+    );
+  }
+
+  static Future<void> stopOngoingCall() async {
+    if (kIsWeb) return;
+    await CallNotificationHandler.stopOngoingCall(_plugin);
   }
 
   /// Simple notification for calls / non-chat events.

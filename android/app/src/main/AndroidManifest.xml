@@ -41,9 +41,9 @@
             android:value="chat_me_urgent_channel" />
 
         <service
-            android:name="com.pribadi.chatme.CallForegroundService"
-            android:enabled="true"
+            android:name="com.dexterous.flutterlocalnotifications.ForegroundService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="microphone" />
 
         <activity

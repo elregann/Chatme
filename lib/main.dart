@@ -137,7 +137,12 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
           final payload = data['payload'];
 
           if (actionId == null && payload != null) {
-            _navigateToChat(payload);
+            if (data['id'] == CallNotificationHandler.activeCallNotificationId &&
+                CallManager.instance.callState != CallState.idle) {
+              _openActiveCallScreen();
+            } else {
+              _navigateToChat(payload);
+            }
           } else if (actionId == 'REPLY_ACTION' && input != null && payload != null) {
             _relayManager.connectIfNeeded();
             await Future.delayed(const Duration(milliseconds: 800));
@@ -150,6 +155,8 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
             _answerPendingCall(callerPubkey: payload?.toString());
           } else if (actionId == CallNotificationHandler.declineActionId) {
             await _declinePendingCall(callerPubkey: payload?.toString());
+          } else if (actionId == CallNotificationHandler.endCallActionId) {
+            await _endActiveCallFromNotification();
           } else if (actionId == 'MARK_READ_ACTION') {
             if (payload == null || payload.isEmpty) {
               return;
@@ -512,6 +519,40 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     ));
   }
 
+  Future<void> _endActiveCallFromNotification() async {
+    final manager = CallManager.instance;
+    if (manager.callState == CallState.idle) {
+      await NotificationHandler.stopOngoingCall();
+      return;
+    }
+    final peer = manager.activePeerPubkey;
+    if (peer != null && peer.isNotEmpty) {
+      await _relayManager.sendCallSignal(peer, {'type': 'hangup'});
+    }
+    await manager.stopCall(sendHangupSignal: false, byUser: true);
+  }
+
+  void _openActiveCallScreen() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = navigatorKey.currentContext;
+      final manager = CallManager.instance;
+      if (ctx == null || manager.callState == CallState.idle) return;
+      Navigator.of(ctx).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (context) => CallScreen(
+            peerName: manager.activePeerName ?? 'Unknown',
+            peerPubkey: manager.activePeerPubkey ?? '',
+            isIncoming: false,
+            relay: _relayManager,
+            peerColor: manager.activePeerColor ?? Colors.blue,
+            onClose: () {},
+          ),
+        ),
+      );
+    });
+  }
+
   void _navigateToChat(String pubkey) {
     if (pubkey.isEmpty) return;
 
@@ -686,6 +727,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<CallState>(
+      valueListenable: CallManager.instance.callStateNotifier,
+      builder: (context, callState, child) {
+        return PopScope(
+          canPop: callState == CallState.idle,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop) {
+              const MethodChannel('com.chatme.app/task')
+                  .invokeMethod('moveToBack');
+            }
+          },
+          child: child!,
+        );
+      },
+      child: _buildMainScaffold(),
+    );
+  }
+
+  Widget _buildMainScaffold() {
     return Scaffold(
       body: PageView(
         controller: _pageController,

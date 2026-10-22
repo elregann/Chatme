@@ -20,6 +20,8 @@ class MainActivity: FlutterActivity() {
     private val BATTERY_CHANNEL = "com.chatme.app/battery"
     private val SHORTCUT_CHANNEL = "chatme_shortcuts"
 
+    private val TASK_CHANNEL = "com.chatme.app/task"
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -55,6 +57,15 @@ class MainActivity: FlutterActivity() {
                 } else {
                     result.error("INVALID_ARGS", "ID and name are required", null)
                 }
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TASK_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "moveToBack") {
+                moveTaskToBack(true)
+                result.success(true)
             } else {
                 result.notImplemented()
             }

@@ -11,6 +11,7 @@ import 'models/chat_message.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
 import 'call.dart';
+import 'notification_handler.dart';
 
 class CallConstants {
   // Signal types
@@ -283,6 +284,16 @@ class CallManager {
       // a subsequent unanswered call would be mislabeled as
       // "Incoming Call" instead of "Missed Call".
       _wasCallConnected = false;
+    }
+
+    if (newState == CallState.initializing || newState == CallState.active) {
+      NotificationHandler.startOngoingCall(
+        peerName: activePeerName ?? 'Contact',
+        peerPubkey: activePeerPubkey ?? '',
+        startedAtMs: (callStartTime ?? DateTime.now()).millisecondsSinceEpoch,
+      );
+    } else if (newState == CallState.idle) {
+      NotificationHandler.stopOngoingCall();
     }
 
     _sharedNotifier.value = newState;
