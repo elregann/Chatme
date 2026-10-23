@@ -9,7 +9,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'call_notification_handler.dart';
-import 'call_manager.dart';
 import 'chat_manager.dart';
 import 'chat_notification_handler.dart' as chat_notif;
 import 'core/utils/background_call_signal.dart';
@@ -140,27 +139,12 @@ class NotificationHandler {
         onDidReceiveBackgroundNotificationResponse: backgroundNotificationResponseHandler,
       );
 
-      // Cold start: the app was launched by tapping Answer on a call notification.
+      // Cold start: the app was opened by tapping a chat or "Missed Call"
+      // notification. The ringing call notification is excluded because it
+      // is now handled synchronously in main() before runApp() via
+      // peekCallLaunchPubkey() and peekCallLaunchAutoAccept().
       final launch = await _plugin.getNotificationAppLaunchDetails();
       final launchResponse = launch?.notificationResponse;
-
-      // Opened by the ringing call notification (tap or full-screen intent):
-      // remember it, so the call screen opens once the offer arrives.
-      if (launch?.didNotificationLaunchApp == true &&
-          launchResponse != null &&
-          launchResponse.id == CallNotificationHandler.incomingCallNotificationId &&
-          (launchResponse.actionId == null || launchResponse.actionId!.isEmpty)) {
-        CallManager.instance.openCallScreenOnOffer = true;
-        CallManager.instance.openCallScreenAtMs = DateTime.now().millisecondsSinceEpoch;
-      }
-
-      if (launch?.didNotificationLaunchApp == true &&
-          launchResponse?.actionId == CallNotificationHandler.answerActionId) {
-        _onNotificationResponse(launchResponse!);
-      }
-
-      // Cold start: the app was opened by tapping a chat or "Missed Call"
-      // notification. The ringing call notification is excluded.
       if (launch?.didNotificationLaunchApp == true &&
           launchResponse != null &&
           (launchResponse.actionId == null || launchResponse.actionId!.isEmpty) &&
@@ -269,6 +253,10 @@ class NotificationHandler {
     await chat_notif.ChatNotificationHandler.clearAllNotifications(_plugin);
   }
 
+  /// Returns the pubkey of the caller if the app was launched by tapping
+  /// the incoming call notification (either the body or the Answer button).
+  /// Called synchronously in main() BEFORE runApp() so the value is
+  /// available when MaterialApp builds its initial route.
   static Future<String?> peekCallLaunchPubkey() async {
     if (kIsWeb) return null;
     try {
@@ -276,14 +264,34 @@ class NotificationHandler {
       final r = launch?.notificationResponse;
       if (launch?.didNotificationLaunchApp == true &&
           r != null &&
-          r.id == CallNotificationHandler.incomingCallNotificationId &&
-          (r.actionId == null || r.actionId!.isEmpty)) {
+          r.id == CallNotificationHandler.incomingCallNotificationId) {
+        // Removed actionId check so it captures both body tap and Answer button tap
         return r.payload;
       }
     } catch (e) {
       debugPrint('[Notification] Launch check failed | $e');
     }
     return null;
+  }
+
+  /// Returns true if the app was launched by tapping the "Answer" button
+  /// on the incoming call notification. Called synchronously in main()
+  /// BEFORE runApp() so the CallScreen is built with autoAccept=true.
+  static Future<bool> peekCallLaunchAutoAccept() async {
+    if (kIsWeb) return false;
+    try {
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      final r = launch?.notificationResponse;
+      if (launch?.didNotificationLaunchApp == true &&
+          r != null &&
+          r.id == CallNotificationHandler.incomingCallNotificationId) {
+        // Return true only when user pressed the Answer action
+        return r.actionId == CallNotificationHandler.answerActionId;
+      }
+    } catch (e) {
+      debugPrint('[Notification] Launch auto-accept check failed | $e');
+    }
+    return false;
   }
 
   /// Incoming call heads-up with Answer / Decline.

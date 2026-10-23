@@ -112,7 +112,7 @@ class CallNotificationHandler {
       actions: [declineAction, answerAction],
       autoCancel: false,
       ongoing: true,
-      timeoutAfter: 30000,
+      timeoutAfter: 60000,
       icon: '@drawable/ic_stat_call',
       shortcutId: 'chat_shortcut_$callerPubkey',
       styleInformation: MessagingStyleInformation(

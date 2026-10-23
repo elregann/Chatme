@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:hive/hive.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'models/call_log.dart';
 import 'models/chat_message.dart';
 import 'chat_manager.dart';
@@ -131,6 +132,7 @@ class CallManager {
   int openCallScreenAtMs = 0;
 
   String? launchCallerPubkey;
+  bool launchAutoAccept = false;
 
   /// Registered by an open incoming CallScreen, so the notification buttons
   /// can accept or decline through it.
@@ -378,6 +380,25 @@ class CallManager {
   Future<void> initAudio() async {
     try {
       _logCallEvent('init_audio_started');
+
+      // Explicitly check and request microphone permission before accessing
+      // getUserMedia. On cold start or first-time foreground call, the OS
+      // permission prompt may appear too late, causing getUserMedia to fail
+      // silently and the call to disconnect immediately.
+      if (!kIsWeb) {
+        try {
+          var status = await Permission.microphone.status;
+          if (!status.isGranted) {
+            status = await Permission.microphone.request();
+            if (!status.isGranted) {
+              throw Exception('Microphone permission denied');
+            }
+          }
+        } catch (e) {
+          _logCallEvent('permission_check_failed', {'error': e.toString()});
+          debugPrint('[Call] Permission check failed, relying on native prompt: $e');
+        }
+      }
 
       if (_remoteRenderer == null) {
         _remoteRenderer = rtc.RTCVideoRenderer();

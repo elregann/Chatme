@@ -71,7 +71,10 @@ void main() async {
 
     await AppSettings.instance.load();
 
+    // CRITICAL: Set both launch flags BEFORE runApp() to avoid race condition with build()
     CallManager.instance.launchCallerPubkey = await NotificationHandler.peekCallLaunchPubkey();
+    CallManager.instance.launchAutoAccept = await NotificationHandler.peekCallLaunchAutoAccept();
+
     await NotificationHandler.stopOngoingCall();
 
     if (!kIsWeb) {
@@ -79,9 +82,9 @@ void main() async {
       if (myPubkey.isNotEmpty) {
         final connectivityResult = await Connectivity().checkConnectivity();
         final isOnline = connectivityResult.any((r) =>
-          r == ConnectivityResult.mobile ||
-          r == ConnectivityResult.wifi ||
-          r == ConnectivityResult.ethernet
+        r == ConnectivityResult.mobile ||
+            r == ConnectivityResult.wifi ||
+            r == ConnectivityResult.ethernet
         );
         if (isOnline) {
           FirebaseMessaging.instance
@@ -91,10 +94,6 @@ void main() async {
         }
       }
     }
-
-    await BackgroundService.initialize();
-    await BackgroundService.registerReconnectTask();
-    await ChatManager.instance.cleanupTempMessages();
 
     if (!kIsWeb) {
       await FlutterLocalNotificationsPlugin()
@@ -131,8 +130,12 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       IsolateNameServer.removePortNameMapping('chatme_notification_port');
       _notificationPort = ReceivePort();
       IsolateNameServer.registerPortWithName(_notificationPort!.sendPort, 'chatme_notification_port');
+      const MethodChannel('com.chatme.app/task').setMethodCallHandler((call) async {
+        if (call.method == 'openActiveCall') _openActiveCallScreen();
+      });
       _notificationPort!.listen((dynamic data) async {
         if (data is Map) {
+          debugPrint('[Nav] port tap id=${data['id']} action=${data['actionId']} state=${CallManager.instance.callState}');
           final actionId = data['actionId'];
           final input = data['input'];
           final payload = data['payload'];
@@ -191,10 +194,38 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     }
 
     NotificationHandler.init(relayManager: _relayManager);
-    _applyPendingReads();
-    // Re-check after relays deliver initial batch
-    Future.delayed(const Duration(seconds: 6), _applyPendingReads);
-    _applyPendingDeclines();
+
+    // Move heavy operations to Post-Frame to prevent UI jank/black screen on Cold Start
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _applyPendingReads();
+      // Re-check after relays deliver initial batch
+      Future.delayed(const Duration(seconds: 6), _applyPendingReads);
+      _applyPendingDeclines();
+
+      try {
+        await BackgroundService.initialize();
+        await BackgroundService.registerReconnectTask();
+        await ChatManager.instance.cleanupTempMessages();
+      } catch (e) {
+        DebugLogger.log('[Startup] Deferred init failed | $e', type: 'ERROR');
+      }
+
+      // Connect relay immediately (no delay) for VoIP responsiveness
+      _relayManager.connect();
+      _networkManager.onReconnect = () {
+        _relayManager.connectIfNeeded();
+        if (!kIsWeb) {
+          final myPubkey = AppSettings.instance.myPubkey;
+          if (myPubkey.isNotEmpty) {
+            FirebaseMessaging.instance
+                .subscribeToTopic(myPubkey)
+                .catchError((_) {});
+          }
+        }
+      };
+      _networkManager.initialize();
+    });
+
     _relayManager.precacheAllProfilePictures();
     WidgetsBinding.instance.addObserver(this);
 
@@ -215,22 +246,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
     Future.delayed(const Duration(seconds: 4), () {
       AppSettings.hydrateMissingContactNames();
-    });
-
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _relayManager.connect();
-      _networkManager.onReconnect = () {
-        _relayManager.connectIfNeeded();
-        if (!kIsWeb) {
-          final myPubkey = AppSettings.instance.myPubkey;
-          if (myPubkey.isNotEmpty) {
-            FirebaseMessaging.instance
-                .subscribeToTopic(myPubkey)
-                .catchError((_) {});
-          }
-        }
-      };
-      _networkManager.initialize();
     });
   }
 
@@ -636,6 +651,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
                     peerColor: Color(
                         int.parse(callerPubkey.substring(0, 8), radix: 16) | 0xFF000000),
                     onClose: () {},
+                    autoAccept: CallManager.instance.launchAutoAccept,
                   );
                 }
                 return MainScreen(

@@ -631,10 +631,12 @@ class RelayManager {
           cm.activePeerColor = incomingPeerColor;
           cm.currentCallDirection = CallType.incoming;
 
-          NotificationHandler.showIncomingCall(
-            callerPubkey: callerPubkey,
-            callerName: finalDisplayName,
-          );
+          if (CallScreenNavigator.openScreens == 0) {
+            NotificationHandler.showIncomingCall(
+              callerPubkey: callerPubkey,
+              callerName: finalDisplayName,
+            );
+          }
         }
       } else if (signalData['type'] == 'answer') {
         CallManager.instance.handleAnswer(signalData['data'], () {});

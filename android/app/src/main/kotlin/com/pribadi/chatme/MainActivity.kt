@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Handler
+import android.os.Bundle
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
@@ -21,9 +22,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity: FlutterActivity() {
     private val BATTERY_CHANNEL = "com.chatme.app/battery"
     private val SHORTCUT_CHANNEL = "chatme_shortcuts"
-
     private val TASK_CHANNEL = "com.chatme.app/task"
-
 
     companion object {
         private var retainedEngine: FlutterEngine? = null
@@ -49,6 +48,17 @@ class MainActivity: FlutterActivity() {
                 engine.destroy()
             }
         }, 1500)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val tappedOngoing = intent?.action == "SELECT_NOTIFICATION" &&
+                intent?.getIntExtra("notificationId", -1) == 888889
+        if (tappedOngoing && callActive) {
+            flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                MethodChannel(it, TASK_CHANNEL).invokeMethod("openActiveCall", null)
+            }
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

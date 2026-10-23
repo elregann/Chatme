@@ -250,28 +250,32 @@ class _CallScreenState extends State<CallScreen> {
     }
 
     _cancelTimer(_errorAutoCloseTimer);
-
-    final pendingSdp = _callManager.pendingIncoming?.remoteSdp;
-
     NotificationHandler.cancelIncomingCall();
 
     setState(() {
       _isInitializing = true;
-      _callManager.pendingIncoming = null;
       _isAcceptedByMe = true;
       _hasError = false;
     });
 
     try {
-      String? sdp = widget.remoteSdp ?? pendingSdp;
-      for (int i = 0; (sdp == null || sdp.isEmpty) && i < 150 && mounted; i++) {
+      // Capture the SDP if it already exists
+      String? sdp = widget.remoteSdp ?? _callManager.pendingIncoming?.remoteSdp;
+
+      // If SDP is not ready (cold start), wait for the relay to populate it
+      int retries = 0;
+      while ((sdp == null || sdp.isEmpty) && retries < 150 && mounted) {
         await Future.delayed(const Duration(milliseconds: 100));
         sdp = _callManager.pendingIncoming?.remoteSdp;
+        retries++;
       }
-      if (sdp == null || sdp.isEmpty) {
-        throw Exception('Invalid remote SDP');
-      }
+
+      // Now that we have the SDP (or timed out), clear the pending call
       _callManager.pendingIncoming = null;
+
+      if (sdp == null || sdp.isEmpty) {
+        throw Exception('Remote SDP not received in time');
+      }
 
       await _callManager.handleOffer(
         sdp,
@@ -381,6 +385,7 @@ class _CallScreenState extends State<CallScreen> {
         return;
       }
       CallManager.instance.launchCallerPubkey = null;
+      CallManager.instance.launchAutoAccept = false;
       Navigator.of(context).pushReplacementNamed('/');
     } else {
       Navigator.of(context).pop();
