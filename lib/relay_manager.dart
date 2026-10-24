@@ -773,17 +773,15 @@ class RelayManager {
 
       final bool isFromMe = (actualSenderPubkey == myPubkey);
 
-      // Reaction
-      if (decrypted.startsWith('REACTION:')) {
-        final parts = decrypted.split(':');
-        if (parts.length >= 3) {
-          final emoji = parts[1];
-          final targetMessageId = parts[2];
-          if (targetMessageId.isNotEmpty) {
-            final bool applied = await _updateMessageReaction(targetMessageId, actualSenderPubkey, emoji, chatKey);
-            return applied ? true : false;
-          }
+      // Reaction (NIP-25)
+      if (nip17Result != null && nip17Result.rumorKind == Nip17.kindReaction) {
+        String? targetId;
+        for (final t in nip17Result.rumorTags) {
+          if (t.length > 1 && t[0] == 'e') targetId = t[1];
         }
+        final emoji = _reactionEmojiFrom(nip17Result.plaintext);
+        if (targetId == null || targetId.isEmpty || emoji == null) return true;
+        return await _updateMessageReaction(targetId, actualSenderPubkey, emoji, chatKey);
       }
 
       // Read receipt
@@ -806,21 +804,6 @@ class RelayManager {
             // wrap is not retried from other relays.
             return true; // return applied;
           }
-        }
-      }
-
-      // Legacy kind-7 reaction handling
-      if (event['kind'] == 7) {
-        String? targetId;
-        for (var t in tags) {
-          if (t is List && t.length > 1 && t[0] == 'e') {
-            targetId = t[1].toString();
-            break;
-          }
-        }
-        if (targetId != null) {
-          final bool applied = await _updateMessageReaction(targetId, actualSenderPubkey, content, chatKey);
-          return applied ? true : false;
         }
       }
 
@@ -1327,6 +1310,7 @@ class RelayManager {
     required String messageId,
     required String receiverPubkey,
     required String emoji,
+    String? targetAuthorPubkey,
   }) async {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
@@ -1334,15 +1318,24 @@ class RelayManager {
 
       if (myPubkey.isEmpty || myPrivkey.isEmpty) return false;
 
-      final reactionPlaintext = 'REACTION:$emoji:$messageId';
+      final author = (targetAuthorPubkey == null || targetAuthorPubkey.isEmpty)
+          ? receiverPubkey
+          : targetAuthorPubkey;
+      final reactionTags = <List<String>>[
+        ['e', messageId],
+        ['p', author],
+        if (author != receiverPubkey) ['p', receiverPubkey],
+        ['k', '14'],
+      ];
 
       final wrappedList = await Nip17.wrapMulti(
-        plaintext: reactionPlaintext,
+        plaintext: emoji,
         senderPrivkey: myPrivkey,
         senderPubkey: myPubkey,
         receiverPubkeys: [receiverPubkey, myPubkey],
         rumorReceiverPubkey: receiverPubkey,
-        replyToId: messageId,
+        kind: Nip17.kindReaction,
+        customTags: reactionTags,
       );
       final wrappedRecipient = wrappedList[0];
       final wrappedSelf = wrappedList[1];
@@ -1469,6 +1462,14 @@ class RelayManager {
     } catch (e) {
       DebugLogger.log('[Contact] Update failed | $e', type: 'ERROR');
     }
+  }
+
+  String? _reactionEmojiFrom(String content) {
+    final value = content.trim();
+    if (value.isEmpty || value == '+') return '👍';
+    if (value == '-') return '👎';
+    if (value.length > 32) return null;
+    return value;
   }
 
   Future<bool> _updateMessageReaction(
@@ -1718,9 +1719,12 @@ class RelayManager {
             final emoji = entry.value;
 
             try {
+              final myKey = AppSettings.instance.myPubkey;
+              final peerKey = msg.senderPubkey == myKey ? msg.receiverPubkey : msg.senderPubkey;
               final success = await sendReaction(
                 messageId: msg.id,
-                receiverPubkey: msg.receiverPubkey,
+                receiverPubkey: peerKey,
+                targetAuthorPubkey: msg.senderPubkey,
                 emoji: emoji,
               );
               if (success) {

@@ -575,6 +575,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           delivered = await widget.relayManager.sendReaction(
             messageId: targetId,
             receiverPubkey: widget.contact.pubkey,
+            targetAuthorPubkey: targetMessage.senderPubkey,
             emoji: emoji,
           );
         } catch (e) {

@@ -20,6 +20,7 @@ class Nip17 {
   static const int kindRumor = 14;
   static const int kindSeal = 13;
   static const int kindGiftWrap = 1059;
+  static const int kindReaction = 7;
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -37,6 +38,8 @@ class Nip17 {
     String? rumorReceiverPubkey,
     String? replyToId,
     int? forcedTimestampSec,
+    int kind = kindRumor,
+    List<List<String>>? customTags,
   }) async {
     final results = await wrapMulti(
       plaintext: plaintext,
@@ -46,6 +49,8 @@ class Nip17 {
       rumorReceiverPubkey: rumorReceiverPubkey,
       replyToId: replyToId,
       forcedTimestampSec: forcedTimestampSec,
+      kind: kind,
+      customTags: customTags,
     );
     return results.first;
   }
@@ -74,6 +79,8 @@ class Nip17 {
     String? rumorReceiverPubkey,
     String? replyToId,
     int? forcedTimestampSec,
+    int kind = kindRumor,
+    List<List<String>>? customTags,
   }) async {
     try {
       if (receiverPubkeys.isEmpty) {
@@ -87,6 +94,8 @@ class Nip17 {
         receiverPubkey: rumorReceiverPubkey ?? receiverPubkeys.first,
         replyToId: replyToId,
         forcedTimestampSec: forcedTimestampSec,
+        kind: kind,
+        customTags: customTags,
       );
       final rumorId = rumor['id'] as String;
       final rumorTimestamp = rumor['created_at'] as int;
@@ -171,9 +180,10 @@ class Nip17 {
 
       final rumor = jsonDecode(rumorJson) as Map<String, dynamic>;
 
-      if (rumor['kind'] != kindRumor) {
+      final int rumorKind = rumor['kind'] is int ? rumor['kind'] as int : -1;
+      if (rumorKind != kindRumor && rumorKind != kindReaction) {
         throw Exception(
-          'Innermost event kind ${rumor['kind']} is not a valid Rumor (expected $kindRumor)',
+          'Innermost event kind ${rumor['kind']} is not a supported Rumor (expected $kindRumor or $kindReaction)',
         );
       }
 
@@ -186,6 +196,7 @@ class Nip17 {
       // recipient ('p'), and any custom tags.
       String? replyToId;
       String receiverPubkey = '';
+      String? firstPTag;
       final rumorTags = <List<String>>[];
       final tags = rumor['tags'] as List? ?? [];
       for (final tag in tags) {
@@ -195,10 +206,16 @@ class Nip17 {
             if (tag[0] == 'e') {
               replyToId = tag[1].toString();
             } else if (tag[0] == 'p') {
-              receiverPubkey = tag[1].toString();
+              firstPTag ??= tag[1].toString();
+              if (tag[1].toString() != senderPubkey) {
+                receiverPubkey = tag[1].toString();
+              }
             }
           }
         }
+      }
+      if (receiverPubkey.isEmpty) {
+        receiverPubkey = firstPTag ?? '';
       }
 
       return Nip17Result(
@@ -209,6 +226,7 @@ class Nip17 {
         rumorId: rumor['id']?.toString() ?? '',
         replyToId: replyToId,
         rumorTags: rumorTags,
+        rumorKind: rumorKind,
       );
     } catch (e) {
       throw Exception('NIP-17 unwrap failed: $e');
@@ -229,17 +247,19 @@ class Nip17 {
     required String receiverPubkey,
     String? replyToId,
     int? forcedTimestampSec,
+    int kind = kindRumor,
+    List<List<String>>? customTags,
   }) {
-    final List<List<String>> tags = [['p', receiverPubkey]];
+    final List<List<String>> tags = customTags ?? [['p', receiverPubkey]];
 
-    if (replyToId != null && replyToId.isNotEmpty) {
+    if (customTags == null && replyToId != null && replyToId.isNotEmpty) {
       tags.add(['e', replyToId]);
     }
 
     final unsignedRumor = {
       'pubkey': senderPubkey,
       'created_at': forcedTimestampSec ?? _realTimestamp(),
-      'kind': kindRumor,
+      'kind': kind,
       'tags': tags,
       'content': plaintext,
     };
@@ -365,6 +385,7 @@ class Nip17Result {
   final int timestamp;
   final String rumorId;
   final String? replyToId;
+  final int rumorKind;
 
   /// The full tag list from the inner Rumor. Useful for callers that need
   /// to inspect custom tags beyond `p` and `e`.
@@ -378,6 +399,7 @@ class Nip17Result {
     required this.rumorId,
     this.replyToId,
     this.rumorTags = const [],
+    this.rumorKind = Nip17.kindRumor,
   });
 }
 

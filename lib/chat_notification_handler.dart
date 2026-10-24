@@ -91,6 +91,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           plaintext = nip17Result.plaintext;
         }
         rumorId = nip17Result.rumorId;
+        if (nip17Result.rumorKind != Nip17.kindRumor) return;
       } else {
         final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
         if (decrypted.isNotEmpty) plaintext = decrypted;
