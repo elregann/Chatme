@@ -71,6 +71,11 @@ class RelayManager {
   bool _isConnecting = false;
   bool _isProcessingQueue = false;
   bool _isProcessingReactions = false;
+  final Map<String, List<String>> _reactionAcks = {};
+  final Map<String, int> _lastReactionAttempt = {};
+  final Map<String, int> _reactionTimestamps = {};
+  Timer? _reactionRetryTimer;
+  int _reactionRetryCount = 0;
   final Map<String, int> _lastKind0Timestamp = {};
 
   /// Timestamp (ms) of the last re-send attempt per message ID.
@@ -910,6 +915,32 @@ class RelayManager {
     }
   }
 
+  Future<void> _confirmReaction(String giftWrapId) async {
+    final info = _reactionAcks.remove(giftWrapId);
+    if (info == null) return;
+    _reactionAcks.removeWhere((_, v) => v[1] == info[1] && v[2] == info[2]);
+    _reactionTimestamps.remove(info[3]);
+    final box = Hive.box('chats');
+    final dynamic raw = box.get(info[0]);
+    if (raw is! List) return;
+    final messages = raw.cast<ChatMessage>().toList();
+    final i = messages.indexWhere((m) => m.id == info[1]);
+    if (i == -1) return;
+    final pending = Map<String, String>.from(messages[i].pendingReactions)..remove(info[2]);
+    messages[i] = messages[i].copyWith(pendingReactions: pending);
+    await box.put(info[0], messages);
+    onMessageReceived?.call();
+  }
+
+  void _scheduleReactionRetry() {
+    if (_reactionRetryTimer != null || _reactionRetryCount >= 6) return;
+    _reactionRetryCount++;
+    _reactionRetryTimer = Timer(const Duration(seconds: 20), () {
+      _reactionRetryTimer = null;
+      _processPendingReactions();
+    });
+  }
+
   void _handleOk(List<dynamic> decoded, String url) {
     try {
       if (decoded.length < 3) return;
@@ -933,8 +964,13 @@ class RelayManager {
         return;
       }
 
+      if (accepted && _reactionAcks.containsKey(eventId)) {
+        _confirmReaction(eventId);
+        return;
+      }
+
       if (accepted) {
-        ChatManager.instance.updateMessageStatusByGiftWrap(eventId, 'sent');
+        ChatManager.instance.updateMessageStatusByGiftWrap(eventId, 'sent').then((_) => _processPendingReactions());
         onMessageReceived?.call();
         if (onMessageDelivered != null) onMessageDelivered!(eventId);
       }
@@ -1318,6 +1354,12 @@ class RelayManager {
 
       if (myPubkey.isEmpty || myPrivkey.isEmpty) return false;
 
+      final tsKey = '$messageId|$emoji';
+      final stableTs = _reactionTimestamps.putIfAbsent(
+        tsKey,
+            () => DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
+
       final author = (targetAuthorPubkey == null || targetAuthorPubkey.isEmpty)
           ? receiverPubkey
           : targetAuthorPubkey;
@@ -1336,9 +1378,17 @@ class RelayManager {
         rumorReceiverPubkey: receiverPubkey,
         kind: Nip17.kindReaction,
         customTags: reactionTags,
+        forcedTimestampSec: stableTs,
       );
       final wrappedRecipient = wrappedList[0];
       final wrappedSelf = wrappedList[1];
+
+      _reactionAcks[wrappedRecipient.giftWrapId] = [
+        ChatManager.instance.getChatKey(myPubkey, receiverPubkey),
+        messageId,
+        myPubkey,
+        tsKey,
+      ];
 
       bool sentToAtLeastOne = false;
       for (final entry in _connections.entries) {
@@ -1612,6 +1662,7 @@ class RelayManager {
 
     _isProcessingQueue = true;
     try {
+      _reactionRetryCount = 0;
       await _processPendingReactions();
 
       final pendingMessages = await ChatManager.instance.getPendingMessages();
@@ -1694,60 +1745,50 @@ class RelayManager {
     if (_isProcessingReactions) return;
     _isProcessingReactions = true;
 
+    bool anyUnacked = false;
     try {
+      final myKey = AppSettings.instance.myPubkey;
       final chatsBox = Hive.box('chats');
-      for (var key in chatsBox.keys) {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      for (final key in chatsBox.keys.toList()) {
         final dynamic rawData = chatsBox.get(key);
         if (rawData is! List) continue;
 
-        List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
+        final targets = <List<String>>[];
+        for (final m in rawData.cast<ChatMessage>()) {
+          final bool confirmed = (m.status == 'sent' || m.status == 'read') &&
+              !m.id.startsWith('temp_') &&
+              !m.id.startsWith('pending_');
+          if (!confirmed || m.pendingReactions.isEmpty) continue;
+          final peerKey = m.senderPubkey == myKey ? m.receiverPubkey : m.senderPubkey;
+          for (final e in m.pendingReactions.entries) {
+            targets.add([m.id, m.senderPubkey, peerKey, e.value]);
+          }
+        }
 
-        for (int i = 0; i < messages.length; i++) {
-          final msg = messages[i];
-          final bool isConfirmedSent = (msg.status == 'sent' || msg.status == 'read') &&
-              !msg.id.startsWith('temp_') &&
-              !msg.id.startsWith('pending_');
+        for (final t in targets) {
+          anyUnacked = true;
+          final attemptKey = '${t[0]}|${t[3]}';
+          final last = _lastReactionAttempt[attemptKey] ?? 0;
+          if (nowMs - last < 15000) continue;
+          _lastReactionAttempt[attemptKey] = nowMs;
 
-          if (!isConfirmedSent) continue;
-          if (msg.pendingReactions.isEmpty) continue;
-
-          final pendingMap = Map<String, String>.from(msg.pendingReactions);
-          bool messageChanged = false;
-
-          for (final entry in pendingMap.entries) {
-            final reactorPubkey = entry.key;
-            final emoji = entry.value;
-
-            try {
-              final myKey = AppSettings.instance.myPubkey;
-              final peerKey = msg.senderPubkey == myKey ? msg.receiverPubkey : msg.senderPubkey;
-              final success = await sendReaction(
-                messageId: msg.id,
-                receiverPubkey: peerKey,
-                targetAuthorPubkey: msg.senderPubkey,
-                emoji: emoji,
-              );
-              if (success) {
-                messages[i] = messages[i].copyWith(
-                  pendingReactions: Map.from(messages[i].pendingReactions)..remove(reactorPubkey),
-                );
-                messageChanged = true;
-                DebugLogger.log('[Queue] Sent pending reaction $emoji for confirmed message ${msg.id}');
-              } else {
-                DebugLogger.log('[Queue] No connection, keeping pending reaction for ${msg.id}', type: 'WARN');
-                break;
-              }
-            } catch (e) {
-              DebugLogger.log('[Queue] Failed to send pending reaction for ${msg.id} | $e', type: 'ERROR');
-              break;
-            }
-
-            await Future.delayed(const Duration(milliseconds: 150));
+          try {
+            final sent = await sendReaction(
+              messageId: t[0],
+              targetAuthorPubkey: t[1],
+              receiverPubkey: t[2],
+              emoji: t[3],
+            );
+            if (!sent) break;
+            DebugLogger.log('[Queue] Reaction ${t[3]} sent for ${t[0]}, awaiting OK');
+          } catch (e) {
+            DebugLogger.log('[Queue] Failed to send pending reaction for ${t[0]} | $e', type: 'ERROR');
+            break;
           }
 
-          if (messageChanged) {
-            await chatsBox.put(key, messages);
-          }
+          await Future.delayed(const Duration(milliseconds: 150));
         }
       }
     } catch (e) {
@@ -1755,5 +1796,7 @@ class RelayManager {
     } finally {
       _isProcessingReactions = false;
     }
+
+    if (anyUnacked) _scheduleReactionRetry();
   }
 }

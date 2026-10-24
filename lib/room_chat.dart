@@ -569,10 +569,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               !targetId.startsWith('temp_') &&
               !targetId.startsWith('pending_');
 
-      bool delivered = false;
+      final dynamic rawBefore = box.get(chatKey);
+      if (rawBefore is! List) return;
+      final listBefore = rawBefore.cast<ChatMessage>().toList();
+      final idxBefore = listBefore.indexWhere((m) => m.id == targetId);
+      if (idxBefore == -1) return;
+      listBefore[idxBefore] = listBefore[idxBefore].copyWith(
+        reactions: {...listBefore[idxBefore].reactions, myPubkey: emoji},
+        pendingReactions: {...listBefore[idxBefore].pendingReactions, myPubkey: emoji},
+      );
+      await box.put(chatKey, listBefore);
+
       if (isMessageReady) {
         try {
-          delivered = await widget.relayManager.sendReaction(
+          await widget.relayManager.sendReaction(
             messageId: targetId,
             receiverPubkey: widget.contact.pubkey,
             targetAuthorPubkey: targetMessage.senderPubkey,
@@ -582,26 +592,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           DebugLogger.log('[Reaction] sendReaction failed | $e', type: 'ERROR');
         }
       }
-
-      final dynamic raw = box.get(chatKey);
-      if (raw is! List) return;
-      final messages = raw.cast<ChatMessage>().toList();
-      final index = messages.indexWhere((m) => m.id == targetId);
-      if (index == -1) return;
-      final msg = messages[index];
-
-      final pending = Map<String, String>.from(msg.pendingReactions);
-      if (delivered) {
-        pending.remove(myPubkey);
-      } else {
-        pending[myPubkey] = emoji;
-      }
-
-      messages[index] = msg.copyWith(
-        reactions: {...msg.reactions, myPubkey: emoji},
-        pendingReactions: pending,
-      );
-      await box.put(chatKey, messages);
 
       if (mounted) setState(() {});
     } catch (e) {
