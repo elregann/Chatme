@@ -710,9 +710,9 @@ class RelayManager {
 
       if (peerPubkey.isEmpty || peerPubkey == myPubkey) return true;
 
-      if (decrypted.startsWith('CALL_SIGNAL:')) {
+      if (nip17Result != null && nip17Result.rumorKind == Nip17.kindCallSignal) {
         try {
-          final signalJson = decrypted.substring('CALL_SIGNAL:'.length);
+          final signalJson = nip17Result.plaintext;
           final signalData = jsonDecode(signalJson);
           if (signalData is Map) {
             final type = signalData['type']?.toString() ?? '';
@@ -1416,13 +1416,15 @@ class RelayManager {
               CallManager.instance.callState != CallState.active &&
               !CallManager.instance.wasCallConnected;
 
-      final plaintext = 'CALL_SIGNAL:${jsonEncode(signalData)}';
-
       final wrapped = await Nip17.wrap(
-        plaintext: plaintext,
+        plaintext: jsonEncode(signalData),
         senderPrivkey: myPrivkey,
         senderPubkey: myPubkey,
         receiverPubkey: recipientPubkey,
+        kind: Nip17.kindCallSignal,
+        customTags: [
+          ['p', recipientPubkey],
+        ],
       );
 
       for (final entry in _connections.entries) {

@@ -23,6 +23,7 @@ class Nip17 {
   static const int kindReaction = 7;
   // Chatme custom rumor kind, not part of any NIP.
   static const int kindReadReceipt = 3329;
+  static const int kindCallSignal = 3330;
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -185,7 +186,8 @@ class Nip17 {
       final int rumorKind = rumor['kind'] is int ? rumor['kind'] as int : -1;
       if (rumorKind != kindRumor &&
           rumorKind != kindReaction &&
-          rumorKind != kindReadReceipt) {
+          rumorKind != kindReadReceipt &&
+          rumorKind != kindCallSignal) {
         throw Exception(
           'Innermost event kind ${rumor['kind']} is not a supported Rumor',
         );

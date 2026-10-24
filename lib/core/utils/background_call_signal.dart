@@ -30,10 +30,14 @@ class BackgroundCallSignal {
       );
 
       final wrapped = await Nip17.wrap(
-        plaintext: 'CALL_SIGNAL:${jsonEncode({'type': 'hangup'})}',
+        plaintext: jsonEncode({'type': 'hangup'}),
         senderPrivkey: myPrivkey,
         senderPubkey: myPubkey,
         receiverPubkey: receiverPubkey,
+        kind: Nip17.kindCallSignal,
+        customTags: [
+          ['p', receiverPubkey],
+        ],
       );
       final payload = jsonEncode(['EVENT', wrapped.giftWrap]);
 
