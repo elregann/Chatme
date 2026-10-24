@@ -79,10 +79,15 @@ class BackgroundChatActions {
       final payloads = <String>[];
       for (final id in toSend) {
         final wrapped = await Nip17.wrap(
-          plaintext: 'READ_RECEIPT:$id:read',
+          plaintext: 'read',
           senderPrivkey: myPrivkey,
           senderPubkey: myPubkey,
           receiverPubkey: peerPubkey,
+          kind: Nip17.kindReadReceipt,
+          customTags: [
+            ['e', id],
+            ['p', peerPubkey],
+          ],
         );
         payloads.add(jsonEncode(['EVENT', wrapped.giftWrap]));
       }

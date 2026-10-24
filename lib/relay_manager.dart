@@ -789,27 +789,18 @@ class RelayManager {
         return await _updateMessageReaction(targetId, actualSenderPubkey, emoji, chatKey);
       }
 
-      // Read receipt
-      if (decrypted.startsWith('READ_RECEIPT:')) {
-        final parts = decrypted.split(':');
-        if (parts.length >= 3) {
-          final targetMessageId = parts[1];
-          final status = parts[2];
-          if (targetMessageId.isNotEmpty) {
-            final bool applied = await ChatManager.instance.updateMessageStatus(
-              targetMessageId,
-              status,
-              chatKey: chatKey,
-            );
-            // Notify the UI so the sender's chat screen reflects the new
-            // 'read' status immediately — without this the Hive update was
-            // silent and the double-tick never turned blue in foreground.
-            if (applied) onMessageReceived?.call();
-            // Always mark the receipt event as processed so the same gift
-            // wrap is not retried from other relays.
-            return true; // return applied;
-          }
-        }
+      // Read receipt (Chatme custom kind)
+      if (nip17Result != null && nip17Result.rumorKind == Nip17.kindReadReceipt) {
+        final targetMessageId = nip17Result.replyToId ?? '';
+        final status = nip17Result.plaintext.trim();
+        if (targetMessageId.isEmpty || status.isEmpty) return true;
+        final bool applied = await ChatManager.instance.updateMessageStatus(
+          targetMessageId,
+          status,
+          chatKey: chatKey,
+        );
+        if (applied) onMessageReceived?.call();
+        return true;
       }
 
       // Regular chat message
@@ -1323,13 +1314,16 @@ class RelayManager {
 
       if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
 
-      final receiptPlaintext = 'READ_RECEIPT:$originalRumorId:$status';
-
       final wrapped = await Nip17.wrap(
-        plaintext: receiptPlaintext,
+        plaintext: status,
         senderPrivkey: myPrivkey,
         senderPubkey: myPubkey,
         receiverPubkey: receiverPubkey,
+        kind: Nip17.kindReadReceipt,
+        customTags: [
+          ['e', originalRumorId],
+          ['p', receiverPubkey],
+        ],
       );
 
       for (final entry in _connections.entries) {

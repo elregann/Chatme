@@ -21,6 +21,8 @@ class Nip17 {
   static const int kindSeal = 13;
   static const int kindGiftWrap = 1059;
   static const int kindReaction = 7;
+  // Chatme custom rumor kind, not part of any NIP.
+  static const int kindReadReceipt = 3329;
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -181,9 +183,11 @@ class Nip17 {
       final rumor = jsonDecode(rumorJson) as Map<String, dynamic>;
 
       final int rumorKind = rumor['kind'] is int ? rumor['kind'] as int : -1;
-      if (rumorKind != kindRumor && rumorKind != kindReaction) {
+      if (rumorKind != kindRumor &&
+          rumorKind != kindReaction &&
+          rumorKind != kindReadReceipt) {
         throw Exception(
-          'Innermost event kind ${rumor['kind']} is not a supported Rumor (expected $kindRumor or $kindReaction)',
+          'Innermost event kind ${rumor['kind']} is not a supported Rumor',
         );
       }
 
