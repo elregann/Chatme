@@ -12,6 +12,8 @@ import 'models/call_log.dart';
 import 'models/chat_message.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
+import 'services/network_manager.dart';
+import 'relay_manager.dart';
 import 'call.dart';
 import 'notification_handler.dart';
 
@@ -21,6 +23,7 @@ class CallConstants {
   static const String signalAnswer = 'answer';
   static const String signalCandidate = 'candidate';
   static const String signalHangup = 'hangup';
+  static const String signalRestartOffer = 'restart_offer';
 
   // WebRTC constants
   static const String trackAudio = 'audio';
@@ -30,9 +33,9 @@ class CallConstants {
   // Timeouts
   static const int connectionTimeoutSeconds = 30;
   static const int errorAutoCloseSeconds = 3;
-  static const int reconnectionAttempts = 3;
+  static const int reconnectionAttempts = 5;
   static const int reconnectionDelayBaseMs = 1000;
-  static const int reconnectionDeadlineSeconds = 20;
+  static const int reconnectionDeadlineSeconds = 45;
 
   static Map<String, dynamic> getIceConfig() {
     return {
@@ -156,6 +159,16 @@ class CallManager {
   /// signal arrives via multiple relays or duplicate routes. Set to true
   /// before awaiting setRemoteDescription, reset on failure.
   bool _answerProcessed = false;
+
+  /// ICE restart bookkeeping. Only the callee creates restart offers, each
+  /// carrying a rising sequence number. The caller answers only offers newer
+  /// than the last one it handled, and the callee ignores answers that do not
+  /// match its latest offer, so stale or replayed signals change nothing.
+  int _restartSeq = 0;
+  int _lastRestartSeq = 0;
+  bool _isNegotiating = false;
+  String? _queuedRestartSdp;
+  int _queuedRestartSeq = 0;
 
   CallType currentCallDirection = CallType.outgoing;
   bool _wasCallConnected = false;
@@ -495,6 +508,7 @@ class CallManager {
       });
 
       _setupConnectionEvents(targetPubkey, relay, onConnected);
+      NetworkManager().addChangeListener(_onNetworkChanged);
 
       relay.onSignalReceived = (Map<String, dynamic> event) {
         _handleGlobalIncomingSignal(event);
@@ -565,7 +579,17 @@ class CallManager {
           addCandidate(data['data']);
           break;
         case CallConstants.signalAnswer:
-          handleAnswer(data['data'], () {});
+          handleAnswer(
+            data['data'],
+            () {},
+            seq: (data['seq'] as num?)?.toInt(),
+          );
+          break;
+        case CallConstants.signalRestartOffer:
+          _handleRestartOffer(
+            data['data'],
+            (data['seq'] as num?)?.toInt() ?? 0,
+          );
           break;
       }
     } catch (e) {
@@ -603,6 +627,8 @@ class CallManager {
           state == rtc.RTCIceConnectionState.RTCIceConnectionStateCompleted) {
         _startQualityMonitoring();
         _reconnectAttempts = 0;
+        _reconnectTimer?.cancel();
+        _reconnectTimer = null;
         _reconnectDeadlineTimer?.cancel();
         _reconnectDeadlineTimer = null;
         _setCallState(CallState.active);
@@ -612,7 +638,11 @@ class CallManager {
         _attemptReconnection();
       }
       if (state == rtc.RTCIceConnectionState.RTCIceConnectionStateFailed) {
-        _endAfterConnectionLoss();
+        if (_wasCallConnected) {
+          _attemptReconnection();
+        } else {
+          _endAfterConnectionLoss();
+        }
       }
     };
 
@@ -677,6 +707,8 @@ class CallManager {
 
     _isMakingOffer = true;
     _answerProcessed = false;
+    _restartSeq = 0;
+    _lastRestartSeq = 0;
     try {
       _logCallEvent('make_offer_started');
       _setCallState(CallState.initializing);
@@ -731,6 +763,8 @@ class CallManager {
       currentCallDirection = CallType.incoming;
       _wasCallConnected = false;
       _answerProcessed = false;
+      _restartSeq = 0;
+      _lastRestartSeq = 0;
       _logCallEvent('handle_offer_received_sending_ringing');
       _setCallState(CallState.initializing);
       _currentRelay = relay;
@@ -780,8 +814,13 @@ class CallManager {
     }
   }
 
-  Future<void> handleAnswer(String sdp, VoidCallback onConnected) async {
+  Future<void> handleAnswer(String sdp, VoidCallback onConnected, {int? seq}) async {
     if (_peerConnection == null || _isDisposing) return;
+
+    if (seq != null && seq != _restartSeq) {
+      _logCallEvent('restart_answer_ignored', {'seq': seq, 'expected': _restartSeq});
+      return;
+    }
 
     // Guard against duplicate answers. The relay layer can deliver the
     // same signal via multiple relays, and multiple routes in the signal
@@ -798,7 +837,9 @@ class CallManager {
 
     _answerProcessed = true;
     try {
-      _setCallState(CallState.connecting);
+      if (seq == null) {
+        _setCallState(CallState.connecting);
+      }
       _logCallEvent('setting_remote_description_answer');
       await _peerConnection!.setRemoteDescription(
           rtc.RTCSessionDescription(sdp, 'answer')
@@ -877,26 +918,230 @@ class CallManager {
   }
 
   Future<void> _attemptReconnection() async {
-    if (_reconnectAttempts >= CallConstants.reconnectionAttempts) {
-      await _endAfterConnectionLoss();
+    if (_sharedCallState == CallState.idle ||
+        _sharedCallState == CallState.ending) {
       return;
     }
-    _reconnectAttempts++;
     _setCallState(CallState.reconnecting);
     _reconnectDeadlineTimer ??= Timer(
       const Duration(seconds: CallConstants.reconnectionDeadlineSeconds),
       _endAfterConnectionLoss,
     );
-    final delay = Duration(milliseconds: CallConstants.reconnectionDelayBaseMs * (1 << (_reconnectAttempts - 1)));
-    _reconnectTimer = Timer(delay, () async {
-      try {
-        if (_peerConnection != null) {
-          await _peerConnection!.restartIce();
-        }
-      } catch (e) {
-        await _attemptReconnection();
+    if (currentCallDirection == CallType.incoming) {
+      _scheduleRestartOffer(const Duration(seconds: 2));
+    }
+  }
+
+  bool get _relayReady {
+    final relay = _currentRelay;
+    return relay is RelayManager && relay.isConnected.value;
+  }
+
+  void _kickRelay() {
+    final relay = _currentRelay;
+    if (relay is RelayManager) relay.connectIfNeeded();
+  }
+
+  void _onNetworkChanged() {
+    if (_sharedCallState != CallState.reconnecting) return;
+    if (currentCallDirection != CallType.incoming) return;
+    _logCallEvent('network_changed_during_reconnect');
+    _kickRelay();
+    _scheduleRestartOffer(const Duration(seconds: 1));
+  }
+
+  void _scheduleRestartOffer(Duration delay) {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, _runRestartAttempt);
+  }
+
+  Future<void> _runRestartAttempt() async {
+    if (_isDisposing || _sharedCallState != CallState.reconnecting) return;
+    if (currentCallDirection != CallType.incoming) return;
+    if (_reconnectAttempts >= CallConstants.reconnectionAttempts) return;
+
+    // An answer was just applied and ICE is still checking the new
+    // candidates, so give it time before starting another restart.
+    if (_peerConnection?.iceConnectionState ==
+        rtc.RTCIceConnectionState.RTCIceConnectionStateChecking) {
+      _scheduleRestartOffer(const Duration(seconds: 8));
+      return;
+    }
+
+    // A signal sent while no relay is connected is dropped, so do not spend
+    // an attempt until the relay connection is back.
+    if (!_relayReady) {
+      _kickRelay();
+      _scheduleRestartOffer(const Duration(seconds: 2));
+      return;
+    }
+
+    await _sendRestartOffer();
+    if (_sharedCallState == CallState.reconnecting) {
+      _scheduleRestartOffer(const Duration(seconds: 8));
+    }
+  }
+
+  String _sdpUfrag(String? sdp) =>
+      RegExp(r'a=ice-ufrag:(\S+)').firstMatch(sdp ?? '')?.group(1) ?? '';
+
+  int _sdpCandidateCount(String? sdp) =>
+      RegExp(r'a=candidate:').allMatches(sdp ?? '').length;
+
+  Future<void> _awaitGathering(Completer<void> completer, Duration timeout) async {
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        _logCallEvent('ice_gathering_timeout', {'timeout_s': timeout.inSeconds});
+        completer.complete();
       }
     });
+    await completer.future;
+    timer.cancel();
+    if (identical(_iceGatheringCompleter, completer)) {
+      _iceGatheringCompleter = null;
+    }
+  }
+
+  Future<void> _sendRestartOffer() async {
+    final pc = _peerConnection;
+    if (pc == null || _isDisposing || _isNegotiating) return;
+    if (_currentRelay == null || _currentTargetPubkey == null) return;
+
+    final signaling = pc.signalingState;
+    if (signaling != rtc.RTCSignalingState.RTCSignalingStateStable &&
+        signaling != rtc.RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+      _logCallEvent('ice_restart_skipped', {'signaling': signaling.toString()});
+      return;
+    }
+
+    _isNegotiating = true;
+    try {
+      _reconnectAttempts++;
+      _restartSeq++;
+      _answerProcessed = false;
+
+      final oldUfrag = _sdpUfrag((await pc.getLocalDescription())?.sdp);
+      await pc.restartIce();
+      final offer = await pc.createOffer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': false,
+        'iceRestart': true,
+        'mandatory': {'IceRestart': true},
+      });
+
+      final gathering = Completer<void>();
+      _iceGatheringCompleter = gathering;
+      await pc.setLocalDescription(offer);
+      await _awaitGathering(gathering, const Duration(seconds: 4));
+
+      final finalSdp = (await pc.getLocalDescription())?.sdp ?? offer.sdp;
+      _logCallEvent('ice_restart_offer_sent', {
+        'seq': _restartSeq,
+        'attempt': _reconnectAttempts,
+        'old_ufrag': oldUfrag,
+        'new_ufrag': _sdpUfrag(finalSdp),
+        'candidates': _sdpCandidateCount(finalSdp),
+      });
+
+      _currentRelay.sendCallSignal(_currentTargetPubkey!, {
+        'type': CallConstants.signalRestartOffer,
+        'seq': _restartSeq,
+        'data': finalSdp,
+      });
+    } catch (e) {
+      _logCallEvent('ice_restart_offer_error', {'error': e.toString()});
+    } finally {
+      _isNegotiating = false;
+    }
+  }
+
+  Future<void> _handleRestartOffer(String sdp, int seq) async {
+    if (_peerConnection == null || _isDisposing) return;
+    if (currentCallDirection != CallType.outgoing) return;
+    if (_sharedCallState != CallState.active &&
+        _sharedCallState != CallState.reconnecting) {
+      return;
+    }
+    if (seq <= _lastRestartSeq) {
+      _logCallEvent('ice_restart_offer_ignored', {'seq': seq, 'last': _lastRestartSeq});
+      return;
+    }
+
+    // Offers replayed by the relay can arrive together. Keep only the newest
+    // while one is being answered.
+    if (_isNegotiating) {
+      if (seq > _queuedRestartSeq) {
+        _queuedRestartSdp = sdp;
+        _queuedRestartSeq = seq;
+      }
+      return;
+    }
+
+    _isNegotiating = true;
+    try {
+      var currentSdp = sdp;
+      var currentSeq = seq;
+      while (true) {
+        if (currentSeq > _lastRestartSeq) {
+          await _answerRestartOffer(currentSdp, currentSeq);
+        }
+        final queued = _queuedRestartSdp;
+        if (queued == null) break;
+        currentSdp = queued;
+        currentSeq = _queuedRestartSeq;
+        _queuedRestartSdp = null;
+        _queuedRestartSeq = 0;
+      }
+    } finally {
+      _isNegotiating = false;
+    }
+  }
+
+  Future<void> _answerRestartOffer(String sdp, int seq) async {
+    final pc = _peerConnection;
+    if (pc == null || _isDisposing) return;
+    if (_currentRelay == null || _currentTargetPubkey == null) return;
+
+    if (pc.signalingState != rtc.RTCSignalingState.RTCSignalingStateStable) {
+      _logCallEvent('ice_restart_offer_ignored', {
+        'seq': seq,
+        'signaling': pc.signalingState.toString(),
+      });
+      return;
+    }
+
+    _lastRestartSeq = seq;
+    try {
+      _logCallEvent('ice_restart_offer_received', {
+        'seq': seq,
+        'ufrag': _sdpUfrag(sdp),
+        'candidates': _sdpCandidateCount(sdp),
+      });
+      await pc.setRemoteDescription(rtc.RTCSessionDescription(sdp, 'offer'));
+      final answer = await pc.createAnswer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': false,
+      });
+
+      final gathering = Completer<void>();
+      _iceGatheringCompleter = gathering;
+      await pc.setLocalDescription(answer);
+      await _awaitGathering(gathering, const Duration(seconds: 4));
+
+      final finalSdp = (await pc.getLocalDescription())?.sdp ?? answer.sdp;
+      _currentRelay.sendCallSignal(_currentTargetPubkey!, {
+        'type': CallConstants.signalAnswer,
+        'seq': seq,
+        'data': finalSdp,
+      });
+      _logCallEvent('ice_restart_answer_sent', {
+        'seq': seq,
+        'ufrag': _sdpUfrag(finalSdp),
+        'candidates': _sdpCandidateCount(finalSdp),
+      });
+    } catch (e) {
+      _logCallEvent('ice_restart_answer_error', {'error': e.toString()});
+    }
   }
 
   void _startQualityMonitoring() {
@@ -927,6 +1172,10 @@ class CallManager {
 
     try {
       _cancelAllTimers();
+      NetworkManager().removeChangeListener(_onNetworkChanged);
+      _isNegotiating = false;
+      _queuedRestartSdp = null;
+      _queuedRestartSeq = 0;
 
       if (sendHangupSignal && targetPubkey != null && relay != null) {
         relay.sendCallSignal(targetPubkey, {'type': 'hangup'});

@@ -729,7 +729,9 @@ class RelayManager {
               return true;
             }
 
-            if ((type == 'answer' || type == 'candidate') &&
+            if ((type == 'answer' ||
+                    type == 'candidate' ||
+                    type == CallConstants.signalRestartOffer) &&
                 CallManager.instance.callState == CallState.idle) {
               DebugLogger.log('[Call] Cold CALL_SIGNAL ignored (type=$type, no active call)');
               return true;
