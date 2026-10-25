@@ -40,6 +40,20 @@ class RelayManager {
     'wss://relay.primal.net',
   ];
 
+  /// Relays announced in our NIP-17 kind 10050 event. Other clients send our
+  /// DMs to these relays, and some refuse to message us without the event.
+  /// The spec recommends keeping the list small (1 to 3 relays).
+  static const List<String> dmInboxRelays = [
+    'wss://auth.nostr1.com',
+    'wss://nos.lol',
+  ];
+
+  String? _dmRelayListEventId;
+  final Set<String> _dmRelayListAcks = {};
+  DateTime? _lastDmRelayListAttempt;
+  int _dmRelayListAttempts = 0;
+  Timer? _dmRelayListRetryTimer;
+
   final Map<String, WebSocketChannel> _connections = {};
   final Map<String, bool> _connectionStatus = {};
   final Map<String, int> _reconnectAttempts = {};
@@ -957,6 +971,16 @@ class RelayManager {
         return;
       }
 
+      if (eventId == _dmRelayListEventId) {
+        if (accepted) {
+          _dmRelayListAcks.add(url);
+          if (_dmRelayListAcks.length >= 2) _markDmRelayListPublished();
+        } else {
+          DebugLogger.log('[DM relays] Rejected by $url | $msg');
+        }
+        return;
+      }
+
       if (accepted && _reactionAcks.containsKey(eventId)) {
         _confirmReaction(eventId);
         return;
@@ -1309,6 +1333,82 @@ class RelayManager {
     }
   }
 
+  bool _isDmRelayListPublished(String myPubkey) {
+    try {
+      final done = Hive.box('settings').get('dm_relay_list_$myPubkey');
+      if (done is! Map) return false;
+      final at = done['at'] is int ? done['at'] as int : 0;
+      final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      return done['list'] == dmInboxRelays.join(',') &&
+          nowSec - at < 7 * 86400;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  void _markDmRelayListPublished() {
+    _dmRelayListRetryTimer?.cancel();
+    _dmRelayListRetryTimer = null;
+    _dmRelayListEventId = null;
+    try {
+      final myPubkey = AppSettings.instance.myPubkey;
+      Hive.box('settings').put('dm_relay_list_$myPubkey', {
+        'list': dmInboxRelays.join(','),
+        'at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      });
+      DebugLogger.log('[DM relays] kind 10050 accepted by ${_dmRelayListAcks.length} relays');
+    } catch (e) {
+      DebugLogger.log('[DM relays] Saving state failed | $e', type: 'ERROR');
+    }
+  }
+
+  /// Publishes our NIP-17 DM relay list (kind 10050). It is replaceable, so
+  /// it is sent once per week or whenever [dmInboxRelays] changes, and counts
+  /// as done after at least two relays acknowledge it.
+  Future<void> publishDmRelayList() async {
+    try {
+      final myPubkey = AppSettings.instance.myPubkey;
+      final myPrivkey = AppSettings.instance.myPrivkey;
+      if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
+      if (_isDmRelayListPublished(myPubkey)) return;
+      if (_dmRelayListAttempts >= 6) return;
+
+      final last = _lastDmRelayListAttempt;
+      if (last != null && DateTime.now().difference(last).inSeconds < 15) return;
+      _lastDmRelayListAttempt = DateTime.now();
+      _dmRelayListAttempts++;
+
+      final Map<String, dynamic> unsignedEvent = {
+        'pubkey': myPubkey,
+        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'kind': Nip17.kindDmRelayList,
+        'tags': Nip17.dmRelayListTags(dmInboxRelays),
+        'content': '',
+      };
+
+      final eventId = NostrHelpers.generateEventId(unsignedEvent);
+      final signature = NostrSigner.sign(eventId, myPrivkey);
+      final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+
+      _dmRelayListEventId = eventId;
+      _dmRelayListAcks.clear();
+
+      int sent = 0;
+      for (final entry in _connections.entries) {
+        if (_connectionStatus[entry.key] == true) {
+          entry.value.sink.add(jsonEncode(["EVENT", signedEvent]));
+          sent++;
+        }
+      }
+      DebugLogger.log('[DM relays] kind 10050 sent to $sent relays (attempt $_dmRelayListAttempts)');
+
+      _dmRelayListRetryTimer?.cancel();
+      _dmRelayListRetryTimer = Timer(const Duration(seconds: 20), publishDmRelayList);
+    } catch (e) {
+      DebugLogger.log('[DM relays] Publish kind 10050 failed | $e', type: 'ERROR');
+    }
+  }
+
   Future<void> sendReceipt(String originalRumorId, String receiverPubkey, String status) async {
     try {
       final myPrivkey = AppSettings.instance.myPrivkey;
@@ -1641,6 +1741,7 @@ class RelayManager {
     if (!wasConnected && isNowConnected) {
       _processOfflineQueue();
       refreshProfileSubscription();
+      Future.delayed(const Duration(seconds: 5), publishDmRelayList);
     }
   }
 

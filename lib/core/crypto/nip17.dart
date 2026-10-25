@@ -24,6 +24,11 @@ class Nip17 {
   // Chatme custom rumor kind, not part of any NIP.
   static const int kindReadReceipt = 3329;
   static const int kindCallSignal = 3330;
+  // NIP-17 DM relay list: the relays where a user receives gift wraps.
+  static const int kindDmRelayList = 10050;
+
+  static List<List<String>> dmRelayListTags(List<String> relays) =>
+      [for (final url in relays) ['relay', url]];
 
   // ---------------------------------------------------------------------------
   // Public API
