@@ -1,6 +1,18 @@
+<div align="center">
+
+<img src="docs/design/chatme.svg" alt="Chatme logo" width="120" height="120">
+
 # Chatme
 
 **Decentralized, end-to-end encrypted messenger with voice calls, built with Flutter on the Nostr protocol.**
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: Android](https://img.shields.io/badge/platform-Android-3DDC84.svg)
+![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B.svg)
+![Protocol: Nostr](https://img.shields.io/badge/protocol-Nostr-8E44AD.svg)
+![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)
+
+</div>
 
 Chatme is an instant messaging app where your identity is a cryptographic key you own: no phone number, no email, and no central server holding your account. Messages and call signaling travel through Nostr relays, encrypted on your device before they leave it.
 
@@ -39,6 +51,48 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - Simultaneous connections to multiple relays with live status.
 - Automatic reconnection with exponential backoff.
 - NIP-42 authentication for relays that require it.
+
+---
+
+## Supported NIPs
+
+Status: Yes means fully supported, Partial means only part of the NIP is implemented.
+
+| NIP | Description | Status | Notes |
+| --- | --- | --- | --- |
+| [01](https://github.com/nostr-protocol/nips/blob/master/01.md) | Basic protocol flow | Yes | Events, `REQ`, `EVENT`, `OK`, BIP-340 Schnorr signatures. Profile metadata (kind `0`) is published and read. |
+| [04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted direct messages (legacy) | Partial | Receive only (kind `4`), so older conversations stay readable. New messages never use it. |
+| [05](https://github.com/nostr-protocol/nips/blob/master/05.md) | DNS-based identifiers | Partial | The `nip05` field is published in the profile. The `username@chatme` handle is verified through Chatme's own backend, not a `.well-known/nostr.json` lookup. |
+| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Yes | Rumor (kind `14`), seal (kind `13`), gift wrap (kind `1059`). Also publishes the DM relay list (kind `10050`) so other clients such as Amethyst can reach Chatme. |
+| [19](https://github.com/nostr-protocol/nips/blob/master/19.md) | bech32 encoded entities | Partial | `npub` and `nsec` (view, export, convert, add contact). Other entities such as `nprofile` and `nevent` are not handled. |
+| [25](https://github.com/nostr-protocol/nips/blob/master/25.md) | Reactions | Yes | Kind `7`, sent inside a gift wrap. |
+| [42](https://github.com/nostr-protocol/nips/blob/master/42.md) | Authentication of clients to relays | Yes | Answers `AUTH` challenges (kind `22242`) for relays that require it. |
+| [44](https://github.com/nostr-protocol/nips/blob/master/44.md) | Versioned encryption | Yes | Encrypts both the seal and the gift wrap. |
+| [59](https://github.com/nostr-protocol/nips/blob/master/59.md) | Gift wrap | Yes | Wraps every private message, reaction, receipt and call signal. |
+| [98](https://github.com/nostr-protocol/nips/blob/master/98.md) | HTTP auth | Yes | Kind `27235`, used to authorize profile photo uploads. |
+
+Not implemented yet: NIP-06 key derivation (see the note below), NIP-65 relay list metadata, NIP-09 event deletion, and NIP-96 or Blossom media servers.
+
+> **About the recovery phrase.** Chatme generates a standard 12 word BIP-39 phrase, but derives the account key from it with its own method (SHA-256 of the phrase), not with the NIP-06 derivation path. The phrase restores your account in Chatme, but it will not give you the same key if you import it into another Nostr client. To use your account elsewhere, export the `nsec` key from the Security Vault instead.
+
+### Event kinds used
+
+| Kind | Name | Where | Used for |
+| ---: | --- | --- | --- |
+| `0` | Profile metadata | Public | Display name, picture, `nip05`. |
+| `1` | Short text note | Public | Read only, legacy fallback for plain messages. |
+| `4` | Encrypted direct message (NIP-04) | Public | Read only, legacy fallback. |
+| `7` | Reaction | Inside gift wrap | Emoji reactions to a message. |
+| `13` | Seal | Inside gift wrap | Signed by the sender, NIP-44 encrypted rumor. |
+| `14` | Chat message (rumor) | Inside seal | The message itself. Unsigned. |
+| `1059` | Gift wrap | Public | Signed with a one-time key, hides sender and content from relays. |
+| `10050` | DM relay list | Public | Tells other clients which relays deliver messages to Chatme. |
+| `22242` | Client authentication | Sent to relay | Answer to a relay `AUTH` challenge. |
+| `27235` | HTTP auth | Sent to HTTP server | Authorizes photo uploads. |
+| `3329` | Read receipt (custom) | Inside gift wrap | Chatme specific. Marks a message as read. |
+| `3330` | Call signal (custom) | Inside gift wrap | Chatme specific. WebRTC offer, answer, ICE candidate, ICE restart offer and hang up. |
+
+Kinds `3329` and `3330` are Chatme's own conventions and are not part of any NIP. Other clients ignore them, and a call or read receipt only works between two Chatme users.
 
 ---
 
