@@ -14,6 +14,7 @@ import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'core/utils/time_utils.dart';
+import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
 
 class ChatsScreen extends StatefulWidget {
@@ -391,10 +392,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       }
 
       if (durationSeconds > 0) {
-        final m = durationSeconds ~/ 60;
-        final s = durationSeconds % 60;
-        final durationLabel = m > 0 ? '${m}m ${s}s' : '${s}s';
-        callLabel = '$callLabel ($durationLabel)';
+        callLabel = '$callLabel (${DurationUtils.formatCallDuration(durationSeconds)})';
       }
     }
 

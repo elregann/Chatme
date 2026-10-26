@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:proximity_sensor/proximity_sensor.dart';
 import 'call_manager.dart';
+import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
 import 'notification_handler.dart';
 
@@ -649,10 +650,7 @@ class _CallScreenState extends State<CallScreen> {
     if (_hasError) return _errorMessage ?? "Error";
 
     if (_callManager.callState == CallState.active) {
-      final totalSecs = _callManager.currentDuration;
-      final minutes = (totalSecs ~/ 60).toString().padLeft(2, '0');
-      final secs = (totalSecs % 60).toString().padLeft(2, '0');
-      return "$minutes:$secs";
+      return DurationUtils.formatClock(_callManager.currentDuration);
     }
 
     final isIncoming = widget.isIncoming;

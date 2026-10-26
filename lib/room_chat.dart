@@ -18,6 +18,7 @@ import 'models/chat_message.dart';
 import 'notification_handler.dart';
 import 'package:remixicon/remixicon.dart';
 import 'core/utils/debug_logger.dart';
+import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
 import 'core/utils/key_utils.dart';
 import 'core/utils/shortcut_helper.dart';
@@ -1287,10 +1288,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           : (isIncoming ? 'Incoming Call' : 'Outgoing Call');
 
       if (durationSeconds > 0) {
-        final m = durationSeconds ~/ 60;
-        final s = durationSeconds % 60;
-        final durationLabel = m > 0 ? '${m}m ${s}s' : '${s}s';
-        label = '$label ($durationLabel)';
+        label = '$label (${DurationUtils.formatCallDuration(durationSeconds)})';
       }
       return label;
     }
@@ -1905,12 +1903,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       label = 'Outgoing Call';
     }
 
-    String durationLabel = '';
-    if (durationSeconds > 0) {
-      final m = durationSeconds ~/ 60;
-      final s = durationSeconds % 60;
-      durationLabel = m > 0 ? '${m}m ${s}s' : '${s}s';
-    }
+    final durationLabel = DurationUtils.formatCallDuration(durationSeconds);
 
     final normalTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black87);
     final textColor = isMissed
@@ -1918,8 +1911,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         : normalTextColor;
     final iconColor = isMissed ? Colors.red : textColor;
     final timeColor = normalTextColor.withAlpha(153);
-
-    final fullText = durationLabel.isNotEmpty ? '$label ($durationLabel)' : label;
 
     final is24Hour = MediaQuery.of(context).alwaysUse24HourFormat;
     final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a')
@@ -1952,38 +1943,46 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               ? Border.all(color: Colors.white10, width: 0.5)
               : null,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Icon(callIcon, color: iconColor, size: 20),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                fullText,
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                  color: textColor,
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                const SizedBox(height: 12),
-                Text(
-                  timeStr,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: timeColor,
+        child: IntrinsicWidth(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(callIcon, color: iconColor, size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                      color: textColor,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 30),
+                    child: Text(
+                      durationLabel,
+                      style: TextStyle(fontSize: 13, color: timeColor),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    timeStr,
+                    style: TextStyle(fontSize: 11, color: timeColor),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

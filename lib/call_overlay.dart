@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'call_manager.dart';
+import 'core/utils/duration_utils.dart';
 import 'call.dart';
 import 'services/app_settings.dart';
 
@@ -32,15 +33,9 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
     super.dispose();
   }
 
-  String _formatDuration(int seconds) {
-    final m = (seconds ~/ 60).toString().padLeft(2, '0');
-    final s = (seconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
   String _getStatusText(CallManager manager) {
     if (manager.callState == CallState.active) {
-      return _formatDuration(manager.currentDuration);
+      return DurationUtils.formatClock(manager.currentDuration);
     }
     switch (manager.callState) {
       case CallState.connecting:

@@ -1,6 +1,7 @@
 // call_log.dart
 
 import 'package:hive/hive.dart';
+import '../core/utils/duration_utils.dart';
 
 part 'call_log.g.dart';
 
@@ -41,13 +42,5 @@ class CallLog extends HiveObject {
   bool get isIncoming => direction == 'incoming';
   bool get isOutgoing => direction == 'outgoing';
 
-  String get formattedDuration {
-    if (durationSeconds <= 0) return '';
-    final minutes = durationSeconds ~/ 60;
-    final seconds = durationSeconds % 60;
-    if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    }
-    return '${seconds}s';
-  }
+  String get formattedDuration => DurationUtils.formatCallDuration(durationSeconds);
 }
