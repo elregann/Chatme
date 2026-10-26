@@ -43,7 +43,7 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 ### Identity and security
 - Accounts are secp256k1 keypairs (BIP-340 Schnorr signatures).
 - Security Vault to view and export `npub` and `nsec` keys.
-- BIP-39 recovery phrase for backup and restore.
+- BIP-39 recovery phrase (NIP-06) for backup and restore, compatible with other Nostr clients.
 - Converter between hexadecimal and NIP-19 Bech32 keys.
 - Optional Global ID handle (`username@chatme`).
 
@@ -63,6 +63,7 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 | [01](https://github.com/nostr-protocol/nips/blob/master/01.md) | Basic protocol flow | Yes | Events, `REQ`, `EVENT`, `OK`, BIP-340 Schnorr signatures. Profile metadata (kind `0`) is published and read. |
 | [04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted direct messages (legacy) | Partial | Receive only (kind `4`), so older conversations stay readable. New messages never use it. |
 | [05](https://github.com/nostr-protocol/nips/blob/master/05.md) | DNS-based identifiers | Partial | The `nip05` field is published in the profile. The `username@chatme` handle is verified through Chatme's own backend, not a `.well-known/nostr.json` lookup. |
+| [06](https://github.com/nostr-protocol/nips/blob/master/06.md) | Key derivation from mnemonic seed phrase | Yes | 12 word BIP-39 phrase, derived with BIP-32 at `m/44'/1237'/0'/0/0`. The same phrase gives the same account in other NIP-06 clients. |
 | [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Yes | Rumor (kind `14`), seal (kind `13`), gift wrap (kind `1059`). Also publishes the DM relay list (kind `10050`) so other clients such as Amethyst can reach Chatme. |
 | [19](https://github.com/nostr-protocol/nips/blob/master/19.md) | bech32 encoded entities | Partial | `npub` and `nsec` (view, export, convert, add contact). Other entities such as `nprofile` and `nevent` are not handled. |
 | [25](https://github.com/nostr-protocol/nips/blob/master/25.md) | Reactions | Yes | Kind `7`, sent inside a gift wrap. |
@@ -71,9 +72,7 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 | [59](https://github.com/nostr-protocol/nips/blob/master/59.md) | Gift wrap | Yes | Wraps every private message, reaction, receipt and call signal. |
 | [98](https://github.com/nostr-protocol/nips/blob/master/98.md) | HTTP auth | Yes | Kind `27235`, used to authorize profile photo uploads. |
 
-Not implemented yet: NIP-06 key derivation (see the note below), NIP-65 relay list metadata, NIP-09 event deletion, and NIP-96 or Blossom media servers.
-
-> **About the recovery phrase.** Chatme generates a standard 12 word BIP-39 phrase, but derives the account key from it with its own method (SHA-256 of the phrase), not with the NIP-06 derivation path. The phrase restores your account in Chatme, but it will not give you the same key if you import it into another Nostr client. To use your account elsewhere, export the `nsec` key from the Security Vault instead.
+Not implemented yet: NIP-65 relay list metadata, NIP-09 event deletion, and NIP-96 or Blossom media servers.
 
 ### Event kinds used
 

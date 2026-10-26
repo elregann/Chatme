@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
-import 'package:crypto/crypto.dart';
 import 'package:bip340/bip340.dart' as bip340;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -105,7 +104,7 @@ class AppSettings {
         myPrivkey = KeyUtils.fromNsec(cleaned);
         myMnemonic = '';
       } else if (cleaned.split(' ').length >= 12) {
-        myPrivkey = await ChatMeVault.deriveNostrPrivateKey(cleaned);
+        myPrivkey = ChatMeVault.deriveNostrPrivateKey(cleaned);
         myMnemonic = cleaned;
       } else if (cleaned.length == 64) {
         myPrivkey = cleaned;
@@ -222,8 +221,7 @@ Backup Date: ${DateTime.now().toString()}
       final mnemonic = ChatMeVault.generateNewMnemonic();
       myMnemonic = mnemonic;
 
-      final bytes = utf8.encode(mnemonic);
-      final privateKey = sha256.convert(bytes).toString();
+      final privateKey = ChatMeVault.deriveNostrPrivateKey(mnemonic);
       final publicKey = bip340.getPublicKey(privateKey);
 
       final settingsBox = Hive.box('settings');
