@@ -151,15 +151,22 @@ class CallNotificationHandler {
     await plugin.cancel(incomingCallNotificationId);
   }
 
+  static int _ongoingSeq = 0;
+
   static Future<void> startOngoingCall({
     required FlutterLocalNotificationsPlugin plugin,
     required String peerName,
     required String peerPubkey,
     required int startedAtMs,
+    String? status,
   }) async {
     final android = plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return;
+
+    final seq = ++_ongoingSeq;
+    final showTimer = status == null;
+    final statusText = status ?? 'Ongoing voice call';
 
     String displayName = peerName;
     Uint8List? avatarBytes;
@@ -182,6 +189,8 @@ class CallNotificationHandler {
       }
     }
 
+    if (seq != _ongoingSeq) return;
+
     final details = AndroidNotificationDetails(
       activeCallChannelId,
       'Active Calls',
@@ -195,9 +204,9 @@ class CallNotificationHandler {
       onlyAlertOnce: true,
       playSound: false,
       enableVibration: false,
-      showWhen: true,
-      when: startedAtMs,
-      usesChronometer: true,
+      showWhen: showTimer,
+      when: showTimer ? startedAtMs : null,
+      usesChronometer: showTimer,
       icon: '@drawable/ic_stat_call',
       color: const Color(0xFF2196F3),
       shortcutId: peerPubkey.isEmpty ? null : 'chat_shortcut_$peerPubkey',
@@ -206,7 +215,7 @@ class CallNotificationHandler {
         groupConversation: false,
         messages: [
           Message(
-            'Ongoing voice call',
+            statusText,
             DateTime.now(),
             Person(
               name: displayName,
@@ -231,7 +240,7 @@ class CallNotificationHandler {
       await android.startForegroundService(
         activeCallNotificationId,
         displayName,
-        'Ongoing voice call',
+        statusText,
         notificationDetails: details,
         payload: peerPubkey,
         startType: AndroidServiceStartType.startNotSticky,
@@ -245,6 +254,7 @@ class CallNotificationHandler {
   }
 
   static Future<void> stopOngoingCall(FlutterLocalNotificationsPlugin plugin) async {
+    _ongoingSeq++;
     final android = plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     try {

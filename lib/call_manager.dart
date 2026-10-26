@@ -313,11 +313,16 @@ class CallManager {
       _wasCallConnected = false;
     }
 
-    if (newState == CallState.initializing || newState == CallState.active) {
+    if (newState == CallState.initializing ||
+        newState == CallState.active ||
+        newState == CallState.reconnecting) {
       NotificationHandler.startOngoingCall(
         peerName: activePeerName ?? 'Contact',
         peerPubkey: activePeerPubkey ?? '',
         startedAtMs: (callStartTime ?? DateTime.now()).millisecondsSinceEpoch,
+        status: newState == CallState.active
+            ? null
+            : (newState == CallState.reconnecting ? 'Reconnecting' : 'Connecting'),
       );
     } else if (newState == CallState.idle) {
       NotificationHandler.stopOngoingCall();

@@ -316,6 +316,7 @@ class NotificationHandler {
     required String peerName,
     required String peerPubkey,
     required int startedAtMs,
+    String? status,
   }) async {
     if (kIsWeb) return;
     await CallNotificationHandler.startOngoingCall(
@@ -323,6 +324,7 @@ class NotificationHandler {
       peerName: peerName,
       peerPubkey: peerPubkey,
       startedAtMs: startedAtMs,
+      status: status,
     );
   }
 
