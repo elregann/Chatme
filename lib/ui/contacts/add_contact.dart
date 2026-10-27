@@ -83,7 +83,7 @@ class _AddContactPageState extends State<AddContactPage> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Add a new friend using their Nostr public key or npub.',
+                        'Add a new friend using their Nostr public key, npub or nprofile.',
                         style: TextStyle(fontSize: 13, color: Colors.blue.withAlpha(200), height: 1.5),
                       ),
                     ),
@@ -127,7 +127,7 @@ class _AddContactPageState extends State<AddContactPage> {
 
               // Pubkey field
               Text(
-                'PUBLIC KEY OR NPUB',
+                'NPUB, NPROFILE, PUBKEY',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
               ),
               const SizedBox(height: 8),
@@ -168,7 +168,7 @@ class _AddContactPageState extends State<AddContactPage> {
                   if (!_submitted) return null;
                   if (value == null || value.isEmpty) return 'Public key is required';
                   final normalized = KeyUtils.normalizeToHex(value);
-                  if (normalized.length != 64) return 'Must be 64-character hex or valid npub';
+                  if (normalized.length != 64) return 'Must be 64-character hex, a valid npub or nprofile';
                   return null;
                 },
               ),

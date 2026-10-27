@@ -20,7 +20,7 @@ import 'package:remixicon/remixicon.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
-import 'core/utils/key_utils.dart';
+import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -840,8 +840,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         ),
         title: GestureDetector(
           onTap: () {
-            Clipboard.setData(ClipboardData(text: KeyUtils.toNpub(widget.contact.pubkey)));
-            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ContactProfilePage(
+                  contact: widget.contact,
+                  relayManager: widget.relayManager,
+                ),
+              ),
+            );
           },
           child: Row(
             children: [

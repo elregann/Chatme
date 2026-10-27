@@ -16,6 +16,7 @@ import 'models/chat_message.dart';
 import 'core/utils/time_utils.dart';
 import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
+import 'ui/contacts/contact_profile.dart';
 
 class ChatsScreen extends StatefulWidget {
   final RelayManager relayManager;
@@ -397,11 +398,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
     }
 
     return ListTile(
-      leading: UserAvatar(
-        pubkey: contact.pubkey,
-        name: displayName,
-        radius: 26,
-        relayManager: widget.relayManager,
+      leading: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ContactProfilePage(
+                contact: contact,
+                relayManager: widget.relayManager,
+              ),
+            ),
+          );
+        },
+        child: UserAvatar(
+          pubkey: contact.pubkey,
+          name: displayName,
+          radius: 26,
+          relayManager: widget.relayManager,
+        ),
       ),
       title: Text(
         displayName,

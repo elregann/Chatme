@@ -3,7 +3,85 @@
 import 'package:bech32/bech32.dart';
 import 'package:hex/hex.dart';
 
+class NostrProfilePointer {
+  final String pubkey;
+  final List<String> relays;
+
+  const NostrProfilePointer(this.pubkey, this.relays);
+}
+
 class KeyUtils {
+  static const int _maxBech32Length = 5000;
+
+  static String _stripNostrPrefix(String input) {
+    final trimmed = input.trim();
+    if (trimmed.toLowerCase().startsWith('nostr:')) {
+      return trimmed.substring(6).trim();
+    }
+    return trimmed;
+  }
+
+  // pubkey hex + relay hints → nprofile
+  static String toNprofile(String hexPubkey, {List<String> relays = const []}) {
+    try {
+      final pubkeyBytes = HEX.decode(hexPubkey);
+      if (pubkeyBytes.length != 32) return hexPubkey;
+
+      final tlv = <int>[0, 32, ...pubkeyBytes];
+      for (final relay in relays) {
+        final relayBytes = relay.codeUnits;
+        if (relayBytes.isEmpty || relayBytes.length > 255) continue;
+        tlv
+          ..add(1)
+          ..add(relayBytes.length)
+          ..addAll(relayBytes);
+      }
+
+      final data = _convertBits(tlv, 8, 5, true);
+      return bech32.encode(Bech32('nprofile', data), _maxBech32Length);
+    } catch (e) {
+      return hexPubkey;
+    }
+  }
+
+  // nprofile → pubkey hex and relay hints
+  static NostrProfilePointer? decodeNprofile(String input) {
+    try {
+      final text = _stripNostrPrefix(input).toLowerCase();
+      if (text.isEmpty || text.length > _maxBech32Length) return null;
+
+      final decoded = bech32.decode(text, text.length);
+      if (decoded.hrp != 'nprofile') return null;
+
+      final bytes = _convertBits(decoded.data, 5, 8, false);
+      String? pubkey;
+      final relays = <String>[];
+
+      var i = 0;
+      while (i < bytes.length) {
+        if (i + 2 > bytes.length) return null;
+        final type = bytes[i];
+        final length = bytes[i + 1];
+        final end = i + 2 + length;
+        if (end > bytes.length) return null;
+        final value = bytes.sublist(i + 2, end);
+
+        if (type == 0 && pubkey == null) {
+          if (length != 32) return null;
+          pubkey = HEX.encode(value);
+        } else if (type == 1) {
+          final relay = String.fromCharCodes(value);
+          if (relay.startsWith('wss://') || relay.startsWith('ws://')) relays.add(relay);
+        }
+        i = end;
+      }
+
+      if (pubkey == null) return null;
+      return NostrProfilePointer(pubkey, relays);
+    } catch (e) {
+      return null;
+    }
+  }
 
   // hex → npub
   static String toNpub(String hexPubkey) {
@@ -51,9 +129,11 @@ class KeyUtils {
 
   // Auto detect dan normalize ke hex
   static String normalizeToHex(String input) {
-    final trimmed = input.trim();
-    if (trimmed.startsWith('npub')) return fromNpub(trimmed);
-    if (trimmed.startsWith('nsec')) return fromNsec(trimmed);
+    final trimmed = _stripNostrPrefix(input);
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('npub')) return fromNpub(lower);
+    if (lower.startsWith('nprofile')) return decodeNprofile(lower)?.pubkey ?? trimmed;
+    if (lower.startsWith('nsec')) return fromNsec(lower);
     return trimmed;
   }
 
