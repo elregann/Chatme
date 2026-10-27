@@ -1,9 +1,8 @@
 // global_id.dart
 
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_database/firebase_database.dart';
 import '../../services/app_settings.dart';
+import '../../services/directory_service.dart';
 import '../../relay_manager.dart';
 
 class GlobalIdPage extends StatefulWidget {
@@ -31,39 +30,6 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
   void dispose() {
     _controller.dispose();
     super.dispose();
-  }
-
-  Future<bool> _claimUsername(String newName, String pubkey) async {
-    try {
-      const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
-      final db = FirebaseDatabase.instanceFor(app: Firebase.app(), databaseURL: rtdbUrl);
-
-      // Check if new name is available
-      final newRef = db.ref("usernames/$newName");
-      final snapshot = await newRef.get().timeout(const Duration(seconds: 10));
-      if (snapshot.exists && snapshot.value != pubkey) return false;
-
-      // Remove previous username mapping
-      final oldNip05 = AppSettings.instance.myNip05;
-      if (oldNip05.isNotEmpty) {
-        final oldName = oldNip05.split('@')[0];
-        if (oldName != newName) {
-          await db.ref("usernames/$oldName").remove();
-          await db.ref("users/$pubkey").remove();
-        }
-      }
-
-      // Register new username
-      await newRef.set(pubkey);
-
-      // Reverse lookup: pubkey -> username
-      await db.ref("users/$pubkey").set(newName);
-
-      return true;
-    } catch (e) {
-      debugPrint('[GlobalID] claimUsername failed | $e');
-      return false;
-    }
   }
 
   @override
@@ -212,7 +178,8 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
                 final messenger = ScaffoldMessenger.of(context);
                 setState(() => _isLoading = true);
 
-                final success = await _claimUsername(input, AppSettings.instance.myPubkey);
+                final result = await DirectoryService.claim(input);
+                final success = result == DirectoryResult.ok;
 
                 if (!mounted) return;
                 setState(() => _isLoading = false);
@@ -236,10 +203,12 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
                   );
                 } else {
                   messenger.showSnackBar(
-                    const SnackBar(
+                    SnackBar(
                       content: Text(
-                        'Username already taken',
-                        style: TextStyle(color: Colors.white),
+                        result == DirectoryResult.taken
+                            ? 'Username already taken'
+                            : 'Could not reach the server, try again',
+                        style: const TextStyle(color: Colors.white),
                       ),
                       backgroundColor: Colors.red,
                       behavior: SnackBarBehavior.floating,
@@ -418,15 +387,8 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
     if (confirmed == true && mounted) {
       setState(() => _isLoading = true);
       try {
-        const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
-        final db = FirebaseDatabase.instanceFor(app: Firebase.app(), databaseURL: rtdbUrl);
-        final pubkey = AppSettings.instance.myPubkey;
-        final oldNip05 = AppSettings.instance.myNip05;
-
-        if (oldNip05.isNotEmpty) {
-          final oldName = oldNip05.split('@')[0];
-          await db.ref("usernames/$oldName").remove();
-          await db.ref("users/$pubkey").remove();
+        if (AppSettings.instance.myNip05.isNotEmpty) {
+          await DirectoryService.release();
         }
 
         await AppSettings.instance.updateNip05('', false);
