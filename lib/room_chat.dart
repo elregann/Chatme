@@ -22,6 +22,9 @@ import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
 import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
+import 'services/link_preview_service.dart';
+import 'widgets/link_preview_card.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -55,6 +58,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   ChatMessage? _replyingTo;
   final Set<String> _highlightedIds = {};
+
+  Timer? _previewDebounce;
+  String? _composerUrl;
+  String? _dismissedUrl;
+  LinkPreviewData? _composerPreview;
 
   final ValueNotifier<double> _dragOffsetNotifier = ValueNotifier<double>(0.0);
   String? _draggingId;
@@ -117,6 +125,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     _anchoredController.itemPositions.addListener(_handlePositionsChanged);
     _scrollController.addListener(_handleScrollChanged);
+    _messageController.addListener(_onComposerChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
@@ -140,6 +149,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     _floatingDateTimer?.cancel();
     _scrollIdleTimer?.cancel();
+    _previewDebounce?.cancel();
 
     _anchoredController.itemPositions.removeListener(_handlePositionsChanged);
     _anchoredController.dispose();
@@ -147,6 +157,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     _dragOffsetNotifier.dispose();
     _focusNode.dispose();
+    _messageController.removeListener(_onComposerChanged);
     _messageController.dispose();
 
     super.dispose();
@@ -329,6 +340,41 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       _isMarkingRead = false;
       _suppressChatRebuild = false;
     }
+  }
+
+  void _onComposerChanged() {
+    if (!AppSettings.instance.linkPreviewsEnabled) {
+      if (_composerPreview != null) setState(() => _composerPreview = null);
+      return;
+    }
+
+    final url = LinkPreviewService.extractFirstUrl(_messageController.text);
+    if (url == _composerUrl) return;
+
+    _composerUrl = url;
+    _previewDebounce?.cancel();
+
+    if (url == null) {
+      _dismissedUrl = null;
+      if (_composerPreview != null) setState(() => _composerPreview = null);
+      return;
+    }
+
+    if (_composerPreview != null && _composerPreview!.url != url) {
+      setState(() => _composerPreview = null);
+    }
+    if (url == _dismissedUrl) return;
+
+    _previewDebounce = Timer(const Duration(milliseconds: 600), () async {
+      final data = await LinkPreviewService.instance.fetch(url);
+      if (!mounted || _composerUrl != url || url == _dismissedUrl) return;
+      setState(() => _composerPreview = data);
+    });
+  }
+
+  void _dismissComposerPreview() {
+    _dismissedUrl = _composerUrl;
+    setState(() => _composerPreview = null);
   }
 
   Future<void> _sendMessage() async {
@@ -1197,7 +1243,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         child: Container(
           constraints: BoxConstraints(
             minHeight: 38,
-            maxHeight: _replyingTo != null ? 230 : 180,
+            maxHeight: (_replyingTo != null ? 230 : 180) +
+                (_composerPreview != null ? 72 : 0),
           ),
           decoration: BoxDecoration(
             color: inputBgColor,
@@ -1214,6 +1261,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             mainAxisSize: MainAxisSize.min,
             children: [
               if (_replyingTo != null) _buildReplyPreviewInside(),
+              if (_composerPreview != null) _buildComposerLinkPreview(),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -1276,6 +1324,82 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildComposerLinkPreview() {
+    final data = _composerPreview!;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
+
+    final bgColor = isNostrCyber
+        ? const Color(0xFF251C33)
+        : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
+    final titleColor = isNostrCyber
+        ? const Color(0xFFD4BBFC)
+        : const Color(0xFF1976D2);
+    final subColor = isNostrCyber
+        ? Colors.white70
+        : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(18),
+          bottom: Radius.circular(8),
+        ),
+      ),
+      child: SizedBox(
+        height: 64,
+        child: Row(
+          children: [
+            if (data.imageUrl != null)
+              CachedNetworkImage(
+                imageUrl: data.imageUrl!,
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => const SizedBox(width: 64, height: 64),
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data.title ?? data.host,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      data.description ?? data.host,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: subColor, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.close, size: 20, color: subColor),
+              onPressed: _dismissComposerPreview,
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.only(right: 8),
+            ),
+          ],
         ),
       ),
     );
@@ -1499,6 +1623,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final hasReactions = message.reactions.isNotEmpty;
     final isHighlighted = _highlightedIds.contains(message.id);
+    final previewUrl = AppSettings.instance.linkPreviewsEnabled
+        ? LinkPreviewService.extractFirstUrl(message.plaintext)
+        : null;
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1540,6 +1667,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       children: [
                         if (message.replyToContent != null)
                           _buildReplyInBubble(message, isMe),
+
+                        if (previewUrl != null)
+                          LinkPreviewCard(
+                            key: ValueKey('${message.id}_$previewUrl'),
+                            url: previewUrl,
+                            textColor: textColor,
+                            backgroundColor: isNostrCyber
+                                ? Colors.white.withAlpha(20)
+                                : (isDark
+                                ? Colors.black.withAlpha(40)
+                                : Colors.black.withAlpha(15)),
+                          ),
 
                         const SizedBox(height: 4),
 

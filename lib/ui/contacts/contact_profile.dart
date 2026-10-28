@@ -181,18 +181,18 @@ class _CopyChip extends StatelessWidget {
         );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: cardColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: borderColor, width: 0.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: TextStyle(fontSize: 13, color: textColor)),
-            const SizedBox(width: 10),
-            Icon(Icons.copy_rounded, size: 15, color: textColor),
+            Text(label, style: TextStyle(fontSize: 12, color: textColor)),
+            const SizedBox(width: 6),
+            Icon(Icons.copy_rounded, size: 12, color: textColor),
           ],
         ),
       ),

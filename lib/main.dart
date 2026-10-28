@@ -13,6 +13,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'services/link_preview_service.dart';
+import 'widgets/user_avatar.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'models/call_log.dart';
@@ -68,6 +70,7 @@ void main() async {
     await Hive.openBox<String>('profile_pictures');
     await Hive.openBox<CallLog>('call_logs');
     await Hive.openBox('processed_events');
+    await LinkPreviewService.instance.init();
 
     await AppSettings.instance.load();
 
@@ -832,11 +835,46 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               label: 'Calls',
             ),
             NavigationDestination(
-              icon: Icon(Remix.settings_line, color: Theme.of(context).iconTheme.color),
-              selectedIcon: Icon(Remix.settings_fill, color: Theme.of(context).iconTheme.color),
-              label: 'Settings',
+              icon: _buildMeIcon(selected: false),
+              selectedIcon: _buildMeIcon(selected: true),
+              label: 'Me',
             ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMeIcon({required bool selected}) {
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('settings').listenable(),
+      builder: (context, _, __) {
+        final settings = AppSettings.instance;
+        final hasLocalPhoto = settings.myPhotoPath.isNotEmpty && !kIsWeb;
+        final ringColor = Theme.of(context).iconTheme.color ?? Colors.white;
+
+        final Widget avatar = hasLocalPhoto
+            ? CircleAvatar(
+                radius: 11,
+                backgroundImage: FileImage(File(settings.myPhotoPath)),
+              )
+            : UserAvatar(
+                pubkey: settings.myPubkey,
+                name: settings.myName.isNotEmpty ? settings.myName : null,
+                radius: 11,
+                relayManager: widget.relayManager,
+              );
+
+        return Container(
+          padding: const EdgeInsets.all(1.5),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? ringColor : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: avatar,
         );
       },
     );

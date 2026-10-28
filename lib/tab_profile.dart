@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'services/app_settings.dart';
+import 'services/link_preview_service.dart';
 import 'core/utils/key_utils.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
@@ -616,6 +617,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
+                _buildSectionTitle('Privacy', textSecondary),
+                Card(
+                  elevation: 0,
+                  color: cardColor,
+                  clipBehavior: Clip.antiAlias,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: borderColor, width: 0.5),
+                  ),
+                  child: SwitchListTile(
+                    secondary: Icon(Icons.link_rounded, color: textPrimary, size: 18),
+                    title: Text('Link previews', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    subtitle: Text(
+                      'Loads the linked site to show a preview. The site can see your IP address.',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                    value: settings.linkPreviewsEnabled,
+                    onChanged: (value) async {
+                      await settings.setLinkPreviewsEnabled(value);
+                      if (!value) await LinkPreviewService.instance.clear();
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
                 _buildSectionTitle('Security & Account', textSecondary),
                 Card(
                   elevation: 0,
@@ -775,7 +800,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.22.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.23.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),
