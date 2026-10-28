@@ -76,6 +76,10 @@ class BackgroundChatActions {
       final toSend = ids.length > 20 ? ids.sublist(ids.length - 20) : ids;
       await BgInbox.recordRead(peerPubkey, toSend);
 
+      final receiptsOn =
+          settingsBox.get('read_receipts_enabled', defaultValue: true) == true;
+      if (!receiptsOn) return;
+
       final payloads = <String>[];
       for (final id in toSend) {
         final wrapped = await Nip17.wrap(

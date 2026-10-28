@@ -1410,6 +1410,7 @@ class RelayManager {
   }
 
   Future<void> sendReceipt(String originalRumorId, String receiverPubkey, String status) async {
+    if (!AppSettings.instance.readReceiptsEnabled) return;
     try {
       final myPrivkey = AppSettings.instance.myPrivkey;
       final myPubkey = AppSettings.instance.myPubkey;

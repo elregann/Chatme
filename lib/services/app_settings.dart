@@ -31,6 +31,7 @@ class AppSettings {
   ThemeMode themeMode = ThemeMode.dark;
   String roomChatTheme = 'default'; // 'default' or 'nostr_cyber'
   bool linkPreviewsEnabled = false;
+  bool readReceiptsEnabled = true;
 
   Future<void> load() async {
     try {
@@ -66,6 +67,7 @@ class AppSettings {
 
       roomChatTheme = settingsBox.get('room_chat_theme', defaultValue: 'default');
       linkPreviewsEnabled = settingsBox.get('link_previews_enabled', defaultValue: false);
+      readReceiptsEnabled = settingsBox.get('read_receipts_enabled', defaultValue: true);
 
       DebugLogger.log('[Settings] Loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
     } catch (e) {
@@ -84,6 +86,12 @@ class AppSettings {
     linkPreviewsEnabled = value;
     final settingsBox = Hive.box('settings');
     await settingsBox.put('link_previews_enabled', value);
+  }
+
+  Future<void> setReadReceiptsEnabled(bool value) async {
+    readReceiptsEnabled = value;
+    final settingsBox = Hive.box('settings');
+    await settingsBox.put('read_receipts_enabled', value);
   }
 
   Future<String?> fetchGlobalUsername(String pubkey) async {

@@ -626,18 +626,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(12),
                     side: BorderSide(color: borderColor, width: 0.5),
                   ),
-                  child: SwitchListTile(
-                    secondary: Icon(Icons.link_rounded, color: textPrimary, size: 18),
-                    title: Text('Link previews', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    subtitle: Text(
-                      'Loads the linked site to show a preview. The site can see your IP address.',
-                      style: TextStyle(fontSize: 12, color: textSecondary),
-                    ),
-                    value: settings.linkPreviewsEnabled,
-                    onChanged: (value) async {
-                      await settings.setLinkPreviewsEnabled(value);
-                      if (!value) await LinkPreviewService.instance.clear();
-                    },
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        secondary: Icon(Icons.link_rounded, color: textPrimary, size: 18),
+                        title: Text('Link previews', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        subtitle: Text(
+                          'Loads the linked site to show a preview. The site can see your IP address.',
+                          style: TextStyle(fontSize: 12, color: textSecondary),
+                        ),
+                        value: settings.linkPreviewsEnabled,
+                        onChanged: (value) async {
+                          await settings.setLinkPreviewsEnabled(value);
+                          if (!value) await LinkPreviewService.instance.clear();
+                        },
+                      ),
+                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      SwitchListTile(
+                        secondary: Icon(Icons.done_all_rounded, color: textPrimary, size: 18),
+                        title: Text('Read receipts', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        subtitle: Text(
+                          "When off, you won't send or see blue ticks.",
+                          style: TextStyle(fontSize: 12, color: textSecondary),
+                        ),
+                        value: settings.readReceiptsEnabled,
+                        onChanged: (value) => settings.setReadReceiptsEnabled(value),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -800,7 +815,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.23.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.24.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),

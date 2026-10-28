@@ -392,6 +392,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
   /// Applies "mark as read" taps done while the app was closed.
   Future<void> _applyPendingReads() async {
+    if (kIsWeb) return;
     try {
       // Ids recorded while the app was closed are obsolete now.
       await BgInbox.clearAllUnread();
@@ -427,6 +428,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
   /// Saves records of calls declined or missed while the app was closed.
   Future<void> _applyPendingDeclines() async {
+    if (kIsWeb) return;
     try {
       final myPubkey = AppSettings.instance.myPubkey;
       final declinedAt = <String, int>{};

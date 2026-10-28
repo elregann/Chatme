@@ -108,7 +108,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
       case 'sent':
         return Icon(Icons.done, size: 13, color: color.withAlpha(153));
       case 'read':
-        return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
+        return ValueListenableBuilder(
+          valueListenable: Hive.box('settings').listenable(keys: ['read_receipts_enabled']),
+          builder: (context, _, __) {
+            if (!AppSettings.instance.readReceiptsEnabled) {
+              return Icon(Icons.done, size: 13, color: color.withAlpha(153));
+            }
+            return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
+          },
+        );
       case 'error':
         return const Icon(Icons.error_outline, size: 13, color: Colors.redAccent);
       default:
