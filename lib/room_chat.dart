@@ -26,6 +26,12 @@ import 'services/link_preview_service.dart';
 import 'widgets/link_preview_card.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+const double _composerBarHeight = 52.0;
+const double _composerBarRadius = 26.0;
+const double _composerBarInset = 6.0;
+const double _composerInnerRadius = _composerBarRadius - _composerBarInset;
+const double _composerSendSize = 42.0;
+
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
   final RelayManager relayManager;
@@ -1221,9 +1227,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    const double actionButtonSize = 38.0;
-    const double containerHeight = 38.0;
-
     final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF1976D2);
     final inputBgColor = isNostrCyber
         ? const Color(0xFF1B1425)
@@ -1235,20 +1238,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-            10,
-            kIsWeb ? 20 : 6,
-            10,
-            kIsWeb ? 20 : 6
+            12, // Left
+            kIsWeb ? 20 : 6, // Top
+            12, // Right
+            kIsWeb ? 20 : 6 // Bottom
         ),
         child: Container(
           constraints: BoxConstraints(
-            minHeight: 38,
+            minHeight: _composerBarHeight,
             maxHeight: (_replyingTo != null ? 230 : 180) +
                 (_composerPreview != null ? 72 : 0),
           ),
           decoration: BoxDecoration(
             color: inputBgColor,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(_composerBarRadius),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withAlpha(isDark ? 30 : 15),
@@ -1266,14 +1269,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minHeight: _composerBarHeight,
+                      ),
                       child: TextField(
                         controller: _messageController,
                         focusNode: _focusNode,
                         textCapitalization: TextCapitalization.sentences,
                         maxLines: 5,
                         minLines: 1,
+                        textAlignVertical: TextAlignVertical.center,
                         style: TextStyle(
                           fontSize: 16,
                           color: inputTextColor,
@@ -1284,8 +1290,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                             color: inputHintColor,
                           ),
                           contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: kIsWeb ? 10 : 8,
+                            horizontal: 18,
+                            vertical: 12,
                           ),
                           border: InputBorder.none,
                           isDense: true,
@@ -1293,28 +1299,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       ),
                     ),
                   ),
-                  Container(
-                    height: containerHeight,
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.only(right: 4, left: 10),
-                    child: GestureDetector(
-                      onTap: _isSending ? null : _sendMessage,
-                      child: Transform.translate(
-                        offset: const Offset(0, -4),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          height: actionButtonSize,
-                          width: actionButtonSize,
-                          decoration: BoxDecoration(
-                            color: accentColor,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: _isSending
-                                ? const SizedBox(width: 20, height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                                : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                  SizedBox(
+                    height: _composerBarHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 2, right: 6),
+                      child: Center(
+                        child: GestureDetector(
+                          onTap: _isSending ? null : _sendMessage,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            height: _composerSendSize,
+                            width: _composerSendSize,
+                            decoration: BoxDecoration(
+                              color: accentColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: _isSending
+                                  ? const SizedBox(width: 20, height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                            ),
                           ),
                         ),
                       ),
@@ -1345,14 +1351,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+      margin: const EdgeInsets.fromLTRB(
+        _composerBarInset,
+        _composerBarInset,
+        _composerBarInset,
+        0,
+      ),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(18),
-          bottom: Radius.circular(8),
-        ),
+        borderRadius: BorderRadius.circular(_composerInnerRadius),
       ),
       child: SizedBox(
         height: 64,
@@ -1448,14 +1456,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         : (isDark ? Colors.white70 : Colors.black87);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+      margin: const EdgeInsets.fromLTRB(
+        _composerBarInset,
+        _composerBarInset,
+        _composerBarInset,
+        0,
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(18),
-            bottom: Radius.circular(8)
-        ),
+        borderRadius: BorderRadius.circular(_composerInnerRadius),
       ),
       child: Row(
         children: [
