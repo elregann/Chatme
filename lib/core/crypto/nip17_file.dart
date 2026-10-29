@@ -36,6 +36,39 @@ class FileMessage {
 
   bool get isAudio => mimeType.startsWith('audio/');
 
+  Map<String, String> toMap() => {
+        'url': url,
+        'type': mimeType,
+        'key': key,
+        'nonce': nonce,
+        'x': hash,
+        if (originalHash != null) 'ox': originalHash!,
+        if (size != null) 'size': '$size',
+        if (durationSeconds != null) 'duration': '$durationSeconds',
+      };
+
+  /// Reads what [toMap] wrote. Returns null when a required value is missing.
+  static FileMessage? fromMap(Map<String, String> map) {
+    final url = map['url'];
+    final type = map['type'];
+    final key = map['key'];
+    final nonce = map['nonce'];
+    final hash = map['x'];
+    if (url == null || type == null || key == null || nonce == null || hash == null) {
+      return null;
+    }
+    return FileMessage(
+      url: url,
+      mimeType: type,
+      key: key,
+      nonce: nonce,
+      hash: hash,
+      originalHash: map['ox'],
+      size: int.tryParse(map['size'] ?? ''),
+      durationSeconds: int.tryParse(map['duration'] ?? ''),
+    );
+  }
+
   List<List<String>> toTags() => [
         ['file-type', mimeType],
         ['encryption-algorithm', algorithm],

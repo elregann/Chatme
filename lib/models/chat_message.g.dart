@@ -33,13 +33,15 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       giftWrapId: fields[12] == null ? '' : fields[12] as String,
       pendingReactions:
           fields[13] == null ? {} : (fields[13] as Map).cast<String, String>(),
+      file: fields[14] == null ? {} : (fields[14] as Map).cast<String, String>(),
+      localPath: fields[15] == null ? '' : fields[15] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChatMessage obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -67,7 +69,11 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       ..writeByte(12)
       ..write(obj.giftWrapId)
       ..writeByte(13)
-      ..write(obj.pendingReactions);
+      ..write(obj.pendingReactions)
+      ..writeByte(14)
+      ..write(obj.file)
+      ..writeByte(15)
+      ..write(obj.localPath);
   }
 
   @override

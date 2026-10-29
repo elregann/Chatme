@@ -1,6 +1,7 @@
 // chat_message.dart
 
 import 'package:hive/hive.dart';
+import '../core/crypto/nip17_file.dart';
 import '../services/app_settings.dart';
 
 part 'chat_message.g.dart';
@@ -39,6 +40,12 @@ class ChatMessage {
 
   @HiveField(13, defaultValue: {}) Map<String, String> pendingReactions;
 
+  /// Kind 15 file details (see [FileMessage.toMap]). Empty for text messages.
+  @HiveField(14, defaultValue: {}) final Map<String, String> file;
+
+  /// Where the decrypted file lives in the app folder. Empty until downloaded.
+  @HiveField(15, defaultValue: '') final String localPath;
+
   ChatMessage({
     required this.id,
     required this.senderPubkey,
@@ -54,6 +61,8 @@ class ChatMessage {
     this.replyToSenderPubkey,
     this.giftWrapId = '',
     this.pendingReactions = const {},
+    this.file = const {},
+    this.localPath = '',
   });
 
   ChatMessage copyWithStatus(String newStatus) {
@@ -75,6 +84,8 @@ class ChatMessage {
     String? replyToSenderPubkey,
     String? giftWrapId,
     Map<String, String>? pendingReactions,
+    Map<String, String>? file,
+    String? localPath,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -91,12 +102,22 @@ class ChatMessage {
       replyToSenderPubkey: replyToSenderPubkey ?? this.replyToSenderPubkey,
       giftWrapId: giftWrapId ?? this.giftWrapId,
       pendingReactions: pendingReactions ?? Map.from(this.pendingReactions),
+      file: file ?? this.file,
+      localPath: localPath ?? this.localPath,
     );
   }
 
   void addReaction(String senderPubkey, String emoji) {
     reactions[senderPubkey] = emoji;
   }
+
+  bool get hasFile => file.isNotEmpty;
+
+  FileMessage? get fileMessage => hasFile ? FileMessage.fromMap(file) : null;
+
+  bool get isVoiceNote => fileMessage?.isAudio ?? false;
+
+  bool get isDownloaded => localPath.isNotEmpty;
 
   bool get isMe => senderPubkey == AppSettings.instance.myPubkey;
 
@@ -116,6 +137,8 @@ class ChatMessage {
       'replyToSenderPubkey': replyToSenderPubkey,
       'giftWrapId': giftWrapId,
       'pendingReactions': pendingReactions,
+      'file': file,
+      'localPath': localPath,
     };
   }
 
@@ -135,6 +158,8 @@ class ChatMessage {
       replyToSenderPubkey: map['replyToSenderPubkey'],
       giftWrapId: map['giftWrapId'] ?? '',
       pendingReactions: Map<String, String>.from(map['pendingReactions'] ?? {}),
+      file: Map<String, String>.from(map['file'] ?? {}),
+      localPath: map['localPath'] ?? '',
     );
   }
 }

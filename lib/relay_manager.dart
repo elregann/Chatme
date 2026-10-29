@@ -16,6 +16,7 @@ import 'main.dart';
 import 'chat_manager.dart';
 import 'core/crypto/nip04.dart';
 import 'core/crypto/nip17.dart';
+import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nostr_protocol.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/shortcut_helper.dart';
@@ -819,6 +820,18 @@ class RelayManager {
         return true;
       }
 
+      // File message (NIP-17 kind 15), shown as a voice note or a file
+      Map<String, String> fileMap = const {};
+      if (nip17Result != null && nip17Result.rumorKind == Nip17.kindFile) {
+        final fileMessage = FileMessage.parse(
+          content: nip17Result.plaintext,
+          tags: nip17Result.rumorTags,
+        );
+        if (fileMessage == null) return true;
+        fileMap = fileMessage.toMap();
+        decrypted = fileMessage.isAudio ? 'Voice message' : 'File';
+      }
+
       // Regular chat message
       String? replyToId;
       if (event['kind'] == 1059 && nip17Result != null) {
@@ -855,6 +868,7 @@ class RelayManager {
         replyToContent: replyToContent,
         replyToSenderPubkey: replyToSenderPubkey,
         giftWrapId: eventId,
+        file: fileMap,
       );
 
       final bool newlySaved = await ChatManager.instance.saveMessage(chatMessage);

@@ -9,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/crypto/nip17.dart';
+import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nip04.dart';
 import 'core/utils/notification_profile.dart';
 import 'models/contact.dart';
@@ -87,11 +88,19 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           receiverPrivkey: myPrivkey,
           receiverPubkey: myPubkey,
         );
-        if (nip17Result.plaintext.isNotEmpty) {
+        if (nip17Result.rumorKind == Nip17.kindFile) {
+          final file = FileMessage.parse(
+            content: nip17Result.plaintext,
+            tags: nip17Result.rumorTags,
+          );
+          if (file == null) return;
+          plaintext = file.isAudio ? 'Voice message' : 'File';
+        } else if (nip17Result.rumorKind != Nip17.kindRumor) {
+          return;
+        } else if (nip17Result.plaintext.isNotEmpty) {
           plaintext = nip17Result.plaintext;
         }
         rumorId = nip17Result.rumorId;
-        if (nip17Result.rumorKind != Nip17.kindRumor) return;
       } else {
         final decrypted = Nip04.decrypt(ciphertext, myPrivkey, senderPubkey);
         if (decrypted.isNotEmpty) plaintext = decrypted;

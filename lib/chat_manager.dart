@@ -286,6 +286,23 @@ class ChatManager {
     });
   }
 
+  Future<void> setLocalPath(String messageId, String chatKey, String path) async {
+    await _lock.synchronized<void>(() async {
+      try {
+        final chatsBox = Hive.box('chats');
+        final dynamic raw = chatsBox.get(chatKey);
+        if (raw is! List) return;
+        final messages = raw.cast<ChatMessage>().toList();
+        final i = messages.indexWhere((m) => m.id == messageId);
+        if (i == -1) return;
+        messages[i] = messages[i].copyWith(localPath: path);
+        await chatsBox.put(chatKey, messages);
+      } catch (e) {
+        DebugLogger.log('[Message] Set local path failed | $e', type: 'ERROR');
+      }
+    });
+  }
+
   Future<bool> _processStatusUpdate(Box box, String key, String id, String status) async {
     final dynamic rawData = box.get(key);
     if (rawData is List) {
