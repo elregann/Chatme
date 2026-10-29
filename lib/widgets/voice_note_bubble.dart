@@ -1,9 +1,7 @@
 // voice_note_bubble.dart
 
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import '../chat_manager.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/duration_utils.dart';
@@ -11,6 +9,7 @@ import '../models/chat_message.dart';
 import '../services/file_transfer_service.dart';
 import '../services/just_audio_backend.dart';
 import '../services/voice_player.dart';
+import '../services/voice_storage.dart';
 
 /// The inside of a chat bubble for a voice note: download, then play.
 class VoiceNoteBubble extends StatefulWidget {
@@ -47,10 +46,9 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
       _downloadError = null;
     });
     try {
-      final base = await getApplicationSupportDirectory();
       final path = await FileTransferService.downloadAndSave(
         file,
-        directory: Directory('${base.path}${Platform.pathSeparator}voice'),
+        directory: await voiceDirectory(),
       );
       await ChatManager.instance.setLocalPath(_id, widget.message.chatKey, path);
       if (!mounted) return;
@@ -82,13 +80,12 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
   @override
   Widget build(BuildContext context) {
     final color = widget.textColor;
-    final file = widget.message.fileMessage;
 
-    if (kIsWeb || file == null) {
+    if (kIsWeb) {
       return Padding(
         padding: const EdgeInsets.only(top: 8, bottom: 2),
         child: Text(
-          kIsWeb ? 'Voice notes are not available on web yet' : 'Voice note',
+          'Voice notes are not available on web yet',
           style: TextStyle(color: color.withAlpha(180), fontSize: 14),
         ),
       );
@@ -102,7 +99,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
         final failed = (active && state.error != null) || _downloadError != null;
         final total = (active && state.duration != null)
             ? state.duration!
-            : Duration(seconds: file.durationSeconds ?? 0);
+            : Duration(seconds: widget.message.fileDurationSeconds ?? 0);
         final position = active ? state.position : Duration.zero;
         final playing = active && state.playing;
 
@@ -113,7 +110,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
 
         final String label;
         if (!hasPath) {
-          final size = _sizeLabel(file.size);
+          final size = _sizeLabel(widget.message.fileSize);
           final length = total.inSeconds > 0 ? DurationUtils.formatClock(total.inSeconds) : '';
           label = [length, size].where((e) => e.isNotEmpty).join('  ');
         } else if (active && (playing || position > Duration.zero)) {

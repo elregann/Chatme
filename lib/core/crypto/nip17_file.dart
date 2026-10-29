@@ -36,6 +36,13 @@ class FileMessage {
 
   bool get isAudio => mimeType.startsWith('audio/');
 
+  /// The tags of the whole rumor: who it is for, what it replies to, and the file.
+  List<List<String>> rumorTags({required String receiver, String? replyToId}) => [
+        ['p', receiver],
+        if (replyToId != null && replyToId.isNotEmpty) ['e', replyToId],
+        ...toTags(),
+      ];
+
   Map<String, String> toMap() => {
         'url': url,
         'type': mimeType,

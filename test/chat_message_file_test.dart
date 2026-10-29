@@ -98,4 +98,26 @@ void main() {
     expect(back.hasFile, isFalse);
     expect(back.localPath, '');
   });
+
+  test('a voice note that is not uploaded yet needs upload but already plays', () {
+    final message = build(
+      fileMap: {'type': 'audio/mp4', 'duration': '12'},
+      localPath: '/data/out_1.m4a',
+    );
+    expect(message.isVoiceNote, isTrue);
+    expect(message.needsUpload, isTrue);
+    expect(message.fileDurationSeconds, 12);
+    expect(message.isDownloaded, isTrue);
+  });
+
+  test('an uploaded voice note does not need upload again', () {
+    final message = build(fileMap: file.toMap());
+    expect(message.needsUpload, isFalse);
+    expect(message.fileSize, 1234);
+    expect(message.fileDurationSeconds, 7);
+  });
+
+  test('a text message never needs upload', () {
+    expect(build().needsUpload, isFalse);
+  });
 }

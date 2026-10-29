@@ -1,6 +1,7 @@
 // relay_manager.dart
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:async';
 import 'widgets/user_avatar.dart';
@@ -21,6 +22,7 @@ import 'core/crypto/nostr_protocol.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'services/app_settings.dart';
+import 'services/file_send_service.dart';
 import 'services/nostr_service.dart';
 import 'models/chat_message.dart';
 import 'models/contact.dart';
@@ -1016,6 +1018,7 @@ class RelayManager {
     String? replyToId,
     String? replyToContent,
     int? messageTimestampMs,
+    FileMessage? file,
   }) async {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
@@ -1026,16 +1029,12 @@ class RelayManager {
         throw Exception('Missing pubkey or privkey');
       }
 
-      final wrappedList = await Nip17.wrapMulti(
+      final wrappedList = await _wrapOutgoing(
         plaintext: plaintext,
-        senderPrivkey: myPrivkey,
-        senderPubkey: myPubkey,
-        receiverPubkeys: [receiverPubkey, myPubkey],
-        rumorReceiverPubkey: receiverPubkey,
+        receiverPubkey: receiverPubkey,
         replyToId: replyToId,
-        forcedTimestampSec: messageTimestampMs != null
-            ? messageTimestampMs ~/ 1000
-            : null,
+        timestampMs: messageTimestampMs,
+        file: file,
       );
       final wrappedRecipient = wrappedList[0];
       final wrappedSelf = wrappedList[1];
@@ -1072,6 +1071,29 @@ class RelayManager {
       DebugLogger.log('[NIP-17] sendMessage failed | $e', type: 'ERROR');
       throw Exception('NIP-17 sendMessage failed: $e');
     }
+  }
+
+  /// One rumor wrapped for the receiver and for ourselves. A file message is a
+  /// kind 15 rumor whose content is the file address.
+  Future<List<Nip17Wrapped>> _wrapOutgoing({
+    required String plaintext,
+    required String receiverPubkey,
+    String? replyToId,
+    int? timestampMs,
+    FileMessage? file,
+  }) {
+    final myPubkey = AppSettings.instance.myPubkey;
+    return Nip17.wrapMulti(
+      plaintext: file?.url ?? plaintext,
+      senderPrivkey: AppSettings.instance.myPrivkey,
+      senderPubkey: myPubkey,
+      receiverPubkeys: [receiverPubkey, myPubkey],
+      rumorReceiverPubkey: receiverPubkey,
+      replyToId: file == null ? replyToId : null,
+      forcedTimestampSec: timestampMs != null ? timestampMs ~/ 1000 : null,
+      kind: file == null ? Nip17.kindRumor : Nip17.kindFile,
+      customTags: file?.rumorTags(receiver: receiverPubkey, replyToId: replyToId),
+    );
   }
 
   void _triggerCloudflareNotification({
@@ -1801,14 +1823,25 @@ class RelayManager {
         if (plaintext.isEmpty) continue;
 
         try {
-          final wrappedList = await Nip17.wrapMulti(
+          FileMessage? file = msg.fileMessage;
+          if (msg.needsUpload) {
+            if (msg.localPath.isEmpty) continue;
+            file = await FileSendService.encryptAndUpload(
+              source: File(msg.localPath),
+              mimeType: msg.file['type'] ?? FileSendService.voiceMimeType,
+              durationSeconds: msg.fileDurationSeconds,
+              pubkey: myPubkey,
+              privkey: myPrivkey,
+            );
+            await ChatManager.instance.setFile(msg.id, msg.chatKey, file.toMap());
+          }
+
+          final wrappedList = await _wrapOutgoing(
             plaintext: plaintext,
-            senderPrivkey: myPrivkey,
-            senderPubkey: myPubkey,
-            receiverPubkeys: [msg.receiverPubkey, myPubkey],
-            rumorReceiverPubkey: msg.receiverPubkey,
+            receiverPubkey: msg.receiverPubkey,
             replyToId: msg.replyToId,
-            forcedTimestampSec: msg.timestamp ~/ 1000,
+            timestampMs: msg.timestamp,
+            file: file,
           );
           final wrappedRecipient = wrappedList[0];
           final wrappedSelf = wrappedList[1];

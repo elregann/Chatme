@@ -115,7 +115,14 @@ class ChatMessage {
 
   FileMessage? get fileMessage => hasFile ? FileMessage.fromMap(file) : null;
 
-  bool get isVoiceNote => fileMessage?.isAudio ?? false;
+  bool get isVoiceNote => (file['type'] ?? '').startsWith('audio/');
+
+  int? get fileDurationSeconds => int.tryParse(file['duration'] ?? '');
+
+  int? get fileSize => int.tryParse(file['size'] ?? '');
+
+  /// A file message that is still on this phone only: it has no address yet.
+  bool get needsUpload => hasFile && fileMessage == null;
 
   bool get isDownloaded => localPath.isNotEmpty;
 

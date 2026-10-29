@@ -81,4 +81,31 @@ void main() {
     expect(mine.rumorId, wrapped[0].rumorId);
     expect(FileMessage.parse(content: mine.plaintext, tags: mine.rumorTags), isNotNull);
   });
+
+  test('rumorTags carries the receiver, the reply and the file tags', () async {
+    final wrapped = await Nip17.wrap(
+      plaintext: file.url,
+      senderPrivkey: alicePriv,
+      senderPubkey: alicePub,
+      receiverPubkey: bobPub,
+      kind: Nip17.kindFile,
+      customTags: file.rumorTags(receiver: bobPub, replyToId: 'e' * 64),
+    );
+
+    final result = await Nip17.unwrap(
+      giftWrapEvent: wrapped.giftWrap,
+      receiverPrivkey: bobPriv,
+      receiverPubkey: bobPub,
+    );
+
+    expect(result.receiverPubkey, bobPub);
+    expect(result.replyToId, 'e' * 64);
+    expect(FileMessage.parse(content: result.plaintext, tags: result.rumorTags), isNotNull);
+  });
+
+  test('rumorTags leaves the reply tag out when there is no reply', () {
+    final tags = file.rumorTags(receiver: bobPub);
+    expect(tags.first, ['p', bobPub]);
+    expect(tags.where((t) => t[0] == 'e'), isEmpty);
+  });
 }

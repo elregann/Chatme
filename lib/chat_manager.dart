@@ -1,10 +1,13 @@
 // chat_manager.dart
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'notification_handler.dart';
 import 'services/app_settings.dart';
+import 'services/file_send_service.dart';
+import 'services/voice_storage.dart';
 import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
 import 'models/chat_message.dart';
@@ -228,6 +231,82 @@ class ChatManager {
     }
   }
 
+  /// Saves a recorded voice note in the chat right away, then uploads and sends
+  /// it. When that fails it stays in the chat as a pending message, and the
+  /// offline queue uploads it again later.
+  static Future<void> sendVoiceNote({
+    required String recordedPath,
+    required int seconds,
+    required String receiverPubkey,
+    required RelayManager relayManager,
+    String? replyToId,
+    String? replyToContent,
+    String? replyToSenderPubkey,
+  }) async {
+    final myPubkey = AppSettings.instance.myPubkey;
+    final myPrivkey = AppSettings.instance.myPrivkey;
+    final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
+    final messageTs = DateTime.now().millisecondsSinceEpoch;
+    final tempId = 'temp_$messageTs';
+
+    final stored = await FileSendService.moveIntoFolder(
+      File(recordedPath),
+      await voiceDirectory(),
+      'out_$messageTs.m4a',
+    );
+
+    final tempMessage = ChatMessage(
+      id: tempId,
+      senderPubkey: myPubkey,
+      receiverPubkey: receiverPubkey,
+      content: '',
+      plaintext: 'Voice message',
+      timestamp: messageTs,
+      status: 'sending',
+      chatKey: chatKey,
+      replyToId: replyToId,
+      replyToContent: replyToContent,
+      replyToSenderPubkey: replyToSenderPubkey,
+      file: {'type': FileSendService.voiceMimeType, 'duration': '$seconds'},
+      localPath: stored.path,
+    );
+    await ChatManager.instance.saveMessage(tempMessage);
+
+    try {
+      final file = await FileSendService.encryptAndUpload(
+        source: stored,
+        mimeType: FileSendService.voiceMimeType,
+        durationSeconds: seconds,
+        pubkey: myPubkey,
+        privkey: myPrivkey,
+      );
+      await ChatManager.instance.setFile(tempId, chatKey, file.toMap());
+
+      final event = await relayManager.sendMessage(
+        receiverPubkey: receiverPubkey,
+        plaintext: file.url,
+        file: file,
+        replyToId: replyToId,
+        messageTimestampMs: messageTs,
+      );
+
+      await ChatManager.instance.updateMessageIdAndStatus(
+        tempId,
+        event['rumorId'].toString(),
+        'sending',
+        chatKey,
+        newContent: (event['giftWrap'] as Map<String, dynamic>)['content'].toString(),
+        newGiftWrapId: event['giftWrapId'].toString(),
+      );
+    } catch (e) {
+      DebugLogger.log('[Voice] Send failed, queued for later | $e', type: 'WARN');
+      final latest = await ChatManager.instance.getMessageById(tempId, chatKey) ?? tempMessage;
+      final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+      await ChatManager.instance.saveMessage(latest.copyWith(id: offlineId, status: 'pending'));
+      await ChatManager.instance.deleteMessage(tempId, chatKey);
+    }
+  }
+
   Future<bool> updateMessageStatus(String messageId, String newStatus, {String? chatKey}) async {
     bool found = false;
     await _lock.synchronized<void>(() async {
@@ -282,6 +361,23 @@ class ChatManager {
         }
       } catch (e) {
         DebugLogger.log('[Message] GiftWrap status update failed | $e', type: 'ERROR');
+      }
+    });
+  }
+
+  Future<void> setFile(String messageId, String chatKey, Map<String, String> file) async {
+    await _lock.synchronized<void>(() async {
+      try {
+        final chatsBox = Hive.box('chats');
+        final dynamic raw = chatsBox.get(chatKey);
+        if (raw is! List) return;
+        final messages = raw.cast<ChatMessage>().toList();
+        final i = messages.indexWhere((m) => m.id == messageId);
+        if (i == -1) return;
+        messages[i] = messages[i].copyWith(file: file);
+        await chatsBox.put(chatKey, messages);
+      } catch (e) {
+        DebugLogger.log('[Message] Set file failed | $e', type: 'ERROR');
       }
     });
   }
