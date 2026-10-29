@@ -47,7 +47,7 @@ void main() {
     test('broken input returns null', () {
       expect(KeyUtils.decodeNprofile(''), isNull);
       expect(KeyUtils.decodeNprofile(_npub), isNull);
-      expect(KeyUtils.decodeNprofile(_nprofile.substring(0, _nprofile.length - 1) + 'q'), isNull);
+      expect(KeyUtils.decodeNprofile('${_nprofile.substring(0, _nprofile.length - 1)}q'), isNull);
       expect(KeyUtils.decodeNprofile(_nprofile.substring(0, 60)), isNull);
       expect(KeyUtils.decodeNprofile(_lengthOverrun), isNull);
       expect(KeyUtils.decodeNprofile(_shortPubkey), isNull);

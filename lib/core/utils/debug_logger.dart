@@ -1,5 +1,7 @@
 // debug_logger.dart
 
+import 'package:flutter/foundation.dart';
+
 class DebugLogger {
   static final Map<String, List<String>> _logs = {};
   static bool _enabled = true;
@@ -11,7 +13,7 @@ class DebugLogger {
     if (!_enabled) return;
     final timestamp = DateTime.now().toIso8601String();
     final logEntry = '[$timestamp][$type] ${tag != null ? '[$tag] ' : ''}$message';
-    print(logEntry);
+    debugPrint(logEntry);
     if (!_logs.containsKey(type)) _logs[type] = [];
     _logs[type]!.insert(0, logEntry);
     if (_logs[type]!.length > 1000) _logs[type]!.removeLast();

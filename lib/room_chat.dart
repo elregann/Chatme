@@ -24,6 +24,8 @@ import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'services/link_preview_service.dart';
 import 'widgets/link_preview_card.dart';
+import 'widgets/voice_note_bubble.dart';
+import 'services/just_audio_backend.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 const double _composerBarHeight = 52.0;
@@ -148,6 +150,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _removeReactionOverlay();
+    stopVoicePlayer();
 
     widget.relayManager.currentlyChattingWith = null;
     NotificationHandler.activeChatPubkey = null;
@@ -1692,7 +1695,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
                         const SizedBox(height: 4),
 
-                        (_isShortText(message.plaintext, context))
+                        message.isVoiceNote
+                            ? VoiceNoteBubble(
+                          key: ValueKey('vn_${message.id}'),
+                          message: message,
+                          textColor: textColor,
+                          footer: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
+                              if (isMe) ...[
+                                const SizedBox(width: 4),
+                                _buildStatusIcon(message.status, textColor),
+                              ],
+                            ],
+                          ),
+                        )
+                            : (_isShortText(message.plaintext, context))
                             ? Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.end,
