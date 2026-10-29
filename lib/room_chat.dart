@@ -26,6 +26,8 @@ import 'services/link_preview_service.dart';
 import 'widgets/link_preview_card.dart';
 import 'widgets/voice_note_bubble.dart';
 import 'services/just_audio_backend.dart';
+import 'services/record_backend.dart';
+import 'services/voice_recorder.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 const double _composerBarHeight = 52.0;
@@ -59,6 +61,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   int _previousMessageCount = -1;
 
   bool _isSending = false;
+  bool _hasText = false;
+  bool _isRecording = false;
+  Timer? _recordTicker;
   bool _showScrollButton = false;
   bool _userIsNearBottom = true;
   bool _isUserScrolling = false;
@@ -134,6 +139,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _anchoredController.itemPositions.addListener(_handlePositionsChanged);
     _scrollController.addListener(_handleScrollChanged);
     _messageController.addListener(_onComposerChanged);
+    _messageController.addListener(_onTextPresenceChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
@@ -144,6 +150,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     if (state == AppLifecycleState.resumed) {
       NotificationHandler.clearNotification(widget.contact.pubkey);
     }
+    if (_isRecording &&
+        (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
+      _cancelRecording();
+    }
   }
 
   @override
@@ -151,6 +161,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     WidgetsBinding.instance.removeObserver(this);
     _removeReactionOverlay();
     stopVoicePlayer();
+    _recordTicker?.cancel();
+    cancelVoiceRecording();
 
     widget.relayManager.currentlyChattingWith = null;
     NotificationHandler.activeChatPubkey = null;
@@ -167,6 +179,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _dragOffsetNotifier.dispose();
     _focusNode.dispose();
     _messageController.removeListener(_onComposerChanged);
+    _messageController.removeListener(_onTextPresenceChanged);
     _messageController.dispose();
 
     super.dispose();
@@ -379,6 +392,152 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       if (!mounted || _composerUrl != url || url == _dismissedUrl) return;
       setState(() => _composerPreview = data);
     });
+  }
+
+  void _onTextPresenceChanged() {
+    final has = _messageController.text.trim().isNotEmpty;
+    if (has != _hasText) setState(() => _hasText = has);
+  }
+
+  bool get _callBusy {
+    final s = CallManager.instance.callStateNotifier.value;
+    return s != CallState.idle && s != CallState.ending && s != CallState.error;
+  }
+
+  void _showHint(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+  }
+
+  Future<void> _startRecording() async {
+    if (kIsWeb || _isRecording) return;
+    if (_callBusy) {
+      _showHint('Finish the call before recording');
+      return;
+    }
+    stopVoicePlayer();
+    final result = await voiceRecorder.start();
+    if (!mounted) {
+      await voiceRecorder.cancel();
+      return;
+    }
+    switch (result) {
+      case StartResult.started:
+        setState(() => _isRecording = true);
+        _recordTicker?.cancel();
+        _recordTicker = Timer.periodic(const Duration(milliseconds: 250), (_) {
+          if (mounted) setState(() {});
+        });
+      case StartResult.noPermission:
+        _showHint('Allow microphone access to record voice notes');
+      case StartResult.failed:
+        _showHint('Could not start recording');
+      case StartResult.alreadyRecording:
+        break;
+    }
+  }
+
+  void _endRecordingUi() {
+    _recordTicker?.cancel();
+    _recordTicker = null;
+    if (mounted) setState(() => _isRecording = false);
+  }
+
+  Future<void> _cancelRecording() async {
+    _endRecordingUi();
+    await voiceRecorder.cancel();
+  }
+
+  Future<void> _sendRecording() async {
+    if (!_isRecording) return;
+    _endRecordingUi();
+    final voice = await voiceRecorder.finish();
+    if (voice == null) {
+      _showHint('Recording was too short');
+      return;
+    }
+
+    final replyId = _replyingTo?.id;
+    final replyContent = _replyingTo?.plaintext;
+    final replySenderPubkey = _replyingTo?.senderPubkey;
+    if (mounted) setState(() => _replyingTo = null);
+
+    ChatManager.sendVoiceNote(
+      recordedPath: voice.path,
+      seconds: voice.seconds,
+      receiverPubkey: widget.contact.pubkey,
+      relayManager: widget.relayManager,
+      replyToId: replyId,
+      replyToContent: replyContent,
+      replyToSenderPubkey: replySenderPubkey,
+    ).catchError((Object e) {
+      DebugLogger.log('[Voice] Send failed | $e', type: 'ERROR');
+    });
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (mounted) _maybeAutoScroll(force: true);
+    });
+  }
+
+  Widget _buildRecordingBar(Color accentColor, Color textColor) {
+    final elapsed = voiceRecorder.elapsed;
+    final blinkOn = (elapsed.inMilliseconds ~/ 500).isEven;
+    return SizedBox(
+      height: _composerBarHeight,
+      child: Row(
+        children: [
+          const SizedBox(width: 20),
+          AnimatedOpacity(
+            opacity: blinkOn ? 1 : 0.25,
+            duration: const Duration(milliseconds: 200),
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            DurationUtils.formatClock(elapsed.inSeconds),
+            style: TextStyle(
+              color: textColor,
+              fontSize: 16,
+              fontFeatures: [ui.FontFeature.tabularFigures()],
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: TextButton(
+                onPressed: _cancelRecording,
+                child: Text(
+                  'CANCEL',
+                  style: TextStyle(
+                    color: accentColor,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 2, right: 6),
+            child: GestureDetector(
+              onTap: _sendRecording,
+              child: Container(
+                height: _composerSendSize,
+                width: _composerSendSize,
+                decoration: BoxDecoration(color: accentColor, shape: BoxShape.circle),
+                child: const Center(
+                  child: Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _dismissComposerPreview() {
@@ -1268,6 +1427,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             children: [
               if (_replyingTo != null) _buildReplyPreviewInside(),
               if (_composerPreview != null) _buildComposerLinkPreview(),
+              if (_isRecording)
+                _buildRecordingBar(accentColor, inputTextColor)
+              else
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -1308,7 +1470,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       padding: const EdgeInsets.only(left: 2, right: 6),
                       child: Center(
                         child: GestureDetector(
-                          onTap: _isSending ? null : _sendMessage,
+                          onTap: _isSending ? null : ((_hasText || kIsWeb) ? _sendMessage : _startRecording),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             height: _composerSendSize,
@@ -1322,7 +1484,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                                   ? const SizedBox(width: 20, height: 20,
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2, color: Colors.white))
-                                  : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                                  : Icon(
+                                      (_hasText || kIsWeb) ? Icons.send_rounded : Icons.mic_rounded,
+                                      color: Colors.white,
+                                      size: 20),
                             ),
                           ),
                         ),
