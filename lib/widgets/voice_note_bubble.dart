@@ -157,9 +157,9 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
               children: [
                 Row(
                   children: [
-                    InkResponse(
+                    GestureDetector(
                       onTap: onPressed,
-                      radius: 26,
+                      behavior: HitTestBehavior.opaque,
                       child: Container(
                         width: 40,
                         height: 40,
@@ -177,7 +177,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
                         data: SliderTheme.of(context).copyWith(
                           trackHeight: 3,
                           thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                          overlayShape: SliderComponentShape.noOverlay,
                           activeTrackColor: color,
                           inactiveTrackColor: color.withAlpha(60),
                           thumbColor: color,
