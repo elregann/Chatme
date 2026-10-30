@@ -213,7 +213,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? Colors.white : Colors.black,
             backgroundColor: Theme.of(context).brightness == Brightness.dark
                 ? const Color(0xFF121212) : Colors.white,
-            activeControlsWidgetColor: const Color(0xFF1976D2),
+            activeControlsWidgetColor: const Color(0xFF2196F3),
             hideBottomControls: false,
             lockAspectRatio: true,
           ),
@@ -473,7 +473,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 width: 24,
                                 height: 24,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1976D2),
+                                  color: const Color(0xFF2196F3),
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: isDark ? const Color(0xFF121212) : Colors.white,
@@ -815,7 +815,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.25.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.25.1-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),

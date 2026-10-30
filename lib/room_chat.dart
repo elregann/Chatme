@@ -826,7 +826,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final textPrimary = isDark ? Colors.white : Colors.black;
     final textSecondary = isDark ? Colors.white54 : Colors.black45;
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    const accentColor = Color(0xFF1976D2);
+    const accentColor = Color(0xFF2196F3);
 
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1032,7 +1032,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final headerTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
 
-    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
+    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
     final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
 
     return Scaffold(
@@ -1353,7 +1353,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final accentColor = isNostrCyber
         ? const Color(0xFFD4BBFC)
-        : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
+        : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
 
     final dividerBg = isNostrCyber
         ? const Color(0xFF1B1425)
@@ -1389,7 +1389,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF1976D2);
+    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF2196F3);
     final inputBgColor = isNostrCyber
         ? const Color(0xFF1B1425)
         : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
@@ -1513,7 +1513,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
     final titleColor = isNostrCyber
         ? const Color(0xFFD4BBFC)
-        : const Color(0xFF1976D2);
+        : const Color(0xFF2196F3);
     final subColor = isNostrCyber
         ? Colors.white70
         : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
@@ -1609,7 +1609,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final nameColor = isNostrCyber
         ? const Color(0xFFD4BBFC)
-        : (isDark ? const Color(0xFF1976D2) : const Color(0xFF1976D2));
+        : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
 
     final bgColor = isNostrCyber
         ? const Color(0xFF251C33)
@@ -1951,7 +1951,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     final String senderName = _getReplyName(_resolveReplySenderPubkey(message));
 
-    final nameColor = isNostrCyber ? const Color(0xFFD0BCFF) : const Color(0xFF1976D2);
+    final nameColor = isNostrCyber ? const Color(0xFFD0BCFF) : const Color(0xFF2196F3);
     final bgColor = isNostrCyber ? Colors.white.withAlpha(20) : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
     final contentColor = isNostrCyber ? Colors.white70 : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
 

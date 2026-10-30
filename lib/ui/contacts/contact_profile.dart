@@ -1,13 +1,16 @@
 // contact_profile.dart
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../chat_manager.dart';
 import '../../core/utils/key_utils.dart';
 import '../../models/contact.dart';
 import '../../relay_manager.dart';
 import '../../services/app_settings.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/voice_history_list.dart';
 
 class ContactProfilePage extends StatelessWidget {
   final Contact contact;
@@ -38,17 +41,34 @@ class ContactProfilePage extends StatelessWidget {
     final displayName = AppSettings.getContactDisplayName(current);
     final nprofile = KeyUtils.toNprofile(current.pubkey, relays: RelayManager.dmInboxRelays);
 
-    final tabBar = TabBar(
-      indicatorColor: Colors.blue,
-      indicatorSize: TabBarIndicatorSize.tab,
-      labelColor: textPrimary,
-      unselectedLabelColor: textSecondary,
-      dividerColor: borderColor,
-      labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-      tabs: const [
-        Tab(text: 'Images & Videos'),
-        Tab(text: 'Voice notes'),
-      ],
+    const pillColor = Colors.blue;
+    final tabBar = Container(
+      height: 44,
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: borderColor, width: 0.5),
+      ),
+      child: TabBar(
+        indicator: BoxDecoration(
+          color: pillColor.withAlpha(isDark ? 50 : 35),
+          borderRadius: BorderRadius.circular(19),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicatorPadding: const EdgeInsets.all(3),
+        dividerColor: Colors.transparent,
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        labelColor: pillColor,
+        unselectedLabelColor: textSecondary,
+        labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        tabs: const [
+          Tab(text: 'Media'),
+          Tab(text: 'Voice'),
+        ],
+      ),
     );
 
     return DefaultTabController(
@@ -130,11 +150,28 @@ class ContactProfilePage extends StatelessWidget {
                 label: 'No shared images or videos yet',
                 color: textSecondary,
               ),
-              _EmptyMedia(
-                icon: Icons.mic_none_rounded,
-                label: 'No voice notes yet',
-                color: textSecondary,
-              ),
+              kIsWeb
+                  ? _EmptyMedia(
+                      icon: Icons.mic_none_rounded,
+                      label: 'Voice notes are not available on web yet',
+                      color: textSecondary,
+                    )
+                  : VoiceHistoryList(
+                      chatKey: ChatManager.instance.getChatKey(
+                        AppSettings.instance.myPubkey,
+                        current.pubkey,
+                      ),
+                      contactName: displayName,
+                      empty: _EmptyMedia(
+                        icon: Icons.mic_none_rounded,
+                        label: 'No voice notes yet',
+                        color: textSecondary,
+                      ),
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      textPrimary: textPrimary,
+                      textSecondary: textSecondary,
+                    ),
             ],
           ),
         ),
@@ -223,20 +260,26 @@ class _EmptyMedia extends StatelessWidget {
 }
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabBar tabBar;
+  final Widget tabBar;
   final Color color;
 
   _TabBarDelegate(this.tabBar, this.color);
 
-  @override
-  double get minExtent => tabBar.preferredSize.height;
+  static const double _height = 52;
 
   @override
-  double get maxExtent => tabBar.preferredSize.height;
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(color: color, child: tabBar);
+    return Container(
+      color: color,
+      alignment: Alignment.topCenter,
+      child: tabBar,
+    );
   }
 
   @override

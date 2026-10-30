@@ -2,14 +2,13 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../chat_manager.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/duration_utils.dart';
 import '../models/chat_message.dart';
 import '../services/file_transfer_service.dart';
 import '../services/just_audio_backend.dart';
+import '../services/voice_download.dart';
 import '../services/voice_player.dart';
-import '../services/voice_storage.dart';
 
 /// The inside of a chat bubble for a voice note: download, then play.
 class VoiceNoteBubble extends StatefulWidget {
@@ -46,11 +45,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
       _downloadError = null;
     });
     try {
-      final path = await FileTransferService.downloadAndSave(
-        file,
-        directory: await voiceDirectory(),
-      );
-      await ChatManager.instance.setLocalPath(_id, widget.message.chatKey, path);
+      final path = await downloadVoiceNote(widget.message);
       if (!mounted) return;
       setState(() {
         _path = path;
