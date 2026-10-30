@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:proximity_sensor/proximity_sensor.dart';
 import 'call_manager.dart';
 import 'core/utils/duration_utils.dart';
@@ -48,7 +47,6 @@ class _CallScreenState extends State<CallScreen> {
   String? _errorMessage;
   bool _isNearProximity = false;
 
-  Timer? _callTimer;
   Timer? _errorAutoCloseTimer;
   StreamSubscription<int>? _proximitySubscription;
 
@@ -72,9 +70,6 @@ class _CallScreenState extends State<CallScreen> {
     _initProximitySensor();
 
     if (_callManager.callState != CallState.idle) {
-      if (_callManager.callState == CallState.active) {
-        _startTimer();
-      }
       debugPrint("Screen reopened: Skipping new call initialization.");
     } else {
       if (!widget.isIncoming) {
@@ -152,17 +147,6 @@ class _CallScreenState extends State<CallScreen> {
       _callManager.stopCall(sendHangupSignal: false);
       _scheduleAutoClose();
     }
-  }
-
-  void _startTimer() {
-    _cancelTimer(_callTimer);
-    _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {});
-      } else {
-        timer.cancel();
-      }
-    });
   }
 
   void _scheduleAutoClose() {
@@ -350,7 +334,6 @@ class _CallScreenState extends State<CallScreen> {
     setState(() {
       _hasError = false;
       _errorMessage = null;
-      _startTimer();
     });
   }
 
@@ -412,7 +395,6 @@ class _CallScreenState extends State<CallScreen> {
       switch (state) {
         case CallState.active:
           _hasError = false;
-          _startTimer();
           break;
         case CallState.connecting:
         case CallState.reconnecting:
@@ -464,8 +446,6 @@ class _CallScreenState extends State<CallScreen> {
   void _cancelAllTimers() {
     _cancelTimer(_errorAutoCloseTimer);
     _errorAutoCloseTimer = null;
-    _cancelTimer(_callTimer);
-    _callTimer = null;
   }
 
   void _cleanupResources() {
@@ -531,39 +511,45 @@ class _CallScreenState extends State<CallScreen> {
         body: Stack(
           children: [
             SafeArea(
-              child: Column(
-                children: [
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 10, top: 10),
-                      child: IconButton(
-                        icon: const Icon(Icons.keyboard_arrow_down, size: 35),
-                        color: isDark ? Colors.white70 : Colors.black54,
-                        onPressed: _minimize,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          children: [
+                            Align(
+                              alignment: Alignment.topLeft,
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 10, top: 10),
+                                child: IconButton(
+                                  icon: const Icon(Icons.keyboard_arrow_down, size: 35),
+                                  color: isDark ? Colors.white70 : Colors.black54,
+                                  onPressed: _minimize,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            _buildHeaderSection(isDark),
+                            const Spacer(),
+                            if (_hasError) _buildErrorDisplay(isDark),
+                            _buildControlSection(isDark),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildHeaderSection(isDark),
-                  const Spacer(),
-                  if (_hasError) _buildErrorDisplay(isDark),
-                  if (_callManager.remoteRenderer != null)
-                    SizedBox(
-                      width: 1,
-                      height: 1,
-                      child: rtc.RTCVideoView(_callManager.remoteRenderer!),
-                    ),
-                  _buildControlSection(isDark),
-                ],
+                  );
+                },
               ),
             ),
 
             if (_isNearProximity && !kIsWeb)
-              Container(
-                width: double.infinity,
-                height: double.infinity,
-                color: Colors.black,
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black,
+                ),
               ),
           ],
         ),
@@ -572,7 +558,6 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Widget _buildHeaderSection(bool isDark) {
-    final statusText = _getStatusText();
     final stateText = _getStateText();
 
     return Center(
@@ -619,18 +604,7 @@ class _CallScreenState extends State<CallScreen> {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 10),
-          Text(
-            statusText,
-            style: TextStyle(
-              color: _hasError
-                  ? Colors.redAccent
-                  : (_callManager.callState == CallState.active
-                  ? (isDark ? Colors.white : Colors.black)
-                  : (isDark ? Colors.white38 : Colors.black38)),
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          _buildStatusTextWidget(isDark),
           if (stateText.isNotEmpty) ...[
             const SizedBox(height: 5),
             Text(
@@ -646,22 +620,57 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  String _getStatusText() {
-    if (_hasError) return _errorMessage ?? "Error";
+  Widget _buildStatusTextWidget(bool isDark) {
+    if (_hasError) {
+      return Text(
+        _errorMessage ?? "Error",
+        style: const TextStyle(
+          color: Colors.redAccent,
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+    }
 
     if (_callManager.callState == CallState.active) {
-      return DurationUtils.formatClock(_callManager.currentDuration);
+      return _CallDurationText(
+        style: TextStyle(
+          color: isDark ? Colors.white : Colors.black,
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+        ),
+      );
     }
 
     final isIncoming = widget.isIncoming;
+    String statusStr;
     switch (_callManager.callState) {
-      case CallState.connecting:   return "Connecting";
-      case CallState.reconnecting: return "Reconnecting";
-      case CallState.ringing:      return isIncoming ? "Incoming Call" : "Ringing";
+      case CallState.connecting:
+        statusStr = "Connecting";
+        break;
+      case CallState.reconnecting:
+        statusStr = "Reconnecting";
+        break;
+      case CallState.ringing:
+        statusStr = isIncoming ? "Incoming Call" : "Ringing";
+        break;
       case CallState.initializing:
-      case CallState.idle:         return isIncoming ? "Incoming Call" : "Calling";
-      default:                     return isIncoming ? "Incoming Call" : "Calling";
+      case CallState.idle:
+        statusStr = isIncoming ? "Incoming Call" : "Calling";
+        break;
+      default:
+        statusStr = isIncoming ? "Incoming Call" : "Calling";
+        break;
     }
+
+    return Text(
+      statusStr,
+      style: TextStyle(
+        color: isDark ? Colors.white38 : Colors.black38,
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+      ),
+    );
   }
 
   String _getStateText() {
@@ -708,12 +717,13 @@ class _CallScreenState extends State<CallScreen> {
     final capsuleWidth = _calculateCapsuleWidth();
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 60),
+      padding: const EdgeInsets.only(top: 20, bottom: 32),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOutBack,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.fastOutSlowIn,
         width: capsuleWidth,
         height: 72,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(36),
           border: Border.all(
@@ -725,39 +735,60 @@ class _CallScreenState extends State<CallScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            if (_showCallControls) ...[
-              Positioned(
-                left: 6,
-                child: _unifiedControlBtn(
-                  icon: _callManager.isMuted ? Icons.mic_off : Icons.mic,
-                  isActive: _callManager.isMuted,
-                  onTap: _toggleMute,
-                  isDark: isDark,
+            // Active Call Controls (Mute & Speaker)
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 300),
+              opacity: _showCallControls ? 1.0 : 0.0,
+              child: IgnorePointer(
+                ignoring: !_showCallControls,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 6,
+                      top: 6,
+                      child: _unifiedControlBtn(
+                        icon: _callManager.isMuted ? Icons.mic_off : Icons.mic,
+                        isActive: _callManager.isMuted,
+                        onTap: _toggleMute,
+                        isDark: isDark,
+                      ),
+                    ),
+                    Positioned(
+                      left: 88,
+                      top: 6,
+                      child: _unifiedControlBtn(
+                        icon: _callManager.isSpeakerOn ? Icons.volume_up : Icons.volume_down,
+                        isActive: _callManager.isSpeakerOn,
+                        onTap: _toggleSpeaker,
+                        isDark: isDark,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Positioned(
-                left: 88,
-                child: _unifiedControlBtn(
-                  icon: _callManager.isSpeakerOn ? Icons.volume_up : Icons.volume_down,
-                  isActive: _callManager.isSpeakerOn,
-                  onTap: _toggleSpeaker,
-                  isDark: isDark,
-                ),
-              ),
-            ],
+            ),
+
+            // Incoming Call Accept Button
             if (widget.isIncoming && !_isAcceptedByMe && !_hasError)
               Positioned(
                 left: 6,
-                child: _unifiedControlBtn(
-                  icon: Icons.call,
-                  color: Colors.green,
-                  onTap: _acceptIncomingCall,
-                  isDark: isDark,
+                top: 6,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: (!_isAcceptedByMe && !_hasError) ? 1.0 : 0.0,
+                  child: _unifiedControlBtn(
+                    icon: Icons.call,
+                    color: Colors.green,
+                    onTap: _acceptIncomingCall,
+                    isDark: isDark,
+                  ),
                 ),
               ),
+
+            // Hangup Button (animates position smoothly)
             AnimatedAlign(
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOutCubic,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.fastOutSlowIn,
               alignment: _getHangupButtonAlignment(),
               child: _unifiedControlBtn(
                 icon: Icons.call_end,
@@ -829,6 +860,44 @@ class _CallScreenState extends State<CallScreen> {
           size: 26,
         ),
       ),
+    );
+  }
+}
+
+/// Dedicated widget that updates duration text locally every second
+/// without rebuilding the entire CallScreen tree.
+class _CallDurationText extends StatefulWidget {
+  final TextStyle style;
+
+  const _CallDurationText({required this.style});
+
+  @override
+  State<_CallDurationText> createState() => _CallDurationTextState();
+}
+
+class _CallDurationTextState extends State<_CallDurationText> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = CallManager.instance.currentDuration;
+    return Text(
+      DurationUtils.formatClock(duration),
+      style: widget.style,
     );
   }
 }
