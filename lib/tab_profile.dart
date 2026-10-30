@@ -17,6 +17,7 @@ import 'ui/profile/appearance.dart';
 import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
 import 'ui/profile/key_converter.dart';
+import 'ui/qr/qr_code_page.dart';
 import 'package:remixicon/remixicon.dart';
 import 'dart:io' show File;
 import 'package:image_picker/image_picker.dart';
@@ -433,6 +434,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             elevation: 0,
+            actions: [
+              IconButton(
+                icon: Icon(Icons.qr_code_2_rounded, color: textPrimary, size: 26),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => QrCodePage(
+                      pubkey: settings.myPubkey,
+                      name: settings.myName,
+                      relayManager: widget.relayManager,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -815,7 +832,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.25.2-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.26.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),

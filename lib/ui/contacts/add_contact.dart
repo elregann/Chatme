@@ -10,7 +10,10 @@ import '../../core/utils/key_utils.dart';
 import '../../core/utils/shortcut_helper.dart';
 
 class AddContactPage extends StatefulWidget {
-  const AddContactPage({super.key});
+  /// Public key (hex) to fill in, for example from a scanned QR code.
+  final String? initialPubkey;
+
+  const AddContactPage({super.key, this.initialPubkey});
 
   @override
   State<AddContactPage> createState() => _AddContactPageState();
@@ -22,6 +25,13 @@ class _AddContactPageState extends State<AddContactPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _submitted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialPubkey;
+    if (initial != null) _pubkeyController.text = KeyUtils.toNpub(initial);
+  }
 
   @override
   void dispose() {
@@ -101,6 +111,7 @@ class _AddContactPageState extends State<AddContactPage> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nameController,
+                autofocus: widget.initialPubkey != null,
                 style: TextStyle(fontSize: 14, color: textPrimary),
                 onTap: _resetSubmitted,
                 onChanged: (_) => _resetSubmitted(),

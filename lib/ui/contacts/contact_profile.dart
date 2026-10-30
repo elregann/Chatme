@@ -11,6 +11,7 @@ import '../../relay_manager.dart';
 import '../../services/app_settings.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/voice_history_list.dart';
+import '../qr/qr_code_page.dart';
 
 class ContactProfilePage extends StatelessWidget {
   final Contact contact;
@@ -83,6 +84,22 @@ class ContactProfilePage extends StatelessWidget {
             icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
             onPressed: () => Navigator.pop(context),
           ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.qr_code_2_rounded, color: textPrimary, size: 26),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => QrCodePage(
+                    pubkey: current.pubkey,
+                    name: displayName,
+                    relayManager: relayManager,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
