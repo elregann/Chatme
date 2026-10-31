@@ -5,7 +5,7 @@ import 'package:chatme/core/utils/key_utils.dart';
 import 'package:chatme/services/contact_qr.dart';
 
 void main() {
-  final pubkey = '7e7e9c42a91bfef19fa929e59fda7b3c4ba0d1c8f7c4c2f0e1d5b6a7c8d9e0f1';
+  const pubkey = '7e7e9c42a91bfef19fa929e59fda7b3c4ba0d1c8f7c4c2f0e1d5b6a7c8d9e0f1';
   final other = 'a' * 64;
   const relays = ['wss://auth.nostr1.com', 'wss://nos.lol'];
 

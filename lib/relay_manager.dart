@@ -26,6 +26,7 @@ import 'services/file_send_service.dart';
 import 'services/nostr_service.dart';
 import 'models/chat_message.dart';
 import 'models/contact.dart';
+import 'services/server_lists.dart';
 
 class RelayManager {
   Function? onMessageReceived;
@@ -33,23 +34,17 @@ class RelayManager {
 
   Function(Map<String, dynamic>)? onSignalReceived;
 
-  /// Recommended free relays optimised for NIP-17 gift-wrap (kind 1059).
-  /// Ordered by relevance for DM delivery.
-  final List<String> relays = [
-    'wss://nos.lol',
-    'wss://auth.nostr1.com',
-    'wss://messaging.coracle.social', // dedicated messaging / NIP-17
-    'wss://relay.damus.io',
-    'wss://relay.primal.net',
-  ];
+  /// Every relay we connect to: the inbox relays, then the others. The user
+  /// edits both lists in the relay screen, see [RelayDefaults] for the start.
+  List<String> get relays => AppSettings.instance.allRelays;
 
   /// Relays announced in our NIP-17 kind 10050 event. Other clients send our
   /// DMs to these relays, and some refuse to message us without the event.
   /// The spec recommends keeping the list small (1 to 3 relays).
-  static const List<String> dmInboxRelays = [
-    'wss://auth.nostr1.com',
-    'wss://nos.lol',
-  ];
+  static List<String> get dmInboxRelays => AppSettings.instance.inboxRelays;
+
+  /// Changes every time the relay lists change, for screens that show them.
+  final ValueNotifier<int> relayListVersion = ValueNotifier(0);
 
   String? _dmRelayListEventId;
   final Set<String> _dmRelayListAcks = {};
@@ -125,9 +120,10 @@ class RelayManager {
       // Compute latestTime once here, not 7× inside each _connectToRelay.
       final int latestTime = _computeLatestContactTime();
 
-      for (var i = 0; i < relays.length; i++) {
+      final urls = relays;
+      for (var i = 0; i < urls.length; i++) {
         Future.delayed(Duration(milliseconds: i * 300), () {
-          _connectToRelay(relays[i], myPubkey, latestTime);
+          _connectToRelay(urls[i], myPubkey, latestTime);
         });
       }
       _isInitialized = true;
@@ -1780,6 +1776,85 @@ class RelayManager {
       refreshProfileSubscription();
       Future.delayed(const Duration(seconds: 5), publishDmRelayList);
     }
+  }
+
+  Future<ListEdit> addRelay(RelayGroup group, String input) async {
+    final settings = AppSettings.instance;
+    final isInbox = group == RelayGroup.inbox;
+    final edit = ServerLists.add(
+      isInbox ? settings.inboxRelays : settings.otherRelays,
+      input,
+      normalize: ServerAddress.relay,
+      max: isInbox ? ListLimits.inboxMax : ListLimits.otherMax,
+      taken: isInbox ? settings.otherRelays : settings.inboxRelays,
+    );
+    if (!edit.ok) return edit;
+
+    await _applyRelayLists(
+      inbox: isInbox ? edit.list : settings.inboxRelays,
+      other: isInbox ? settings.otherRelays : edit.list,
+    );
+    return edit;
+  }
+
+  Future<ListEdit> removeRelay(RelayGroup group, String url) async {
+    final settings = AppSettings.instance;
+    final isInbox = group == RelayGroup.inbox;
+    final edit = ServerLists.remove(
+      isInbox ? settings.inboxRelays : settings.otherRelays,
+      url,
+      minimum: isInbox ? ListLimits.inboxMin : 0,
+    );
+    if (!edit.ok) return edit;
+
+    await _applyRelayLists(
+      inbox: isInbox ? edit.list : settings.inboxRelays,
+      other: isInbox ? settings.otherRelays : edit.list,
+    );
+    return edit;
+  }
+
+  Future<void> resetRelaysToDefaults() {
+    final defaults = RelayLists.defaults();
+    return _applyRelayLists(inbox: defaults.inbox, other: defaults.other);
+  }
+
+  /// Saves the lists, opens the new connections, closes the removed ones and
+  /// announces the inbox list again when it changed.
+  Future<void> _applyRelayLists({
+    required List<String> inbox,
+    required List<String> other,
+  }) async {
+    final settings = AppSettings.instance;
+    final beforeInbox = List.of(settings.inboxRelays);
+    final diff = RelayDiff.between(
+      settings.allRelays,
+      [...inbox, ...other],
+    );
+
+    await settings.setRelayLists(inbox: inbox, other: other);
+
+    for (final url in diff.removed) {
+      _closeConnection(url);
+      _reconnectAttempts.remove(url);
+      _reconnectScheduled.remove(url);
+    }
+    if (_isInitialized && diff.added.isNotEmpty) {
+      final myPubkey = settings.myPubkey;
+      final latestTime = _computeLatestContactTime();
+      for (final url in diff.added) {
+        _reconnectAttempts.remove(url);
+        _connectToRelay(url, myPubkey, latestTime);
+      }
+    }
+    _updateConnectionStatus();
+
+    if (!listEquals(beforeInbox, inbox)) {
+      _dmRelayListAttempts = 0;
+      _lastDmRelayListAttempt = null;
+      publishDmRelayList();
+    }
+    relayListVersion.value++;
   }
 
   void connectIfNeeded() {

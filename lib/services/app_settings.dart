@@ -12,6 +12,7 @@ import '../core/utils/shortcut_helper.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
 import '../models/contact.dart';
+import 'server_lists.dart';
 
 class AppSettings {
   static final AppSettings _instance = AppSettings._internal();
@@ -32,6 +33,15 @@ class AppSettings {
   String roomChatTheme = 'default'; // 'default' or 'nostr_cyber'
   bool linkPreviewsEnabled = false;
   bool readReceiptsEnabled = true;
+
+  /// Relays where others deliver messages to us (announced as kind 10050).
+  List<String> inboxRelays = List.of(RelayDefaults.inbox);
+
+  /// Extra relays Chatme also connects to.
+  List<String> otherRelays = List.of(RelayDefaults.other);
+
+  /// Every relay Chatme connects to, inbox relays first.
+  List<String> get allRelays => [...inboxRelays, ...otherRelays];
 
   Future<void> load() async {
     try {
@@ -69,6 +79,13 @@ class AppSettings {
       linkPreviewsEnabled = settingsBox.get('link_previews_enabled', defaultValue: false);
       readReceiptsEnabled = settingsBox.get('read_receipts_enabled', defaultValue: true);
 
+      final relayLists = RelayLists.fromStored(
+        settingsBox.get('relays_inbox'),
+        settingsBox.get('relays_other'),
+      );
+      inboxRelays = relayLists.inbox;
+      otherRelays = relayLists.other;
+
       DebugLogger.log('[Settings] Loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
     } catch (e) {
       DebugLogger.log('[Settings] Load failed | $e', type: 'ERROR');
@@ -86,6 +103,17 @@ class AppSettings {
     linkPreviewsEnabled = value;
     final settingsBox = Hive.box('settings');
     await settingsBox.put('link_previews_enabled', value);
+  }
+
+  Future<void> setRelayLists({
+    required List<String> inbox,
+    required List<String> other,
+  }) async {
+    inboxRelays = List.of(inbox);
+    otherRelays = List.of(other);
+    final settingsBox = Hive.box('settings');
+    await settingsBox.put('relays_inbox', inboxRelays);
+    await settingsBox.put('relays_other', otherRelays);
   }
 
   Future<void> setReadReceiptsEnabled(bool value) async {

@@ -31,6 +31,8 @@ class ListLimits {
   static const int blossomMax = 5;
 }
 
+enum RelayGroup { inbox, other }
+
 enum ListChange { ok, invalid, duplicate, full, missing, tooFew }
 
 class ListEdit {
@@ -129,5 +131,62 @@ class ServerAddress {
     if (labels.length < 2) return false;
     if (!labels.every(_label.hasMatch)) return false;
     return RegExp(r'[a-z]').hasMatch(labels.last);
+  }
+}
+
+/// The two relay lists as the user has them.
+class RelayLists {
+  final List<String> inbox;
+  final List<String> other;
+
+  const RelayLists({required this.inbox, required this.other});
+
+  factory RelayLists.defaults() => const RelayLists(
+        inbox: RelayDefaults.inbox,
+        other: RelayDefaults.other,
+      );
+
+  /// Every relay Chatme connects to, inbox relays first.
+  List<String> get all => [...inbox, ...other];
+
+  /// Rebuilds the lists from what was saved, which may be missing or damaged.
+  /// Nothing saved gives the defaults. The inbox list is never empty, the
+  /// other list may be, and a relay is never in both.
+  factory RelayLists.fromStored(Object? rawInbox, Object? rawOther) {
+    var inbox = _clean(rawInbox, RelayDefaults.inbox, ListLimits.inboxMax);
+    if (inbox.isEmpty) inbox = List.of(RelayDefaults.inbox);
+
+    final other = _clean(rawOther, RelayDefaults.other, ListLimits.otherMax)
+        .where((url) => !inbox.contains(url))
+        .toList();
+    return RelayLists(inbox: inbox, other: other);
+  }
+
+  static List<String> _clean(Object? raw, List<String> fallback, int max) {
+    if (raw is! List) return List.of(fallback);
+    final seen = <String>{};
+    for (final item in raw) {
+      if (item is! String) continue;
+      final url = ServerAddress.relay(item);
+      if (url != null) seen.add(url);
+    }
+    return seen.take(max).toList();
+  }
+}
+
+/// What has to change in the open connections when the lists change.
+class RelayDiff {
+  final List<String> added;
+  final List<String> removed;
+
+  const RelayDiff(this.added, this.removed);
+
+  bool get isEmpty => added.isEmpty && removed.isEmpty;
+
+  factory RelayDiff.between(List<String> before, List<String> after) {
+    return RelayDiff(
+      after.where((url) => !before.contains(url)).toList(),
+      before.where((url) => !after.contains(url)).toList(),
+    );
   }
 }

@@ -503,7 +503,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             style: TextStyle(
               color: textColor,
               fontSize: 16,
-              fontFeatures: [ui.FontFeature.tabularFigures()],
+              fontFeatures: const [ui.FontFeature.tabularFigures()],
             ),
           ),
           Expanded(
