@@ -2179,7 +2179,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final bubbleColor = isNostrCyber
         ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
         : (isMe
-        ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
+        ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
         : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
 
     final textColor = isNostrCyber
@@ -2549,7 +2549,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final bubbleColor = isNostrCyber
         ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
         : (isMe
-        ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE3F2FD))
+        ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
         : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
 
     return Align(

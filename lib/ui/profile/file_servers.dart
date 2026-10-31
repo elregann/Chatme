@@ -7,8 +7,25 @@ import '../../services/blossom_servers.dart';
 import '../../services/server_lists.dart';
 import '../../widgets/editable_server_list.dart';
 
-class FileServersPage extends StatelessWidget {
+class FileServersPage extends StatefulWidget {
   const FileServersPage({super.key});
+
+  @override
+  State<FileServersPage> createState() => _FileServersPageState();
+}
+
+class _FileServersPageState extends State<FileServersPage> {
+  // The address that just failed its test. Sending the same one again adds it
+  // without the test.
+  String? _refused;
+
+  Future<ListEdit> _add(String input) async {
+    final address = ServerAddress.blossom(input);
+    final skipTest = address != null && address == _refused;
+    final edit = await BlossomServers.add(input, skipTest: skipTest);
+    _refused = edit.change == ListChange.unreachable ? address : null;
+    return edit;
+  }
 
   void _remove(BuildContext context, String url) async {
     final edit = await BlossomServers.remove(url);
@@ -70,7 +87,7 @@ class FileServersPage extends StatelessWidget {
                   addLabel: 'Add file server',
                   hint: 'files.example.com',
                   fileServer: true,
-                  onSubmit: servers.length < ListLimits.blossomMax ? BlossomServers.add : null,
+                  onSubmit: servers.length < ListLimits.blossomMax ? _add : null,
                   onRemove: (url) => _remove(context, url),
                 ),
                 const SizedBox(height: 20),

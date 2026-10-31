@@ -5,11 +5,14 @@ import 'blossom_service.dart';
 import 'server_lists.dart';
 
 /// Adds [input] to [current] after a test upload to it worked. A bad address,
-/// a duplicate or a full list is refused without contacting the server.
+/// a duplicate or a full list is refused without contacting the server. With
+/// [skipTest] the server is added without the test, for one that refuses the
+/// test file but may still take real ones.
 Future<ListEdit> addBlossomServer(
   List<String> current,
   String input, {
   required Future<void> Function(String url) probe,
+  bool skipTest = false,
 }) async {
   final edit = ServerLists.add(
     current,
@@ -17,7 +20,7 @@ Future<ListEdit> addBlossomServer(
     normalize: ServerAddress.blossom,
     max: ListLimits.blossomMax,
   );
-  if (!edit.ok) return edit;
+  if (!edit.ok || skipTest) return edit;
 
   try {
     await probe(edit.list.last);
@@ -31,12 +34,13 @@ Future<ListEdit> addBlossomServer(
 class BlossomServers {
   BlossomServers._();
 
-  static Future<ListEdit> add(String input) async {
+  static Future<ListEdit> add(String input, {bool skipTest = false}) async {
     final settings = AppSettings.instance;
     final edit = await addBlossomServer(
       settings.blossomServers,
       input,
       probe: BlossomService.testUpload,
+      skipTest: skipTest,
     );
     if (edit.ok) await settings.setBlossomServers(edit.list);
     return edit;

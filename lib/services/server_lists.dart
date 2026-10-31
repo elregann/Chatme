@@ -38,6 +38,7 @@ class BlossomDefaults {
 
   static const List<String> servers = [
     'https://blossom.ditto.pub',
+    'https://blossom.jumble.social',
     'https://nostr.download',
   ];
 }
@@ -237,7 +238,7 @@ String changeMessage(ListChange change, {required bool fileServer}) {
     case ListChange.missing:
       return 'This one is not in the list';
     case ListChange.unreachable:
-      return 'This server did not take a test file. Check the address and try again';
+      return 'This server did not take a test file. Tap the check again to add it anyway';
     case ListChange.tooFew:
       return fileServer ? 'Keep at least one file server' : 'Keep at least one inbox relay';
   }

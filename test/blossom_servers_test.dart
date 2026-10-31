@@ -67,6 +67,36 @@ void main() {
       expect(edit.list, current);
     });
 
+    test('skipping the test adds the server without contacting it', () async {
+      var calls = 0;
+      final edit = await addBlossomServer(
+        current,
+        'blossom.nostr.build',
+        probe: (_) async => calls++,
+        skipTest: true,
+      );
+      expect(edit.change, ListChange.ok);
+      expect(edit.list, ['https://blossom.ditto.pub', 'https://blossom.nostr.build']);
+      expect(calls, 0);
+    });
+
+    test('skipping the test still refuses a bad address, a duplicate or a full list', () async {
+      Future<void> probe(String _) async {}
+      expect(
+        (await addBlossomServer(current, 'http://x.example.com', probe: probe, skipTest: true)).change,
+        ListChange.invalid,
+      );
+      expect(
+        (await addBlossomServer(current, 'blossom.ditto.pub', probe: probe, skipTest: true)).change,
+        ListChange.duplicate,
+      );
+      final full = List.generate(ListLimits.blossomMax, (i) => 'https://s$i.example.com');
+      expect(
+        (await addBlossomServer(full, 'new.example.com', probe: probe, skipTest: true)).change,
+        ListChange.full,
+      );
+    });
+
     test('a bad address, a duplicate or a full list never reach the server', () async {
       var calls = 0;
       Future<void> probe(String _) async => calls++;
