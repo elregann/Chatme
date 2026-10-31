@@ -40,6 +40,12 @@ class AppSettings {
   /// Extra relays Chatme also connects to.
   List<String> otherRelays = List.of(RelayDefaults.other);
 
+  /// File servers (Blossom) for uploads, tried from top to bottom.
+  List<String> blossomServers = List.of(BlossomDefaults.servers);
+
+  /// Bumped when the file server list changes, for screens that show it.
+  final ValueNotifier<int> blossomVersion = ValueNotifier(0);
+
   /// Every relay Chatme connects to, inbox relays first.
   List<String> get allRelays => [...inboxRelays, ...otherRelays];
 
@@ -86,6 +92,8 @@ class AppSettings {
       inboxRelays = relayLists.inbox;
       otherRelays = relayLists.other;
 
+      blossomServers = BlossomLists.fromStored(settingsBox.get('blossom_servers'));
+
       DebugLogger.log('[Settings] Loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
     } catch (e) {
       DebugLogger.log('[Settings] Load failed | $e', type: 'ERROR');
@@ -114,6 +122,13 @@ class AppSettings {
     final settingsBox = Hive.box('settings');
     await settingsBox.put('relays_inbox', inboxRelays);
     await settingsBox.put('relays_other', otherRelays);
+  }
+
+  Future<void> setBlossomServers(List<String> servers) async {
+    blossomServers = List.of(servers);
+    final settingsBox = Hive.box('settings');
+    await settingsBox.put('blossom_servers', blossomServers);
+    blossomVersion.value++;
   }
 
   Future<void> setReadReceiptsEnabled(bool value) async {

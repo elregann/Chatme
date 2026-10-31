@@ -16,6 +16,7 @@ import 'ui/profile/restore_account.dart';
 import 'ui/profile/appearance.dart';
 import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
+import 'ui/profile/file_servers.dart';
 import 'ui/profile/key_converter.dart';
 import 'ui/qr/qr_code_page.dart';
 import 'package:remixicon/remixicon.dart';
@@ -622,15 +623,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(12),
                     side: BorderSide(color: borderColor, width: 0.5),
                   ),
-                  child: ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: Icon(Remix.server_fill, color: textPrimary, size: 18),
-                    title: Text('Relay Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => RelayStatusPage(relayManager: widget.relayManager)),
-                    ),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        leading: Icon(Remix.server_fill, color: textPrimary, size: 18),
+                        title: Text('Relays', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => RelayStatusPage(relayManager: widget.relayManager)),
+                        ),
+                      ),
+                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        leading: Icon(Icons.cloud_upload_outlined, color: textPrimary, size: 18),
+                        title: Text('File servers', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const FileServersPage()),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -832,7 +848,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.26.1-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.27.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),

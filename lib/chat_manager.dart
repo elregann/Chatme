@@ -276,6 +276,7 @@ class ChatManager {
         source: stored,
         mimeType: FileSendService.voiceMimeType,
         durationSeconds: seconds,
+        servers: AppSettings.instance.blossomServers,
       );
       await ChatManager.instance.setFile(tempId, chatKey, file.toMap());
 

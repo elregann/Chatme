@@ -1903,6 +1903,7 @@ class RelayManager {
               source: File(msg.localPath),
               mimeType: msg.file['type'] ?? FileSendService.voiceMimeType,
               durationSeconds: msg.fileDurationSeconds,
+              servers: AppSettings.instance.blossomServers,
             );
             await ChatManager.instance.setFile(msg.id, msg.chatKey, file.toMap());
           }

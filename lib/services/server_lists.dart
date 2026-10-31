@@ -28,12 +28,23 @@ class ListLimits {
   static const int inboxRecommended = 3;
   static const int inboxMax = 5;
   static const int otherMax = 8;
+  static const int blossomMin = 1;
   static const int blossomMax = 5;
+}
+
+/// Built in file servers (Blossom), tried from top to bottom.
+class BlossomDefaults {
+  BlossomDefaults._();
+
+  static const List<String> servers = [
+    'https://blossom.ditto.pub',
+    'https://nostr.download',
+  ];
 }
 
 enum RelayGroup { inbox, other }
 
-enum ListChange { ok, invalid, duplicate, full, missing, tooFew }
+enum ListChange { ok, invalid, duplicate, full, missing, tooFew, unreachable }
 
 class ListEdit {
   final ListChange change;
@@ -174,6 +185,25 @@ class RelayLists {
   }
 }
 
+/// The file server list as the user has it.
+class BlossomLists {
+  BlossomLists._();
+
+  /// Rebuilds the list from what was saved, which may be missing or damaged.
+  /// It is never empty: nothing usable gives the defaults.
+  static List<String> fromStored(Object? raw) {
+    if (raw is! List) return List.of(BlossomDefaults.servers);
+    final seen = <String>{};
+    for (final item in raw) {
+      if (item is! String) continue;
+      final url = ServerAddress.blossom(item);
+      if (url != null) seen.add(url);
+    }
+    final list = seen.take(ListLimits.blossomMax).toList();
+    return list.isEmpty ? List.of(BlossomDefaults.servers) : list;
+  }
+}
+
 /// What has to change in the open connections when the lists change.
 class RelayDiff {
   final List<String> added;
@@ -188,5 +218,27 @@ class RelayDiff {
       after.where((url) => !before.contains(url)).toList(),
       before.where((url) => !after.contains(url)).toList(),
     );
+  }
+}
+
+/// What to tell the person when a list change is refused. Empty when it worked.
+String changeMessage(ListChange change, {required bool fileServer}) {
+  switch (change) {
+    case ListChange.ok:
+      return '';
+    case ListChange.invalid:
+      return fileServer
+          ? 'Enter a server address that starts with https://'
+          : 'Enter a relay address that starts with wss://';
+    case ListChange.duplicate:
+      return 'This one is already in your lists';
+    case ListChange.full:
+      return 'You have reached the limit for this list';
+    case ListChange.missing:
+      return 'This one is not in the list';
+    case ListChange.unreachable:
+      return 'This server did not take a test file. Check the address and try again';
+    case ListChange.tooFew:
+      return fileServer ? 'Keep at least one file server' : 'Keep at least one inbox relay';
   }
 }

@@ -1,5 +1,6 @@
 // blossom_service.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -9,6 +10,7 @@ import 'package:http/http.dart' as http;
 import '../core/crypto/crypto_utils.dart';
 import '../core/crypto/file_crypto.dart';
 import '../core/crypto/nostr_protocol.dart';
+import 'server_lists.dart';
 
 class BlossomException implements Exception {
   final String message;
@@ -36,12 +38,10 @@ class BlossomService {
   BlossomService._();
 
   static const String defaultServer = 'https://blossom.ditto.pub';
-  static const List<String> defaultServers = [
-    defaultServer,
-    'https://nostr.download',
-  ];
+  static const List<String> defaultServers = BlossomDefaults.servers;
   static const int maxDownloadBytes = 32 * 1024 * 1024;
   static const Duration _timeout = Duration(minutes: 2);
+  static const Duration _testTimeout = Duration(seconds: 20);
   static const int _authTtlSeconds = 300;
   static const int _authBackdateSeconds = 10;
 
@@ -153,6 +153,22 @@ class BlossomService {
       throw BlossomException('upload failed: $e');
     } finally {
       if (client == null) httpClient.close();
+    }
+  }
+
+  /// Uploads a few random bytes to [server] to see that it takes files from us.
+  /// The bytes are not a real file and are different every time.
+  static Future<void> testUpload(String server, {http.Client? client}) async {
+    final bytes = CryptoUtils.generateSecureRandomBytes(64);
+    try {
+      await upload(
+        bytes,
+        server: server,
+        description: 'Test upload',
+        client: client,
+      ).timeout(_testTimeout);
+    } on TimeoutException {
+      throw const BlossomException('server did not answer in time');
     }
   }
 
