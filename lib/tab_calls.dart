@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:remixicon/remixicon.dart';
 import 'models/call_log.dart';
 import 'models/contact.dart';
 import 'relay_manager.dart';
@@ -11,6 +10,7 @@ import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'core/utils/ui_utils.dart';
 import 'core/utils/key_utils.dart';
+import 'widgets/confirm_dialog.dart';
 import 'widgets/user_avatar.dart';
 
 class CallsScreen extends StatefulWidget {
@@ -83,6 +83,18 @@ class _CallsScreenState extends State<CallsScreen> {
     );
   }
 
+  Future<void> _deleteLog(CallLog log, String displayName) async {
+    HapticFeedback.heavyImpact();
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete call?',
+      message: 'This call with $displayName will be removed from your history.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (confirmed && log.isInBox) await log.delete();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -152,15 +164,8 @@ class _CallsScreenState extends State<CallsScreen> {
                       );
                     }
 
-                    return ListView.separated(
+                    return ListView.builder(
                       itemCount: logs.length,
-                      separatorBuilder: (context, index) => Divider(
-                        height: 1,
-                        indent: 72,
-                        color: isDark
-                            ? Colors.white10
-                            : Colors.black.withAlpha(10),
-                      ),
                       itemBuilder: (context, index) {
                         final log = logs[index];
                         return _buildCallLogItem(
@@ -210,76 +215,58 @@ class _CallsScreenState extends State<CallsScreen> {
 
     final durationText = log.formattedDuration;
 
-    return Dismissible(
-      key: Key(log.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        color: Colors.red,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Remix.delete_bin_line, color: Colors.white),
+    return ListTile(
+      leading: UserAvatar(
+        pubkey: log.peerPubkey,
+        name: displayName,
+        radius: 22,
+        relayManager: widget.relayManager,
       ),
-      onDismissed: (_) {
-        log.delete();
-      },
-      child: ListTile(
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: UserAvatar(
-          pubkey: log.peerPubkey,
-          name: displayName,
-          radius: 22,
-          relayManager: widget.relayManager,
+      title: Text(
+        displayName,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+          color: log.isMissed
+              ? Colors.red
+              : (isDark ? Colors.white : Colors.black87),
         ),
-        title: Text(
-          displayName,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-            color: log.isMissed
-                ? Colors.red
-                : (isDark ? Colors.white : Colors.black87),
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(directionIcon, size: 15, color: iconColor),
-            if (durationText.isNotEmpty) ...[
-              const SizedBox(width: 4),
-              Text(
-                '($durationText)',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.white60 : Colors.black54,
-                ),
-              ),
-            ],
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                _formatCallTimestamp(context, log.timestamp),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.white38 : Colors.black38,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(directionIcon, size: 15, color: iconColor),
+          if (durationText.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            Text(
+              '($durationText)',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white60 : Colors.black54,
               ),
             ),
           ],
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.phone, color: Colors.green),
-          tooltip: 'Call',
-          onPressed: () => _callPeer(context, log.peerPubkey, displayName),
-        ),
-        onTap: () {
-          // Row tap does nothing; only the phone icon starts a call.
-        },
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              _formatCallTimestamp(context, log.timestamp),
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white38 : Colors.black38,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
+      trailing: IconButton(
+        icon: const Icon(Icons.phone, color: Colors.green),
+        onPressed: () => _callPeer(context, log.peerPubkey, displayName),
+      ),
+      onLongPress: () => _deleteLog(log, displayName),
     );
   }
 }

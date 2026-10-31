@@ -2076,152 +2076,47 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final contactsBox = Hive.box<Contact>('contacts');
     final targetContact = contactsBox.get(widget.contact.pubkey) ?? widget.contact;
     final nameController = TextEditingController(text: targetContact.isSaved ? targetContact.name : "");
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-
     await showDialog(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: bgColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          targetContact.isSaved ? 'Rename contact' : 'Save contact',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Give a name to this identity.',
-                          style: TextStyle(fontSize: 12, color: textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withAlpha(15),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.blue.withAlpha(30), width: 0.5),
-                    ),
-                    child: Icon(
-                      targetContact.isSaved ? Remix.edit_2_fill : Remix.user_add_fill,
-                      size: 18,
-                      color: Colors.blue.withAlpha(200),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Divider(height: 0.5, thickness: 0.5, color: borderColor),
-              const SizedBox(height: 16),
-              Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: borderColor, width: 0.5),
-                ),
-                child: TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  style: TextStyle(fontSize: 14, color: textPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'Enter name',
-                    hintStyle: TextStyle(fontSize: 14, color: textSecondary),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    border: InputBorder.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: borderColor, width: 0.5),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Cancel',
-                            style: TextStyle(fontSize: 13, color: textSecondary),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        final currentContext = context;
-                        if (nameController.text.trim().isNotEmpty) {
-                          targetContact.name = nameController.text.trim();
-                          targetContact.isSaved = true;
-                          Hive.box<Contact>('contacts').put(targetContact.pubkey, targetContact).then((_) async {
-                            // Sync conversation shortcut supaya label notifikasi Android ikut nama baru
-                            await ShortcutHelper.pushConversationShortcut(
-                              id: targetContact.pubkey,
-                              name: targetContact.displayName,
-                              avatarBytes: null,
-                            );
+      builder: (dialogContext) {
+        void save() {
+          final name = nameController.text.trim();
+          if (name.isEmpty) return;
+          targetContact.name = name;
+          targetContact.isSaved = true;
+          Hive.box<Contact>('contacts').put(targetContact.pubkey, targetContact).then((_) async {
+            await ShortcutHelper.pushConversationShortcut(
+              id: targetContact.pubkey,
+              name: targetContact.displayName,
+              avatarBytes: null,
+            );
 
-                            HapticFeedback.lightImpact();
-                            if (currentContext.mounted) {
-                              setState(() {});
-                              Navigator.pop(currentContext);
-                            }
-                          });
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'Save',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            HapticFeedback.lightImpact();
+            if (dialogContext.mounted) {
+              setState(() {});
+              Navigator.pop(dialogContext);
+            }
+          });
+        }
+
+        return AlertDialog(
+          title: Text(targetContact.isSaved ? 'Rename contact' : 'Save contact'),
+          content: TextField(
+            controller: nameController,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => save(),
+            decoration: const InputDecoration(hintText: 'Enter name'),
           ),
-        ),
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(onPressed: save, child: const Text('Save')),
+          ],
+        );
+      },
     );
   }
 

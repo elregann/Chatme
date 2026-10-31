@@ -1,5 +1,6 @@
 // tab_chat.dart
 
+import 'widgets/confirm_dialog.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -515,124 +516,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   Future<void> _showDeleteDialog(Contact contact) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
-    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: bgColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Clear chat history',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          contact.name,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.red,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withAlpha(15),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.red.withAlpha(30), width: 0.5),
-                    ),
-                    child: Icon(Icons.delete_sweep_rounded, size: 18, color: Colors.red.withAlpha(200)),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-              Divider(height: 0.5, thickness: 0.5, color: borderColor),
-              const SizedBox(height: 16),
-
-              Text(
-                'All messages will be permanently deleted. This action cannot be undone.',
-                style: TextStyle(fontSize: 13, color: textSecondary, height: 1.5),
-              ),
-
-              const SizedBox(height: 20),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context, false),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: borderColor, width: 0.5),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Keep chat',
-                            style: TextStyle(fontSize: 13, color: textSecondary),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context, true),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'Delete all',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Clear chat history?',
+      message: 'All messages with ${contact.name} will be permanently deleted. This action cannot be undone.',
+      confirmLabel: 'Delete all',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       final myPubkey = AppSettings.instance.myPubkey;
       final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
       await ChatManager.instance.deleteChatHistory(chatKey);

@@ -1,5 +1,6 @@
 // file_servers.dart
 
+import '../../widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../services/app_settings.dart';
 import '../../services/blossom_servers.dart';
@@ -18,18 +19,13 @@ class FileServersPage extends StatelessWidget {
   }
 
   Future<void> _reset(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Reset to defaults?'),
-        content: const Text('Your own file servers will be removed and the built in ones come back.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Reset')),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Reset to defaults?',
+      message: 'Your own file servers will be removed and the built in ones come back.',
+      confirmLabel: 'Reset',
     );
-    if (confirmed == true) await BlossomServers.reset();
+    if (confirmed) await BlossomServers.reset();
   }
 
   @override
