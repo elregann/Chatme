@@ -1,6 +1,7 @@
 // room_chat.dart
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,8 @@ import 'services/just_audio_backend.dart';
 import 'services/record_backend.dart';
 import 'services/voice_recorder.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'services/keyboard_height.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart' as emoji;
 
 const double _composerBarHeight = 52.0;
 const double _composerBarRadius = 26.0;
@@ -50,7 +53,8 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBindingObserver {
+class _ChatDetailScreenState extends State<ChatDetailScreen>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -77,6 +81,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   String? _dismissedUrl;
   LinkPreviewData? _composerPreview;
 
+  // Emoji panel <-> keyboard dock.
+  bool _isEmojiPanelOpen = false;
+  bool _isEmojiPanelClosing = false;
+  double _emojiPanelHeight = 0.0;
+
+  // Whether the panel is mounted. Changing it rebuilds only the dock, so the
+  // panel can leave at the end of the keyboard animation without rebuilding
+  // the whole chat screen in the middle of a frame.
+  final ValueNotifier<bool> _emojiPanelMounted = ValueNotifier<bool>(false);
+  Widget? _cachedEmojiPanel;
+  bool? _cachedEmojiPanelDark;
+  bool? _cachedEmojiPanelCyber;
+  double? _cachedEmojiPanelSafeBottom;
+  double _keyboardInsetBottom = 0.0;
+  bool _wasLandscape = false;
+  int _emojiPanelCloseToken = 0;
+  Timer? _emojiPanelCloseTimer;
+  Timer? _keyboardSettleTimer;
+  late final AnimationController _emojiRevealController;
+
   final ValueNotifier<double> _dragOffsetNotifier = ValueNotifier<double>(0.0);
   String? _draggingId;
 
@@ -89,7 +113,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   bool _isShortText(String text, BuildContext context) {
     const double timeWidth = 55;
-    final maxWidth = MediaQuery.of(context).size.width * 0.90 - 80 - timeWidth;
+    final maxWidth = MediaQuery.sizeOf(context).width * 0.90 - 80 - timeWidth;
     final textPainter = TextPainter(
       text: TextSpan(text: text, style: const TextStyle(fontSize: 16)),
       maxLines: 1,
@@ -120,6 +144,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   @override
   void initState() {
     super.initState();
+    _emojiRevealController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    );
     WidgetsBinding.instance.addObserver(this);
     NotificationHandler.clearNotification(widget.contact.pubkey);
     widget.relayManager.currentlyChattingWith = widget.contact.pubkey;
@@ -140,6 +168,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _scrollController.addListener(_handleScrollChanged);
     _messageController.addListener(_onComposerChanged);
     _messageController.addListener(_onTextPresenceChanged);
+    _focusNode.addListener(_handleComposerFocusChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
@@ -154,6 +183,189 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
       _cancelRecording();
     }
+  }
+
+  double _readKeyboardInset() {
+    final view = View.of(context);
+    final ratio = view.devicePixelRatio;
+    return ratio <= 0 ? 0.0 : view.viewInsets.bottom / ratio;
+  }
+
+  Size _readScreenSize() {
+    final view = View.of(context);
+    final ratio = view.devicePixelRatio;
+    return ratio <= 0 ? Size.zero : view.physicalSize / ratio;
+  }
+
+  double _emojiHeightForOpening() {
+    final size = _readScreenSize();
+    final landscape = size.width > size.height;
+    Object? stored;
+    try {
+      stored = Hive.box('settings').get(KeyboardHeight.key(landscape: landscape));
+    } catch (_) {}
+    return KeyboardHeight.forOpening(
+      keyboardNow: _readKeyboardInset(),
+      stored: stored,
+      screenHeight: size.height,
+    );
+  }
+
+  void _rememberKeyboardHeight(double height) {
+    final size = _readScreenSize();
+    final key = KeyboardHeight.key(landscape: size.width > size.height);
+    try {
+      final box = Hive.box('settings');
+      if (KeyboardHeight.shouldSave(box.get(key), height)) box.put(key, height);
+    } catch (_) {}
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (!mounted) return;
+    final size = _readScreenSize();
+    final bottom = _readKeyboardInset();
+    _keyboardInsetBottom = bottom;
+
+    final landscape = size.width > size.height;
+    if (landscape != _wasLandscape) {
+      _wasLandscape = landscape;
+      if (_isEmojiPanelOpen && !_isEmojiPanelClosing && bottom == 0) {
+        setState(() => _emojiPanelHeight = _emojiHeightForOpening());
+      }
+    }
+
+    // A keyboard height only counts once it stopped moving, so the middle of
+    // an animation is never taken for the real height.
+    _keyboardSettleTimer?.cancel();
+    if (KeyboardHeight.valid(bottom) != null) {
+      _keyboardSettleTimer = Timer(const Duration(milliseconds: 120), _onKeyboardSettled);
+    }
+
+  }
+
+  void _onKeyboardSettled() {
+    if (!mounted) return;
+    final height = _keyboardInsetBottom;
+    if (KeyboardHeight.valid(height) == null) return;
+    _rememberKeyboardHeight(height);
+    if (_isEmojiPanelOpen && _isEmojiPanelClosing) _finishEmojiPanelDismiss();
+  }
+
+  void _handleComposerFocusChanged() {
+    if (!mounted) return;
+    if (_focusNode.hasFocus && _isEmojiPanelOpen && !_isEmojiPanelClosing) {
+      _restoreKeyboardFromEmojiPanel();
+    }
+  }
+
+  void _toggleEmojiPanel() {
+    if (_isEmojiPanelOpen) {
+      _restoreKeyboardFromEmojiPanel();
+    } else {
+      _openEmojiPanel();
+    }
+  }
+
+  void _openEmojiPanel() {
+    final hasKeyboard = _readKeyboardInset() > 0;
+
+    _emojiPanelCloseToken++;
+    _emojiPanelCloseTimer?.cancel();
+
+    _emojiPanelMounted.value = true;
+    setState(() {
+      _isEmojiPanelOpen = true;
+      _isEmojiPanelClosing = false;
+      _emojiPanelHeight = _emojiHeightForOpening();
+    });
+
+    if (hasKeyboard) {
+      // The keyboard already fills the dock, so the panel is laid out under it
+      // at full height and nothing moves when the keyboard goes away.
+      _emojiRevealController.value = 1.0;
+    } else {
+      _emojiRevealController.value = 0.0;
+      _emojiRevealController.animateTo(
+        1.0,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isEmojiPanelOpen || _isEmojiPanelClosing) return;
+      _focusNode.unfocus();
+    });
+  }
+
+  void _restoreKeyboardFromEmojiPanel() {
+    if (!mounted) return;
+    if (!_isEmojiPanelOpen) {
+      _focusNode.requestFocus();
+      return;
+    }
+
+    final token = ++_emojiPanelCloseToken;
+    if (!_isEmojiPanelClosing) {
+      setState(() => _isEmojiPanelClosing = true);
+    }
+    _focusNode.requestFocus();
+
+    // Safety net for when no keyboard ever shows up (hardware keyboard).
+    _emojiPanelCloseTimer?.cancel();
+    _emojiPanelCloseTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted || token != _emojiPanelCloseToken) return;
+      if (_keyboardInsetBottom > 0) return;
+      _finishEmojiPanelDismiss();
+    });
+  }
+
+  // Called when the keyboard stopped moving (or never came). The panel stays
+  // behind the keyboard until then, so nothing is rebuilt during the animation.
+  // If the keyboard turned out a little shorter than the panel, the panel
+  // shrinks to it first so the composer does not step down.
+  void _finishEmojiPanelDismiss() {
+    if (!mounted || !_isEmojiPanelOpen) return;
+    final token = ++_emojiPanelCloseToken;
+    _emojiPanelCloseTimer?.cancel();
+    _isEmojiPanelOpen = false;
+    _isEmojiPanelClosing = false;
+
+    final target = KeyboardHeight.revealAfterSettle(
+      keyboard: _keyboardInsetBottom,
+      panel: _emojiPanelHeight,
+    );
+    if (target >= 1.0) {
+      _unmountEmojiPanel();
+      return;
+    }
+    _emojiRevealController
+        .animateTo(target, duration: const Duration(milliseconds: 120), curve: Curves.easeOut)
+        .whenComplete(() {
+      if (!mounted || token != _emojiPanelCloseToken || _isEmojiPanelOpen) return;
+      _unmountEmojiPanel();
+    });
+  }
+
+  void _unmountEmojiPanel() {
+    _emojiRevealController.value = 0.0;
+    _emojiPanelMounted.value = false;
+    _cachedEmojiPanel = null;
+  }
+
+  // Used by the system back gesture: dismiss the panel without bringing the
+  // keyboard back.
+  void _closeEmojiPanel() {
+    if (!mounted || !_isEmojiPanelOpen) return;
+    _emojiPanelCloseToken++;
+    _emojiPanelCloseTimer?.cancel();
+    _focusNode.unfocus();
+    setState(() {
+      _isEmojiPanelOpen = false;
+      _isEmojiPanelClosing = false;
+    });
+    _unmountEmojiPanel();
   }
 
   @override
@@ -171,12 +383,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _floatingDateTimer?.cancel();
     _scrollIdleTimer?.cancel();
     _previewDebounce?.cancel();
+    _emojiPanelCloseTimer?.cancel();
+    _keyboardSettleTimer?.cancel();
+    _emojiPanelMounted.dispose();
+    _emojiRevealController.dispose();
 
     _anchoredController.itemPositions.removeListener(_handlePositionsChanged);
     _anchoredController.dispose();
     _scrollController.dispose();
 
     _dragOffsetNotifier.dispose();
+    _focusNode.removeListener(_handleComposerFocusChanged);
     _focusNode.dispose();
     _messageController.removeListener(_onComposerChanged);
     _messageController.removeListener(_onTextPresenceChanged);
@@ -638,7 +855,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _messageForReaction = message;
     _removeReactionOverlay();
 
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     double centerX = (screenWidth / 2) - 120;
 
     _reactionOverlayEntry = OverlayEntry(
@@ -828,8 +1045,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     const accentColor = Color(0xFF2196F3);
 
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final dialogHeight = screenHeight * 0.7;
     final crossAxisCount = screenWidth < 360 ? 5 : 6;
 
@@ -1039,7 +1256,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       backgroundColor: isNostrCyber
           ? const Color(0xFF130F1A)
           : (isDark ? const Color(0xFF121212) : const Color(0xFFE5DDD5)),
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: headerColor,
         scrolledUnderElevation: 0,
@@ -1341,7 +1558,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               },
             ),
           ),
-          _buildFloatingInputBar(),
+          _buildComposerDock(),
         ],
       ),
     );
@@ -1384,6 +1601,143 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     );
   }
 
+  Widget _buildComposerDock() {
+    // Built here, once per setState, so the keyboard animation only rebuilds
+    // the small builder below and reuses these same widgets.
+    final composer = _buildFloatingInputBar();
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_emojiRevealController, _emojiPanelMounted]),
+      builder: (context, _) {
+        final panelMounted = _emojiPanelMounted.value;
+        final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+        final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+        final panelHeight = _emojiPanelHeight;
+        final panelSpace = panelMounted ? panelHeight * _emojiRevealController.value : 0.0;
+
+        // One reserved area for both keyboard and emoji panel. Whichever is
+        // taller wins, so swapping between them never moves the composer.
+        final reserved = math.max(keyboard, math.max(safeBottom, panelSpace));
+
+        return PopScope(
+          canPop: !(panelMounted && _isEmojiPanelOpen),
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && _isEmojiPanelOpen) _closeEmojiPanel();
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              composer,
+              SizedBox(
+                height: reserved,
+                child: !panelMounted
+                    ? null
+                    : Stack(
+                        clipBehavior: Clip.hardEdge,
+                        children: [
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            height: panelHeight,
+                            child: _emojiPanelFor(safeBottom),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // One picker is kept and reused while the keyboard animates, since building
+  // it is expensive.
+  Widget _emojiPanelFor(double safeBottom) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
+    final cached = _cachedEmojiPanel;
+    if (cached != null &&
+        _cachedEmojiPanelDark == isDark &&
+        _cachedEmojiPanelCyber == isCyber &&
+        _cachedEmojiPanelSafeBottom == safeBottom) {
+      return cached;
+    }
+    _cachedEmojiPanelDark = isDark;
+    _cachedEmojiPanelCyber = isCyber;
+    _cachedEmojiPanelSafeBottom = safeBottom;
+    return _cachedEmojiPanel = RepaintBoundary(child: _buildEmojiPanel(safeBottom));
+  }
+
+  Widget _buildEmojiPanel(double safeBottom) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
+
+    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF2196F3);
+    final panelBg = isNostrCyber
+        ? const Color(0xFF1B1425)
+        : (isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF4F4F4));
+    final iconColor = isNostrCyber
+        ? Colors.white54
+        : (isDark ? Colors.white38 : Colors.black38);
+    final dividerColor = isNostrCyber
+        ? Colors.white.withAlpha(20)
+        : (isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15));
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: panelBg,
+        border: Border(top: BorderSide(color: dividerColor, width: 0.5)),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: emoji.EmojiPicker(
+              textEditingController: _messageController,
+              config: emoji.Config(
+                height: null,
+                emojiViewConfig: emoji.EmojiViewConfig(
+                  columns: 8,
+                  emojiSizeMax: 28,
+                  backgroundColor: panelBg,
+                  verticalSpacing: 2,
+                  horizontalSpacing: 2,
+                  gridPadding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 6,
+                  ),
+                  noRecents: const Text(
+                    'No recent emoji',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF9E9E9E)),
+                  ),
+                ),
+                categoryViewConfig: emoji.CategoryViewConfig(
+                  initCategory: emoji.Category.SMILEYS,
+                  backgroundColor: panelBg,
+                  iconColor: iconColor,
+                  iconColorSelected: accentColor,
+                  indicatorColor: accentColor,
+                  backspaceColor: accentColor,
+                  dividerColor: Colors.transparent,
+                ),
+                bottomActionBarConfig: emoji.BottomActionBarConfig(
+                  backgroundColor: panelBg,
+                  buttonColor: Colors.transparent,
+                  buttonIconColor: iconColor,
+                  showSearchViewButton: false,
+                  showBackspaceButton: true,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: safeBottom),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFloatingInputBar() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -1398,6 +1752,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     return SafeArea(
       top: false,
+      bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
             12, // Left
@@ -1460,6 +1815,38 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                           ),
                           border: InputBorder.none,
                           isDense: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: _composerBarHeight,
+                    child: Center(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _toggleEmojiPanel,
+                        child: SizedBox(
+                          width: 40,
+                          height: _composerBarHeight,
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 150),
+                              transitionBuilder: (child, animation) =>
+                                  ScaleTransition(scale: animation, child: child),
+                              child: Icon(
+                                (_isEmojiPanelOpen && !_isEmojiPanelClosing)
+                                    ? Icons.keyboard_rounded
+                                    : Icons.emoji_emotions_outlined,
+                                key: ValueKey(_isEmojiPanelOpen && !_isEmojiPanelClosing),
+                                color: (_isEmojiPanelOpen && !_isEmojiPanelClosing)
+                                    ? accentColor
+                                    : (isNostrCyber
+                                        ? Colors.white70
+                                        : (isDark ? Colors.white70 : Colors.black54)),
+                                size: 24,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -1784,7 +2171,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final is24Hour = MediaQuery.of(context).alwaysUse24HourFormat;
+    final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
     final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a').format(
         DateTime.fromMillisecondsSinceEpoch(message.timestamp)
     );
@@ -1820,7 +2207,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.90),
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.90),
                   margin: EdgeInsets.only(
                     left: isMe ? 50 : 12,
                     right: isMe ? 12 : 50,
@@ -2155,7 +2542,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final iconColor = isMissed ? Colors.red : textColor;
     final timeColor = normalTextColor.withAlpha(153);
 
-    final is24Hour = MediaQuery.of(context).alwaysUse24HourFormat;
+    final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
     final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a')
         .format(DateTime.fromMillisecondsSinceEpoch(message.timestamp));
 
