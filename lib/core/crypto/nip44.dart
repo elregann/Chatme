@@ -5,6 +5,8 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:hex/hex.dart';
 import 'ecdh_engine.dart';
 
 /// NIP-44 v2: Versioned, Padded, and Authenticated Encryption for Nostr.
@@ -187,6 +189,31 @@ class Nip44 {
       return false;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Test hooks, so the official vectors can check each step on its own
+  // ---------------------------------------------------------------------------
+
+  @visibleForTesting
+  static String conversationKeyHex(String myPriv, String peerPub) {
+    return HEX.encode(_deriveConversationKey(myPriv, peerPub));
+  }
+
+  @visibleForTesting
+  static Map<String, String> messageKeysHex(String conversationKey, String nonce) {
+    final keys = _deriveMessageKeys(
+      Uint8List.fromList(HEX.decode(conversationKey)),
+      Uint8List.fromList(HEX.decode(nonce)),
+    );
+    return {
+      'chacha_key': HEX.encode(keys.encKey),
+      'chacha_nonce': HEX.encode(keys.chachaNonce),
+      'hmac_key': HEX.encode(keys.hmacKey),
+    };
+  }
+
+  @visibleForTesting
+  static int calcPaddedLength(int plaintextLength) => _calcPaddedLength(plaintextLength);
 
   // ---------------------------------------------------------------------------
   // Key Derivation
