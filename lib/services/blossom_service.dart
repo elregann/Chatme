@@ -3,7 +3,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:bip340/bip340.dart' as bip340;
+import 'package:hex/hex.dart';
 import 'package:http/http.dart' as http;
+import '../core/crypto/crypto_utils.dart';
 import '../core/crypto/file_crypto.dart';
 import '../core/crypto/nostr_protocol.dart';
 
@@ -66,6 +69,13 @@ class BlossomService {
     return {...unsigned, 'id': id, 'sig': NostrSigner.sign(id, privkey)};
   }
 
+  /// A key made for one upload and then forgotten, so the server never sees
+  /// the account key and cannot link uploads to a person or to each other.
+  static ({String privkey, String pubkey}) _throwawayKey() {
+    final privkey = HEX.encode(CryptoUtils.generateSecureRandomBytes(32));
+    return (privkey: privkey, pubkey: bip340.getPublicKey(privkey));
+  }
+
   static String authHeader(Map<String, dynamic> event) {
     return 'Nostr ${base64.encode(utf8.encode(jsonEncode(event)))}';
   }
@@ -80,17 +90,16 @@ class BlossomService {
   /// generic) and returns what the server says it stored.
   static Future<BlossomBlob> upload(
       Uint8List bytes, {
-        required String pubkey,
-        required String privkey,
         String contentType = 'application/octet-stream',
         String server = defaultServer,
         String description = 'Upload file',
         http.Client? client,
       }) async {
     final hash = FileCrypto.sha256Hex(bytes);
+    final key = _throwawayKey();
     final event = buildAuthEvent(
-      pubkey: pubkey,
-      privkey: privkey,
+      pubkey: key.pubkey,
+      privkey: key.privkey,
       hash: hash,
       content: description,
     );
@@ -151,8 +160,6 @@ class BlossomService {
   /// servers refuse files that are not real media, which every encrypted file is.
   static Future<BlossomBlob> uploadToAny(
       Uint8List bytes, {
-        required String pubkey,
-        required String privkey,
         List<String> servers = defaultServers,
         String description = 'Upload file',
         http.Client? client,
@@ -162,8 +169,6 @@ class BlossomService {
       try {
         return await upload(
           bytes,
-          pubkey: pubkey,
-          privkey: privkey,
           server: server,
           description: description,
           client: client,

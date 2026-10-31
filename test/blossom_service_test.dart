@@ -65,6 +65,58 @@ void main() {
     });
   });
 
+  group('upload key', () {
+    Map<String, dynamic> authEventOf(http.Request request) {
+      final encoded = request.headers['Authorization']!.substring(6);
+      return jsonDecode(utf8.decode(base64.decode(encoded))) as Map<String, dynamic>;
+    }
+
+    test('the upload is signed with a valid key made for it', () async {
+      late http.Request seen;
+      final client = MockClient((request) async {
+        seen = request;
+        return http.Response(descriptor(), 200);
+      });
+      await BlossomService.upload(bytes, client: client);
+
+      final event = authEventOf(seen);
+      expect(event['kind'], 24242);
+      expect(event['pubkey'], matches(RegExp(r'^[0-9a-f]{64}$')));
+      expect(event['id'], NostrSigner.calculateEventId(event));
+      expect(NostrSigner.verify(event['id'], event['sig'], event['pubkey']), isTrue);
+    });
+
+    test('two uploads never share a key', () async {
+      final keys = <String>[];
+      final client = MockClient((request) async {
+        keys.add(authEventOf(request)['pubkey'] as String);
+        return http.Response(descriptor(), 200);
+      });
+      await BlossomService.upload(bytes, client: client);
+      await BlossomService.upload(bytes, client: client);
+
+      expect(keys, hasLength(2));
+      expect(keys[0], isNot(keys[1]));
+    });
+
+    test('every server that is tried gets its own key', () async {
+      final keys = <String>[];
+      final client = MockClient((request) async {
+        keys.add(authEventOf(request)['pubkey'] as String);
+        if (request.url.host == 'first.example') return http.Response('', 415);
+        return http.Response(descriptor(), 200);
+      });
+      await BlossomService.uploadToAny(
+        bytes,
+        servers: ['https://first.example', 'https://second.example'],
+        client: client,
+      );
+
+      expect(keys, hasLength(2));
+      expect(keys[0], isNot(keys[1]));
+    });
+  });
+
   group('upload', () {
     test('sends a PUT to /upload and returns the descriptor', () async {
       late http.Request seen;
@@ -75,8 +127,6 @@ void main() {
 
       final blob = await BlossomService.upload(
         bytes,
-        pubkey: pubkey,
-        privkey: privkey,
         server: 'https://blossom.example/',
         client: client,
       );
@@ -99,7 +149,7 @@ void main() {
         seen = request;
         return http.Response(descriptor(), 200);
       });
-      await BlossomService.upload(bytes, pubkey: pubkey, privkey: privkey, client: client);
+      await BlossomService.upload(bytes, client: client);
 
       final encoded = seen.headers['Authorization']!.substring(6);
       final event = jsonDecode(utf8.decode(base64.decode(encoded)));
@@ -112,14 +162,14 @@ void main() {
         seen = request;
         return http.Response(descriptor(), 200);
       });
-      await BlossomService.upload(bytes, pubkey: pubkey, privkey: privkey, client: client);
+      await BlossomService.upload(bytes, client: client);
       expect(seen.headers['User-Agent'], startsWith('Chatme'));
     });
 
     test('a server that stored another file is rejected', () async {
       final client = MockClient((_) async => http.Response(descriptor(sha: 'a' * 64), 200));
       expect(
-            () => BlossomService.upload(bytes, pubkey: pubkey, privkey: privkey, client: client),
+            () => BlossomService.upload(bytes, client: client),
         throwsA(isA<BlossomException>()),
       );
     });
@@ -129,7 +179,7 @@ void main() {
             (_) async => http.Response('', 413, headers: {'x-reason': 'File too large'}),
       );
       await expectLater(
-        BlossomService.upload(bytes, pubkey: pubkey, privkey: privkey, client: client),
+        BlossomService.upload(bytes, client: client),
         throwsA(
           isA<BlossomException>().having(
                 (e) => e.message,
@@ -144,7 +194,7 @@ void main() {
       for (final body in ['not json', '[]', '{"url": 1}', '{"url": "https://x"}']) {
         final client = MockClient((_) async => http.Response(body, 200));
         await expectLater(
-          BlossomService.upload(bytes, pubkey: pubkey, privkey: privkey, client: client),
+          BlossomService.upload(bytes, client: client),
           throwsA(isA<BlossomException>()),
         );
       }
@@ -153,7 +203,7 @@ void main() {
     test('a network failure becomes a BlossomException', () async {
       final client = MockClient((_) async => throw http.ClientException('offline'));
       expect(
-            () => BlossomService.upload(bytes, pubkey: pubkey, privkey: privkey, client: client),
+            () => BlossomService.upload(bytes, client: client),
         throwsA(isA<BlossomException>()),
       );
     });
@@ -172,8 +222,6 @@ void main() {
 
       final blob = await BlossomService.uploadToAny(
         bytes,
-        pubkey: pubkey,
-        privkey: privkey,
         servers: ['https://first.example', 'https://second.example'],
         client: client,
       );
@@ -191,8 +239,6 @@ void main() {
 
       await BlossomService.uploadToAny(
         bytes,
-        pubkey: pubkey,
-        privkey: privkey,
         servers: ['https://first.example', 'https://second.example'],
         client: client,
       );
@@ -208,8 +254,6 @@ void main() {
       await expectLater(
         BlossomService.uploadToAny(
           bytes,
-          pubkey: pubkey,
-          privkey: privkey,
           servers: ['https://first.example', 'https://second.example'],
           client: client,
         ),
@@ -225,7 +269,7 @@ void main() {
 
     test('an empty server list is an error', () async {
       expect(
-            () => BlossomService.uploadToAny(bytes, pubkey: pubkey, privkey: privkey, servers: []),
+            () => BlossomService.uploadToAny(bytes, servers: []),
         throwsA(isA<BlossomException>()),
       );
     });

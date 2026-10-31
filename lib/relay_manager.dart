@@ -1817,8 +1817,6 @@ class RelayManager {
         if (nowMs - lastAttempt < 60000) continue;
         _lastQueueAttempt[msg.id] = nowMs;
 
-        final myPrivkey = AppSettings.instance.myPrivkey;
-        final myPubkey = AppSettings.instance.myPubkey;
         final plaintext = msg.plaintext.isNotEmpty ? msg.plaintext : msg.content;
         if (plaintext.isEmpty) continue;
 
@@ -1830,8 +1828,6 @@ class RelayManager {
               source: File(msg.localPath),
               mimeType: msg.file['type'] ?? FileSendService.voiceMimeType,
               durationSeconds: msg.fileDurationSeconds,
-              pubkey: myPubkey,
-              privkey: myPrivkey,
             );
             await ChatManager.instance.setFile(msg.id, msg.chatKey, file.toMap());
           }

@@ -244,7 +244,6 @@ class ChatManager {
     String? replyToSenderPubkey,
   }) async {
     final myPubkey = AppSettings.instance.myPubkey;
-    final myPrivkey = AppSettings.instance.myPrivkey;
     final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
     final messageTs = DateTime.now().millisecondsSinceEpoch;
     final tempId = 'temp_$messageTs';
@@ -277,8 +276,6 @@ class ChatManager {
         source: stored,
         mimeType: FileSendService.voiceMimeType,
         durationSeconds: seconds,
-        pubkey: myPubkey,
-        privkey: myPrivkey,
       );
       await ChatManager.instance.setFile(tempId, chatKey, file.toMap());
 

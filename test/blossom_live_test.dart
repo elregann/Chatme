@@ -8,9 +8,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
-import 'package:bip340/bip340.dart' as bip340;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hex/hex.dart';
 import 'package:chatme/core/crypto/file_crypto.dart';
 import 'package:chatme/services/blossom_service.dart';
 
@@ -22,9 +20,6 @@ const _servers = [
   'https://blossom.band',
 ];
 
-String _newPrivkey(Random random) =>
-    HEX.encode(List<int>.generate(32, (_) => random.nextInt(256)));
-
 void main() {
   const live = bool.fromEnvironment('LIVE');
   const sizes = bool.fromEnvironment('SIZES');
@@ -35,9 +30,6 @@ void main() {
 
   test('which servers take an encrypted file', () async {
     final random = Random.secure();
-    final privkey = _newPrivkey(random);
-    final pubkey = bip340.getPublicKey(privkey);
-
     final plain = Uint8List.fromList(
       utf8.encode('Chatme live test ${DateTime.now().toIso8601String()} ${random.nextInt(1 << 30)}'),
     );
@@ -48,8 +40,6 @@ void main() {
       try {
         final blob = await BlossomService.upload(
           encrypted.bytes,
-          pubkey: pubkey,
-          privkey: privkey,
           server: server,
           description: 'Chatme live test',
         );
@@ -78,9 +68,6 @@ void main() {
 
   test('how big a file the server takes', () async {
     final random = Random.secure();
-    final privkey = _newPrivkey(random);
-    final pubkey = bip340.getPublicKey(privkey);
-
     for (final mib in [1, 8]) {
       final plain = Uint8List.fromList(
         List<int>.generate(mib * 1024 * 1024, (_) => random.nextInt(256)),
@@ -89,8 +76,6 @@ void main() {
       try {
         await BlossomService.upload(
           encrypted.bytes,
-          pubkey: pubkey,
-          privkey: privkey,
           server: probeServer,
           description: 'Chatme size test',
         );

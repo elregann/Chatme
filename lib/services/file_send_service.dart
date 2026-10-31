@@ -14,8 +14,6 @@ class FileSendService {
   static Future<FileMessage> encryptAndUpload({
     required File source,
     required String mimeType,
-    required String pubkey,
-    required String privkey,
     int? durationSeconds,
     List<String> servers = BlossomService.defaultServers,
     http.Client? client,
@@ -25,8 +23,6 @@ class FileSendService {
 
     final blob = await BlossomService.uploadToAny(
       encrypted.bytes,
-      pubkey: pubkey,
-      privkey: privkey,
       servers: servers,
       client: client,
     );

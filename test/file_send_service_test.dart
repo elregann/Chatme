@@ -3,7 +3,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:bip340/bip340.dart' as bip340;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -13,9 +12,6 @@ import 'package:chatme/services/blossom_service.dart';
 import 'package:chatme/services/file_send_service.dart';
 
 void main() {
-  const privkey = '0000000000000000000000000000000000000000000000000000000000000003';
-  final pubkey = bip340.getPublicKey(privkey);
-
   late Directory dir;
   late File recorded;
   late Uint8List plain;
@@ -57,8 +53,6 @@ void main() {
         source: recorded,
         mimeType: 'audio/mp4',
         durationSeconds: 9,
-        pubkey: pubkey,
-        privkey: privkey,
         servers: ['https://files.example'],
         client: storingServer(stored: stored),
       );
@@ -86,8 +80,6 @@ void main() {
       Future<FileMessage> run() => FileSendService.encryptAndUpload(
             source: recorded,
             mimeType: 'audio/mp4',
-            pubkey: pubkey,
-            privkey: privkey,
             servers: ['https://files.example'],
             client: storingServer(),
           );
@@ -97,6 +89,27 @@ void main() {
 
       expect(a.key, isNot(b.key));
       expect(a.nonce, isNot(b.nonce));
+    });
+
+    test('each upload is signed with its own throwaway key', () async {
+      final keys = <String>[];
+      final client = MockClient((request) async {
+        final encoded = request.headers['Authorization']!.substring(6);
+        final event = jsonDecode(utf8.decode(base64.decode(encoded)));
+        keys.add(event['pubkey'] as String);
+        return stored200(request);
+      });
+
+      for (var i = 0; i < 2; i++) {
+        await FileSendService.encryptAndUpload(
+          source: recorded,
+          mimeType: 'audio/mp4',
+          servers: ['https://files.example'],
+          client: client,
+        );
+      }
+
+      expect(keys[0], isNot(keys[1]));
     });
 
     test('moves on to the next server when the first refuses', () async {
@@ -110,8 +123,6 @@ void main() {
       final file = await FileSendService.encryptAndUpload(
         source: recorded,
         mimeType: 'audio/mp4',
-        pubkey: pubkey,
-        privkey: privkey,
         servers: ['https://first.example', 'https://second.example'],
         client: client,
       );
@@ -127,8 +138,6 @@ void main() {
         FileSendService.encryptAndUpload(
           source: recorded,
           mimeType: 'audio/mp4',
-          pubkey: pubkey,
-          privkey: privkey,
           servers: ['https://first.example'],
           client: client,
         ),
@@ -141,8 +150,6 @@ void main() {
         FileSendService.encryptAndUpload(
           source: recorded,
           mimeType: 'audio/mp4',
-          pubkey: pubkey,
-          privkey: privkey,
           servers: ['https://files.example'],
           client: storingServer(urlScheme: 'http'),
         ),
