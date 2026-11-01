@@ -15,6 +15,8 @@ class FileSendService {
     required File source,
     required String mimeType,
     int? durationSeconds,
+    int? width,
+    int? height,
     List<String> servers = BlossomService.defaultServers,
     http.Client? client,
   }) async {
@@ -41,6 +43,8 @@ class FileSendService {
       originalHash: encrypted.originalHash,
       size: encrypted.bytes.length,
       durationSeconds: durationSeconds,
+      width: width,
+      height: height,
     );
   }
 

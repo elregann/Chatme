@@ -26,6 +26,9 @@ import 'core/utils/shortcut_helper.dart';
 import 'services/link_preview_service.dart';
 import 'widgets/link_preview_card.dart';
 import 'widgets/voice_note_bubble.dart';
+import 'widgets/image_bubble.dart';
+import 'services/image_prepare.dart';
+import 'package:image_picker/image_picker.dart';
 import 'services/just_audio_backend.dart';
 import 'services/record_backend.dart';
 import 'services/voice_recorder.dart';
@@ -665,6 +668,39 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   Future<void> _cancelRecording() async {
     _endRecordingUi();
     await voiceRecorder.cancel();
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    if (kIsWeb) return;
+    try {
+      final picked = await ImagePicker().pickImage(source: source);
+      if (picked == null) return;
+      final prepared = await prepareImage(await picked.readAsBytes());
+
+      final replyId = _replyingTo?.id;
+      final replyContent = _replyingTo?.plaintext;
+      final replySenderPubkey = _replyingTo?.senderPubkey;
+      if (mounted) setState(() => _replyingTo = null);
+
+      ChatManager.sendImage(
+        image: prepared,
+        receiverPubkey: widget.contact.pubkey,
+        relayManager: widget.relayManager,
+        replyToId: replyId,
+        replyToContent: replyContent,
+        replyToSenderPubkey: replySenderPubkey,
+      ).catchError((Object e) {
+        DebugLogger.log('[Image] Send failed | $e', type: 'ERROR');
+      });
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) _maybeAutoScroll(force: true);
+      });
+    } on ImagePrepareException catch (e) {
+      _showHint(e.message);
+    } catch (e) {
+      DebugLogger.log('[Image] Pick failed | $e', type: 'ERROR');
+      _showHint('Could not open the photo');
+    }
   }
 
   Future<void> _sendRecording() async {
@@ -1788,6 +1824,47 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  SizedBox(
+                    height: _composerBarHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Center(
+                        child: SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Material(
+                            type: MaterialType.transparency,
+                            shape: const CircleBorder(),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkResponse(
+                              onTap: _toggleEmojiPanel,
+                              containedInkWell: true,
+                              highlightShape: BoxShape.circle,
+                              child: Center(
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 150),
+                                  transitionBuilder: (child, animation) =>
+                                      ScaleTransition(scale: animation, child: child),
+                                  child: Icon(
+                                    (_isEmojiPanelOpen && !_isEmojiPanelClosing)
+                                        ? Icons.keyboard_rounded
+                                        : Icons.emoji_emotions_outlined,
+                                    key: ValueKey(_isEmojiPanelOpen && !_isEmojiPanelClosing),
+                                    color: (_isEmojiPanelOpen && !_isEmojiPanelClosing)
+                                        ? accentColor
+                                        : (isNostrCyber
+                                            ? Colors.white70
+                                            : (isDark ? Colors.white70 : Colors.black54)),
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(
@@ -1810,7 +1887,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                             color: inputHintColor,
                           ),
                           contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 18,
+                            horizontal: 6,
                             vertical: 12,
                           ),
                           border: InputBorder.none,
@@ -1819,38 +1896,63 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       ),
                     ),
                   ),
-                  SizedBox(
-                    height: _composerBarHeight,
-                    child: Center(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _toggleEmojiPanel,
-                        child: SizedBox(
-                          width: 40,
-                          height: _composerBarHeight,
-                          child: Center(
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 150),
-                              transitionBuilder: (child, animation) =>
-                                  ScaleTransition(scale: animation, child: child),
-                              child: Icon(
-                                (_isEmojiPanelOpen && !_isEmojiPanelClosing)
-                                    ? Icons.keyboard_rounded
-                                    : Icons.emoji_emotions_outlined,
-                                key: ValueKey(_isEmojiPanelOpen && !_isEmojiPanelClosing),
-                                color: (_isEmojiPanelOpen && !_isEmojiPanelClosing)
-                                    ? accentColor
-                                    : (isNostrCyber
-                                        ? Colors.white70
-                                        : (isDark ? Colors.white70 : Colors.black54)),
-                                size: 24,
+                  if (!kIsWeb)
+                    SizedBox(
+                      height: _composerBarHeight,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        width: _hasText ? 0 : 40,
+                        child: ClipRect(
+                          child: OverflowBox(
+                            minWidth: 0,
+                            maxWidth: 40,
+                            alignment: Alignment.centerRight,
+                            child: IgnorePointer(
+                              ignoring: _hasText,
+                              child: AnimatedSlide(
+                                duration: const Duration(milliseconds: 200),
+                                curve: Curves.easeOutCubic,
+                                offset: _hasText ? const Offset(1, 0) : Offset.zero,
+                                child: AnimatedOpacity(
+                                  duration: const Duration(milliseconds: 150),
+                                  opacity: _hasText ? 0 : 1,
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: Center(
+                                      child: PopupMenuButton<ImageSource>(
+                                        tooltip: '',
+                                        padding: EdgeInsets.zero,
+                                        splashRadius: 22,
+                                        icon: Icon(
+                                          Icons.photo_camera_outlined,
+                                          size: 24,
+                                          color: isNostrCyber
+                                              ? Colors.white70
+                                              : (isDark ? Colors.white70 : Colors.black54),
+                                        ),
+                                        onSelected: _pickImage,
+                                        itemBuilder: (_) => const [
+                                          PopupMenuItem(
+                                            value: ImageSource.camera,
+                                            child: Text('Camera'),
+                                          ),
+                                          PopupMenuItem(
+                                            value: ImageSource.gallery,
+                                            child: Text('Gallery'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                   SizedBox(
                     height: _composerBarHeight,
                     child: Padding(
@@ -2247,7 +2349,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
                         const SizedBox(height: 4),
 
-                        message.isVoiceNote
+                        message.isImage
+                            ? ImageBubble(
+                          key: ValueKey('img_${message.id}'),
+                          message: message,
+                          footer: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(timeStr, style: const TextStyle(color: Colors.white, fontSize: 11)),
+                              if (isMe) ...[
+                                const SizedBox(width: 4),
+                                _buildStatusIcon(message.status, Colors.white),
+                              ],
+                            ],
+                          ),
+                        )
+                            : message.isVoiceNote
                             ? VoiceNoteBubble(
                           key: ValueKey('vn_${message.id}'),
                           message: message,

@@ -23,6 +23,10 @@ class FileMessage {
   /// duration: seconds, a Chatme extra tag for voice notes.
   final int? durationSeconds;
 
+  /// dim: pixel size of a picture, written as widthxheight.
+  final int? width;
+  final int? height;
+
   const FileMessage({
     required this.url,
     required this.mimeType,
@@ -32,9 +36,29 @@ class FileMessage {
     this.originalHash,
     this.size,
     this.durationSeconds,
+    this.width,
+    this.height,
   });
 
   bool get isAudio => mimeType.startsWith('audio/');
+
+  bool get isImage => mimeType.startsWith('image/');
+
+  /// What the chat list and notifications show for this file.
+  String get previewLabel => isAudio ? 'Voice message' : (isImage ? 'Photo' : 'File');
+
+  static final RegExp _dim = RegExp(r'^(\d{1,5})x(\d{1,5})$');
+
+  /// Reads a `dim` value. Returns null for anything that is not a sane size.
+  static ({int width, int height})? parseDim(String? value) {
+    if (value == null) return null;
+    final match = _dim.firstMatch(value);
+    if (match == null) return null;
+    final width = int.parse(match.group(1)!);
+    final height = int.parse(match.group(2)!);
+    if (width < 1 || height < 1) return null;
+    return (width: width, height: height);
+  }
 
   /// The tags of the whole rumor: who it is for, what it replies to, and the file.
   List<List<String>> rumorTags({required String receiver, String? replyToId}) => [
@@ -52,6 +76,7 @@ class FileMessage {
         if (originalHash != null) 'ox': originalHash!,
         if (size != null) 'size': '$size',
         if (durationSeconds != null) 'duration': '$durationSeconds',
+        if (width != null && height != null) 'dim': '${width}x$height',
       };
 
   /// Reads what [toMap] wrote. Returns null when a required value is missing.
@@ -73,6 +98,8 @@ class FileMessage {
       originalHash: map['ox'],
       size: int.tryParse(map['size'] ?? ''),
       durationSeconds: int.tryParse(map['duration'] ?? ''),
+      width: parseDim(map['dim'])?.width,
+      height: parseDim(map['dim'])?.height,
     );
   }
 
@@ -85,6 +112,7 @@ class FileMessage {
         if (originalHash != null) ['ox', originalHash!],
         if (size != null) ['size', '$size'],
         if (durationSeconds != null) ['duration', '$durationSeconds'],
+        if (width != null && height != null) ['dim', '${width}x$height'],
       ];
 
   static final RegExp _hex = RegExp(r'^[0-9a-fA-F]+$');
@@ -122,6 +150,7 @@ class FileMessage {
 
     final size = int.tryParse(values['size'] ?? '');
     final duration = int.tryParse(values['duration'] ?? '');
+    final dim = parseDim(values['dim']);
 
     return FileMessage(
       url: url,
@@ -132,6 +161,8 @@ class FileMessage {
       originalHash: originalHash?.toLowerCase(),
       size: size != null && size >= 0 ? size : null,
       durationSeconds: duration != null && duration >= 0 ? duration : null,
+      width: dim?.width,
+      height: dim?.height,
     );
   }
 }

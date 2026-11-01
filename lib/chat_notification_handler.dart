@@ -94,7 +94,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             tags: nip17Result.rumorTags,
           );
           if (file == null) return;
-          plaintext = file.isAudio ? 'Voice message' : 'File';
+          plaintext = file.previewLabel;
         } else if (nip17Result.rumorKind != Nip17.kindRumor) {
           return;
         } else if (nip17Result.plaintext.isNotEmpty) {

@@ -827,7 +827,7 @@ class RelayManager {
         );
         if (fileMessage == null) return true;
         fileMap = fileMessage.toMap();
-        decrypted = fileMessage.isAudio ? 'Voice message' : 'File';
+        decrypted = fileMessage.previewLabel;
       }
 
       // Regular chat message
@@ -1903,6 +1903,8 @@ class RelayManager {
               source: File(msg.localPath),
               mimeType: msg.file['type'] ?? FileSendService.voiceMimeType,
               durationSeconds: msg.fileDurationSeconds,
+              width: msg.imageSize?.width,
+              height: msg.imageSize?.height,
               servers: AppSettings.instance.blossomServers,
             );
             await ChatManager.instance.setFile(msg.id, msg.chatKey, file.toMap());

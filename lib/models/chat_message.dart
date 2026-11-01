@@ -117,6 +117,18 @@ class ChatMessage {
 
   bool get isVoiceNote => (file['type'] ?? '').startsWith('audio/');
 
+  bool get isImage => (file['type'] ?? '').startsWith('image/');
+
+  /// Width over height of a picture, kept inside a range that keeps the chat
+  /// readable. A square when the sender gave no size.
+  double get imageAspectRatio {
+    final size = FileMessage.parseDim(file['dim']);
+    if (size == null) return 1.0;
+    return (size.width / size.height).clamp(0.4, 2.5).toDouble();
+  }
+
+  ({int width, int height})? get imageSize => FileMessage.parseDim(file['dim']);
+
   int? get fileDurationSeconds => int.tryParse(file['duration'] ?? '');
 
   int? get fileSize => int.tryParse(file['size'] ?? '');
