@@ -34,6 +34,9 @@ class AppSettings {
   bool linkPreviewsEnabled = false;
   bool readReceiptsEnabled = true;
 
+  /// Copies received photos to the Chatme album of the gallery.
+  bool saveToGalleryEnabled = false;
+
   /// Relays where others deliver messages to us (announced as kind 10050).
   List<String> inboxRelays = List.of(RelayDefaults.inbox);
 
@@ -84,6 +87,7 @@ class AppSettings {
       roomChatTheme = settingsBox.get('room_chat_theme', defaultValue: 'default');
       linkPreviewsEnabled = settingsBox.get('link_previews_enabled', defaultValue: false);
       readReceiptsEnabled = settingsBox.get('read_receipts_enabled', defaultValue: true);
+      saveToGalleryEnabled = settingsBox.get('save_to_gallery', defaultValue: false);
 
       final relayLists = RelayLists.fromStored(
         settingsBox.get('relays_inbox'),
@@ -129,6 +133,12 @@ class AppSettings {
     final settingsBox = Hive.box('settings');
     await settingsBox.put('blossom_servers', blossomServers);
     blossomVersion.value++;
+  }
+
+  Future<void> setSaveToGalleryEnabled(bool value) async {
+    saveToGalleryEnabled = value;
+    final settingsBox = Hive.box('settings');
+    await settingsBox.put('save_to_gallery', value);
   }
 
   Future<void> setReadReceiptsEnabled(bool value) async {

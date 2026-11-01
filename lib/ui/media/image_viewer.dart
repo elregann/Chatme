@@ -2,7 +2,9 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../services/gallery_save.dart';
 import '../../services/media_history.dart';
+import '../../widgets/chatme_menu.dart';
 
 /// Full screen pictures. Swipe to change, pinch to zoom.
 class ImageViewerPage extends StatefulWidget {
@@ -11,11 +13,21 @@ class ImageViewerPage extends StatefulWidget {
 
   final String? _single;
 
-  const ImageViewerPage({super.key, required this.paths, this.initialIndex = 0})
-      : _single = null;
+  /// Saves a picture to the gallery. Replaceable for tests.
+  final Future<void> Function(String path) saveToGallery;
 
-  const ImageViewerPage.single({super.key, required String path})
-      : paths = const [],
+  const ImageViewerPage({
+    super.key,
+    required this.paths,
+    this.initialIndex = 0,
+    this.saveToGallery = GallerySaver.save,
+  }) : _single = null;
+
+  const ImageViewerPage.single({
+    super.key,
+    required String path,
+    this.saveToGallery = GallerySaver.save,
+  })  : paths = const [],
         initialIndex = 0,
         _single = path;
 
@@ -43,6 +55,22 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
     super.dispose();
   }
 
+  Future<void> _save() async {
+    final messenger = ScaffoldMessenger.of(context);
+    String text;
+    try {
+      await widget.saveToGallery(_paths[_index]);
+      text = 'Saved to the Chatme album';
+    } on GallerySaveException catch (e) {
+      text = e.message;
+    } catch (_) {
+      text = 'Could not save the photo';
+    }
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+  }
+
   void _setZoomed(bool zoomed) {
     if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
   }
@@ -63,6 +91,15 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
               style: const TextStyle(fontSize: 15, color: Colors.white),
             )
             : null,
+        actions: [
+          ChatmeMenuButton<int>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            entries: const [
+              ChatmeMenuEntry(value: 0, icon: Icons.save_alt_rounded, label: 'Save to Gallery'),
+            ],
+            onSelected: (_) => _save(),
+          ),
+        ],
       ),
       body: PageView.builder(
         controller: _controller,

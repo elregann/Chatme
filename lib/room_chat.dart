@@ -27,6 +27,7 @@ import 'services/link_preview_service.dart';
 import 'widgets/link_preview_card.dart';
 import 'widgets/voice_note_bubble.dart';
 import 'widgets/image_bubble.dart';
+import 'widgets/chatme_menu.dart';
 import 'services/image_prepare.dart';
 import 'package:image_picker/image_picker.dart';
 import 'services/just_audio_backend.dart';
@@ -1363,35 +1364,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               });
             },
           ),
-          PopupMenuButton<String>(
+          ChatmeMenuButton<String>(
             icon: Icon(Icons.more_vert, color: headerTextColor),
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            elevation: 0,
             offset: const Offset(0, 40),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(
-                color: isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15),
-                width: 0.5,
+            entries: [
+              ChatmeMenuEntry(
+                value: 'save_rename',
+                icon: widget.contact.isSaved ? Icons.edit_outlined : Icons.person_add_alt_1_outlined,
+                label: widget.contact.isSaved ? 'Rename' : 'Save Contact',
               ),
-            ),
+            ],
             onSelected: (value) {
               if (value == 'save_rename') _showSaveContactDialog();
             },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'save_rename',
-                height: 40,
-                child: Text(
-                  widget.contact.isSaved ? 'Rename' : 'Save Contact',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -1921,10 +1906,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                     width: 40,
                                     height: 40,
                                     child: Center(
-                                      child: PopupMenuButton<ImageSource>(
-                                        tooltip: '',
-                                        padding: EdgeInsets.zero,
-                                        splashRadius: 22,
+                                      child: ChatmeMenuButton<ImageSource>(
+                                        color: inputBgColor,
+                                        textColor: inputTextColor,
                                         icon: Icon(
                                           Icons.photo_camera_outlined,
                                           size: 24,
@@ -1933,14 +1917,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                               : (isDark ? Colors.white70 : Colors.black54),
                                         ),
                                         onSelected: _pickImage,
-                                        itemBuilder: (_) => const [
-                                          PopupMenuItem(
+                                        entries: const [
+                                          ChatmeMenuEntry(
                                             value: ImageSource.camera,
-                                            child: Text('Camera'),
+                                            icon: Icons.photo_camera_outlined,
+                                            label: 'Camera',
                                           ),
-                                          PopupMenuItem(
+                                          ChatmeMenuEntry(
                                             value: ImageSource.gallery,
-                                            child: Text('Gallery'),
+                                            icon: Icons.photo_library_outlined,
+                                            label: 'Gallery',
                                           ),
                                         ],
                                       ),

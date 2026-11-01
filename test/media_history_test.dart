@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chatme/models/chat_message.dart';
+import 'package:chatme/services/gallery_save.dart';
 import 'package:chatme/services/media_history.dart';
 import 'package:chatme/ui/media/image_viewer.dart';
 
@@ -100,6 +101,39 @@ void main() {
       await tester.pumpWidget(host(const ImageViewerPage.single(path: '/x/1.jpg')));
       await tester.pump();
       expect(find.textContaining(' / '), findsNothing);
+    });
+
+    testWidgets('the menu saves the picture on screen to the gallery', (tester) async {
+      final saved = <String>[];
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: const ['/x/1.jpg', '/x/2.jpg'],
+        initialIndex: 1,
+        saveToGallery: (path) async => saved.add(path),
+      )));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save to Gallery'));
+      await tester.pumpAndSettle();
+
+      expect(saved, ['/x/2.jpg']);
+      expect(find.text('Saved to the Chatme album'), findsOneWidget);
+    });
+
+    testWidgets('a failed save shows its reason', (tester) async {
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: const ['/x/1.jpg'],
+        saveToGallery: (_) async => throw const GallerySaveException('Allow photo access to save'),
+      )));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save to Gallery'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Allow photo access to save'), findsOneWidget);
     });
 
     testWidgets('an out of range start is clamped', (tester) async {

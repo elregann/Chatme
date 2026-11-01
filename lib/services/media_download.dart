@@ -2,6 +2,8 @@
 
 import '../chat_manager.dart';
 import '../models/chat_message.dart';
+import 'app_settings.dart';
+import 'gallery_save.dart';
 import 'file_transfer_service.dart';
 import 'media_storage.dart';
 
@@ -15,5 +17,10 @@ Future<String> downloadImage(ChatMessage message) async {
     directory: await mediaDirectory(),
   );
   await ChatManager.instance.setLocalPath(message.id, message.chatKey, path);
+  await GallerySaver.saveIfWanted(
+    enabled: AppSettings.instance.saveToGalleryEnabled,
+    received: !message.isMe,
+    path: path,
+  );
   return path;
 }
