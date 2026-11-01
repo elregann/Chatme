@@ -10,6 +10,7 @@ import '../../models/contact.dart';
 import '../../relay_manager.dart';
 import '../../services/app_settings.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/media_history_grid.dart';
 import '../../widgets/voice_history_list.dart';
 import '../qr/qr_code_page.dart';
 
@@ -162,11 +163,27 @@ class ContactProfilePage extends StatelessWidget {
           ],
           body: TabBarView(
             children: [
-              _EmptyMedia(
-                icon: Icons.photo_library_outlined,
-                label: 'No shared images or videos yet',
-                color: textSecondary,
-              ),
+              kIsWeb
+                  ? _EmptyMedia(
+                      icon: Icons.photo_library_outlined,
+                      label: 'Photos are not available on web yet',
+                      color: textSecondary,
+                    )
+                  : MediaHistoryGrid(
+                      chatKey: ChatManager.instance.getChatKey(
+                        AppSettings.instance.myPubkey,
+                        current.pubkey,
+                      ),
+                      empty: _EmptyMedia(
+                        icon: Icons.photo_library_outlined,
+                        label: 'No shared images or videos yet',
+                        color: textSecondary,
+                      ),
+                      placeholderColor: isDark
+                          ? Colors.white.withAlpha(20)
+                          : Colors.black.withAlpha(15),
+                      iconColor: textSecondary,
+                    ),
               kIsWeb
                   ? _EmptyMedia(
                       icon: Icons.mic_none_rounded,

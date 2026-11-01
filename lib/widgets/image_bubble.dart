@@ -98,7 +98,7 @@ class _ImageBubbleState extends State<ImageBubble> {
       children: [
         GestureDetector(
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ImageViewerPage(path: _path)),
+            MaterialPageRoute(builder: (_) => ImageViewerPage.single(path: _path)),
           ),
           child: Image.file(
             File(_path),
