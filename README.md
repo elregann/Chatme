@@ -25,6 +25,7 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 ### Messaging
 - Direct messages using **NIP-17 gift wrap** with **NIP-44** encryption (rumor, seal, and gift wrap layers), so relays cannot read the content or easily see who is talking to whom. Legacy NIP-04 messages are still understood.
 - Replies, emoji reactions, delivery and read status, and date grouping.
+- Emoji panel in the input bar that takes the exact place of the keyboard and swaps with it smoothly.
 - Offline outbox: messages and voice notes written without a connection are sent automatically when the network returns.
 - Optional link previews, off by default.
 - Read receipts that you can turn off.
@@ -61,10 +62,12 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - Converter between hexadecimal and NIP-19 Bech32 keys.
 - Optional Global ID handle (`username@chatme`).
 
-### Relays
+### Relays and file servers
 - Simultaneous connections to multiple relays with live status.
 - Automatic reconnection with exponential backoff.
 - NIP-42 authentication for relays that require it.
+- The relay list is yours to edit in Me, Network, Relays. Inbox relays are where people send you messages and are announced to other clients. Other relays are extra connections. Built in relays are marked Default, any relay can be removed or added, and Reset to defaults brings the originals back. Changes connect or disconnect relays right away, without restarting the app.
+- File servers are edited the same way in Me, Network, File servers. Voice notes are uploaded to the servers from top to bottom, up to five, and the next one is used when a server fails. A new server gets a small test upload before it is added.
 
 ---
 
@@ -78,7 +81,7 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 | [04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted direct messages (legacy) | Partial | Receive only (kind `4`), so older conversations stay readable. New messages never use it. |
 | [05](https://github.com/nostr-protocol/nips/blob/master/05.md) | DNS-based identifiers | Partial | The `nip05` field is published in the profile. The `username@chatme` handle is verified through Chatme's own backend, not a `.well-known/nostr.json` lookup. |
 | [06](https://github.com/nostr-protocol/nips/blob/master/06.md) | Key derivation from mnemonic seed phrase | Yes | 12 word BIP-39 phrase, derived with BIP-32 at `m/44'/1237'/0'/0/0`. The same phrase gives the same account in other NIP-06 clients. |
-| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Partial | Rumor (kind `14`), file message (kind `15`, used for voice notes), seal (kind `13`), gift wrap (kind `1059`). Publishes the DM relay list (kind `10050`) so other clients such as Amethyst can reach Chatme. It does not read the recipient's kind `10050` yet, so messages go to the relays Chatme is connected to. |
+| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Partial | Rumor (kind `14`), file message (kind `15`, used for voice notes), seal (kind `13`), gift wrap (kind `1059`). Publishes your Inbox relays as the DM relay list (kind `10050`), and again whenever you change them, so other clients such as Amethyst can reach Chatme. It does not read the recipient's kind `10050` yet, so messages go to the relays Chatme is connected to. |
 | [19](https://github.com/nostr-protocol/nips/blob/master/19.md) | bech32 encoded entities | Partial | `npub` and `nsec` (view, export, convert, add contact), plus `nprofile` for contact QR codes and when adding a contact. Other entities such as `nevent` and `naddr` are not handled. |
 | [21](https://github.com/nostr-protocol/nips/blob/master/21.md) | `nostr:` URI scheme | Partial | Contact QR codes hold a `nostr:nprofile` link, and `nostr:npub` and `nostr:nprofile` are accepted when adding a contact. Secret keys are refused. Other entities are not handled. |
 | [25](https://github.com/nostr-protocol/nips/blob/master/25.md) | Reactions | Yes | Kind `7`, sent inside a gift wrap. |
@@ -93,7 +96,7 @@ Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
 
 | Specification | Used for | Notes |
 | --- | --- | --- |
-| [Blossom](https://github.com/hzrd149/blossom) (BUD-01, BUD-02) | Storing encrypted voice notes | `PUT /upload` with a kind `24242` authorization event. Defaults are `blossom.ditto.pub` and `nostr.download`, tried in that order. Each upload is signed with a throwaway key, never the account key. Some Blossom servers refuse encrypted files, so they are not used. |
+| [Blossom](https://github.com/hzrd149/blossom) (BUD-01, BUD-02) | Storing encrypted voice notes | `PUT /upload` with a kind `24242` authorization event. Defaults are `blossom.ditto.pub`, `blossom.jumble.social` and `nostr.download`, tried in that order, and the list can be changed in the app. Each upload is signed with a throwaway key, never the account key. Some Blossom servers, such as `blossom.nostr.build` and `blossom.primal.net`, refuse encrypted files by policy, so they are not used by default. |
 
 ### Event kinds used
 
@@ -107,7 +110,7 @@ Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
 | `14` | Chat message (rumor) | Inside seal | The message itself. Unsigned. |
 | `15` | File message (rumor) | Inside seal | A voice note: the link to the encrypted file, plus the key, nonce and hashes the receiver needs. Unsigned. |
 | `1059` | Gift wrap | Public | Signed with a one-time key, hides sender and content from relays. |
-| `10050` | DM relay list | Public | Tells other clients which relays deliver messages to Chatme. |
+| `10050` | DM relay list | Public | Tells other clients which relays deliver messages to Chatme. It holds your Inbox relays. |
 | `22242` | Client authentication | Sent to relay | Answer to a relay `AUTH` challenge. |
 | `24242` | Blossom authorization | Sent to file server | Authorizes one upload. Signed with a throwaway key. |
 | `27235` | HTTP auth | Sent to HTTP server | Authorizes photo uploads and Global ID requests. |
@@ -154,7 +157,7 @@ flutter run
 - Messaging and calls work over public Nostr relays.
 - Push notifications while the app is closed, and Global ID, need your own Firebase project (`google-services.json` in `android/app/`) and notification Worker.
 - Voice calls across restrictive networks need a TURN server of your own.
-- Voice notes upload to public Blossom servers and need no setup. Those servers set their own rules, so the defaults may change. The app asks for microphone permission to record and camera permission to scan QR codes.
+- Voice notes upload to public Blossom servers and need no setup. Those servers set their own rules, so the defaults may change, and you can pick your own in the app. The app asks for microphone permission to record and camera permission to scan QR codes.
 - Release builds rely on `android/app/proguard-rules.pro` and `android/app/src/main/res/raw/keep.xml`. Keep them, or notifications will break.
 - Never commit secrets, API keys, or TURN credentials to a public repository.
 
@@ -169,7 +172,7 @@ flutter run
 - Link previews are off by default. When you turn them on, your device fetches the linked page directly, so that website can see your IP address.
 - A QR code holds only your public key and two relay hints. Read receipts can be turned off.
 - The push pipeline (Cloudflare Worker and FCM) never receives plaintext or private keys, but it does carry metadata such as public keys, event IDs, and timing, plus the encrypted payload.
-- Relays can still observe connection metadata such as IP addresses.
+- Relays can still observe connection metadata such as IP addresses. A relay or file server you add yourself can see your IP address too, but never the content of your messages or files.
 - This project has not been independently audited.
 
 ---

@@ -6,6 +6,7 @@ import '../../services/app_settings.dart';
 import '../../services/blossom_servers.dart';
 import '../../services/server_lists.dart';
 import '../../widgets/editable_server_list.dart';
+import '../../widgets/suggested_server_list.dart';
 
 class FileServersPage extends StatefulWidget {
   const FileServersPage({super.key});
@@ -95,6 +96,15 @@ class _FileServersPageState extends State<FileServersPage> {
                   'A new server gets a small test file before it is added. Files are encrypted before they leave your phone, so a server sees only scrambled data, its size, the time and your IP address.',
                   style: TextStyle(fontSize: 12, height: 1.35, color: textSecondary),
                 ),
+                if (BlossomSuggestions.remaining(servers).isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  SuggestedServerList(
+                    title: 'SUGGESTED SERVERS',
+                    description:
+                        'Servers reported to accept encrypted voice notes. Copy one and paste it into Add file server. It is still tested when you add it, and a server can change its rules at any time.',
+                    servers: BlossomSuggestions.remaining(servers),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () => _reset(context),

@@ -43,6 +43,26 @@ class BlossomDefaults {
   ];
 }
 
+/// File servers that were reported to take encrypted files, offered as
+/// addresses to copy. They are not used until the person adds them, and each
+/// one is still tested when added.
+class BlossomSuggestions {
+  BlossomSuggestions._();
+
+  static const List<String> servers = [
+    'https://blossom.yakihonne.com',
+    'https://cdn.hzrd149.com',
+    'https://files.sovbit.host',
+    'https://blossom.nmail.li',
+    'https://blossom.dreamith.to',
+  ];
+
+  /// The suggestions the person does not have yet, in the original order.
+  static List<String> remaining(List<String> current) {
+    return servers.where((url) => !current.contains(url)).toList();
+  }
+}
+
 enum RelayGroup { inbox, other }
 
 enum ListChange { ok, invalid, duplicate, full, missing, tooFew, unreachable }
