@@ -1,6 +1,7 @@
 // image_bubble.dart
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/utils/debug_logger.dart';
@@ -17,9 +18,17 @@ class ImageBubble extends StatefulWidget {
   /// Time and delivery ticks, drawn by the chat screen. Shown over the picture.
   final Widget footer;
 
-  const ImageBubble({super.key, required this.message, required this.footer});
+  /// The widest the picture may be, after the chat bubble padding.
+  final double maxWidth;
 
-  static const double maxWidth = 260;
+  const ImageBubble({
+    super.key,
+    required this.message,
+    required this.footer,
+    this.maxWidth = preferredWidth,
+  });
+
+  static const double preferredWidth = 260;
 
   @override
   State<ImageBubble> createState() => _ImageBubbleState();
@@ -70,13 +79,16 @@ class _ImageBubbleState extends State<ImageBubble> {
               ? const SizedBox(
                   width: 28,
                   height: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.6, color: Colors.white),
                 )
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _error == null ? Icons.download_rounded : Icons.refresh_rounded,
+                      _error == null
+                          ? Icons.download_rounded
+                          : Icons.refresh_rounded,
                       color: Colors.white,
                       size: 34,
                     ),
@@ -98,22 +110,26 @@ class _ImageBubbleState extends State<ImageBubble> {
       children: [
         GestureDetector(
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ImageViewerPage.single(path: _path)),
+            MaterialPageRoute(
+                builder: (_) => ImageViewerPage.single(path: _path)),
           ),
           child: Image.file(
             File(_path),
             fit: BoxFit.cover,
-            cacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
+            cacheWidth:
+                (width * MediaQuery.devicePixelRatioOf(context)).round(),
             gaplessPlayback: true,
             errorBuilder: (_, __, ___) => _placeholder(),
           ),
         ),
-        if (widget.message.status == 'sending' || widget.message.status == 'pending')
+        if (widget.message.status == 'sending' ||
+            widget.message.status == 'pending')
           const Center(
             child: SizedBox(
               width: 28,
               height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white),
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.6, color: Colors.white),
             ),
           ),
       ],
@@ -129,11 +145,12 @@ class _ImageBubbleState extends State<ImageBubble> {
       );
     }
 
-    const width = ImageBubble.maxWidth;
+    const padding = EdgeInsets.only(top: 6, bottom: 4);
+    final width = math.min(ImageBubble.preferredWidth, widget.maxWidth);
     final height = width / widget.message.imageAspectRatio;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: padding,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: SizedBox(
@@ -152,7 +169,8 @@ class _ImageBubbleState extends State<ImageBubble> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     child: widget.footer,
                   ),
                 ),

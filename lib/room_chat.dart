@@ -24,9 +24,7 @@ import 'widgets/user_avatar.dart';
 import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'services/link_preview_service.dart';
-import 'widgets/link_preview_card.dart';
-import 'widgets/voice_note_bubble.dart';
-import 'widgets/image_bubble.dart';
+import 'widgets/message_bubble.dart';
 import 'widgets/chatme_menu.dart';
 import 'services/image_prepare.dart';
 import 'package:image_picker/image_picker.dart';
@@ -114,18 +112,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   bool _markReadAgain = false;
   bool _suppressChatRebuild = false;
   Widget? _lastChatListWidget;
-
-  bool _isShortText(String text, BuildContext context) {
-    const double timeWidth = 55;
-    final maxWidth = MediaQuery.sizeOf(context).width * 0.90 - 80 - timeWidth;
-    final textPainter = TextPainter(
-      text: TextSpan(text: text, style: const TextStyle(fontSize: 16)),
-      maxLines: 1,
-      textDirection: ui.TextDirection.ltr,
-    )..layout(maxWidth: maxWidth);
-
-    return !textPainter.didExceedMaxLines;
-  }
 
   String _floatingDate = "";
   bool _showFloatingDate = false;
@@ -2259,266 +2245,69 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
-    final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a').format(
-        DateTime.fromMillisecondsSinceEpoch(message.timestamp)
-    );
-
     final bubbleColor = isNostrCyber
         ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
-        : (isMe
-        ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
+        : (isMe ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
         : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
 
     final textColor = isNostrCyber
         ? Colors.white
         : (isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000));
 
-    final hasReactions = message.reactions.isNotEmpty;
-    final isHighlighted = _highlightedIds.contains(message.id);
     final previewUrl = AppSettings.instance.linkPreviewsEnabled
         ? LinkPreviewService.extractFirstUrl(message.plaintext)
         : null;
+    final hasReply = message.replyToContent != null;
 
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: hasReactions ? 25 : 2),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isHighlighted ? Colors.blue.withAlpha(40) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: GestureDetector(
-            onLongPressStart: (details) => _showReactionPopup(context, details.globalPosition, message),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.90),
-                  margin: EdgeInsets.only(
-                    left: isMe ? 50 : 12,
-                    right: isMe ? 12 : 50,
-                  ),
-                  decoration: BoxDecoration(
-                    color: bubbleColor,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(16),
-                      topRight: const Radius.circular(16),
-                      bottomLeft: Radius.circular(isMe ? 16 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 16),
-                    ),
-                    border: isDark && !isMe
-                        ? Border.all(color: Colors.white10, width: 0.5)
-                        : null,
-                  ),
-                  padding: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 6),
-                  child: IntrinsicWidth(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (message.replyToContent != null)
-                          _buildReplyInBubble(message, isMe),
-
-                        if (previewUrl != null)
-                          LinkPreviewCard(
-                            key: ValueKey('${message.id}_$previewUrl'),
-                            url: previewUrl,
-                            textColor: textColor,
-                            backgroundColor: isNostrCyber
-                                ? Colors.white.withAlpha(20)
-                                : (isDark
-                                ? Colors.black.withAlpha(40)
-                                : Colors.black.withAlpha(15)),
-                          ),
-
-                        const SizedBox(height: 4),
-
-                        message.isImage
-                            ? ImageBubble(
-                          key: ValueKey('img_${message.id}'),
-                          message: message,
-                          footer: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(timeStr, style: const TextStyle(color: Colors.white, fontSize: 11)),
-                              if (isMe) ...[
-                                const SizedBox(width: 4),
-                                _buildStatusIcon(message.status, Colors.white),
-                              ],
-                            ],
-                          ),
-                        )
-                            : message.isVoiceNote
-                            ? VoiceNoteBubble(
-                          key: ValueKey('vn_${message.id}'),
-                          message: message,
-                          textColor: textColor,
-                          footer: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
-                              if (isMe) ...[
-                                const SizedBox(width: 4),
-                                _buildStatusIcon(message.status, textColor),
-                              ],
-                            ],
-                          ),
-                        )
-                            : (_isShortText(message.plaintext, context))
-                            ? Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                message.plaintext,
-                                style: TextStyle(color: textColor, fontSize: 16),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
-                                if (isMe) ...[
-                                  const SizedBox(width: 4),
-                                  _buildStatusIcon(message.status, textColor),
-                                ],
-                              ],
-                            ),
-                          ],
-                        )
-                            : Wrap(
-                          alignment: WrapAlignment.end,
-                          crossAxisAlignment: WrapCrossAlignment.end,
-                          children: [
-                            SizedBox(
-                              width: double.infinity,
-                              child: Text(
-                                message.plaintext,
-                                style: TextStyle(color: textColor, fontSize: 16),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(timeStr, style: TextStyle(color: textColor.withAlpha(153), fontSize: 11)),
-                                if (isMe) ...[
-                                  const SizedBox(width: 4),
-                                  _buildStatusIcon(message.status, textColor),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                if (hasReactions)
-                  Positioned(
-                    bottom: -21,
-                    right: isMe ? 20 : null,
-                    left: isMe ? null : 20,
-                    child: _buildReactionsDisplay(message, isMe, textColor),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return MessageBubble(
+      message: message,
+      isMe: isMe,
+      isDark: isDark,
+      isNostrCyber: isNostrCyber,
+      bubbleColor: bubbleColor,
+      textColor: textColor,
+      footer: _buildBubbleFooter(message, textColor),
+      imageFooter: _buildBubbleFooter(message, Colors.white, dim: false),
+      previewUrl: previewUrl,
+      replySenderName: hasReply
+          ? _getReplyName(_resolveReplySenderPubkey(message))
+          : null,
+      replyPreview: hasReply
+          ? _formatMessagePreview(message.replyToContent!)
+          : null,
+      highlighted: _highlightedIds.contains(message.id),
+      onReplyTap: () => _scrollToMessage(message.replyToId),
+      onLongPressStart: (details) =>
+          _showReactionPopup(context, details.globalPosition, message),
     );
   }
 
-  Widget _buildReplyInBubble(ChatMessage message, bool isMe) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final String senderName = _getReplyName(_resolveReplySenderPubkey(message));
-
-    final nameColor = isNostrCyber ? const Color(0xFFD0BCFF) : const Color(0xFF2196F3);
-    final bgColor = isNostrCyber ? Colors.white.withAlpha(20) : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
-    final contentColor = isNostrCyber ? Colors.white70 : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
-
-    return GestureDetector(
-      onTap: () => _scrollToMessage(message.replyToId),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(0, 10, 0, 0),
-        padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(10),
-              bottom: Radius.circular(10)
-          ),
-          border: Border(
-            left: BorderSide(
-                color: nameColor,
-                width: 4
-            ),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              senderName,
-              style: TextStyle(
-                color: nameColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-            Text(
-              _formatMessagePreview(message.replyToContent ?? ""),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: contentColor,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildBubbleFooter(
+    ChatMessage message,
+    Color color, {
+    bool dim = true,
+  }) {
+    final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
+    final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
+    final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a').format(
+      DateTime.fromMillisecondsSinceEpoch(message.timestamp),
     );
-  }
 
-  Widget _buildReactionsDisplay(ChatMessage message, bool isMe, Color textColor) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF202C33) : const Color(0xFFF0F0F0),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black12,
-          width: 0.5,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          timeStr,
+          style: TextStyle(
+            color: dim ? color.withAlpha(153) : color,
+            fontSize: 11,
+          ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(25),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          )
+        if (isMe) ...[
+          const SizedBox(width: 4),
+          _buildStatusIcon(message.status, color),
         ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: message.reactions.entries.map((e) {
-          return Text(
-            e.value,
-            style: const TextStyle(fontSize: 13),
-          );
-        }).toList(),
-      ),
+      ],
     );
   }
 
