@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../core/utils/debug_logger.dart';
 import '../models/chat_message.dart';
 import '../services/file_transfer_service.dart';
+import '../services/chat_reply.dart';
 import '../services/media_download.dart';
 import '../ui/media/image_viewer.dart';
 
@@ -111,7 +112,13 @@ class _ImageBubbleState extends State<ImageBubble> {
         GestureDetector(
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
-                builder: (_) => ImageViewerPage.single(path: _path)),
+              builder: (_) => ImageViewerPage.single(
+                path: _path,
+                messages: [widget.message],
+                onReply: (message) => ChatReplyNavigator.instance
+                    .openReply(context, message),
+              ),
+            ),
           ),
           child: Image.file(
             File(_path),

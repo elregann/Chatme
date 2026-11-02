@@ -12,22 +12,25 @@ List<ChatMessage> imagesNewestFirst(Iterable<ChatMessage> messages) {
 class ViewerSet {
   final List<String> paths;
   final int index;
+  final List<ChatMessage> messages;
 
-  const ViewerSet(this.paths, this.index);
+  const ViewerSet(this.paths, this.index, {this.messages = const []});
 }
 
 /// Only downloaded pictures are in the viewer. Returns null when the tapped
 /// picture is not one of them.
 ViewerSet? viewerSetFor(List<ChatMessage> images, String tappedId) {
   final paths = <String>[];
+  final messages = <ChatMessage>[];
   var index = -1;
   for (final m in images) {
     if (m.localPath.isEmpty) continue;
     if (m.id == tappedId) index = paths.length;
     paths.add(m.localPath);
+    messages.add(m);
   }
   if (index == -1) return null;
-  return ViewerSet(paths, index);
+  return ViewerSet(paths, index, messages: messages);
 }
 
 /// "2 / 5"

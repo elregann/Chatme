@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../core/utils/debug_logger.dart';
 import '../models/chat_message.dart';
+import '../models/contact.dart';
+import '../relay_manager.dart';
+import '../services/chat_reply.dart';
 import '../services/file_transfer_service.dart';
 import '../services/media_download.dart';
 import '../services/media_history.dart';
@@ -17,6 +20,8 @@ class MediaHistoryGrid extends StatelessWidget {
   static const double radius = 10;
 
   final String chatKey;
+  final Contact contact;
+  final RelayManager relayManager;
   final Widget empty;
   final Color placeholderColor;
   final Color iconColor;
@@ -24,6 +29,8 @@ class MediaHistoryGrid extends StatelessWidget {
   const MediaHistoryGrid({
     super.key,
     required this.chatKey,
+    required this.contact,
+    required this.relayManager,
     required this.empty,
     required this.placeholderColor,
     required this.iconColor,
@@ -50,6 +57,8 @@ class MediaHistoryGrid extends StatelessWidget {
             key: ValueKey(images[i].id),
             message: images[i],
             all: images,
+            contact: contact,
+            relayManager: relayManager,
             placeholderColor: placeholderColor,
             iconColor: iconColor,
           ),
@@ -62,6 +71,8 @@ class MediaHistoryGrid extends StatelessWidget {
 class _MediaTile extends StatefulWidget {
   final ChatMessage message;
   final List<ChatMessage> all;
+  final Contact contact;
+  final RelayManager relayManager;
   final Color placeholderColor;
   final Color iconColor;
 
@@ -69,6 +80,8 @@ class _MediaTile extends StatefulWidget {
     super.key,
     required this.message,
     required this.all,
+    required this.contact,
+    required this.relayManager,
     required this.placeholderColor,
     required this.iconColor,
   });
@@ -109,7 +122,17 @@ class _MediaTileState extends State<_MediaTile> {
     if (set == null) return;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ImageViewerPage(paths: set.paths, initialIndex: set.index),
+        builder: (_) => ImageViewerPage(
+          paths: set.paths,
+          initialIndex: set.index,
+          messages: set.messages,
+          onReply: (message) => ChatReplyNavigator.instance.openReply(
+            context,
+            message,
+            contact: widget.contact,
+            relayManager: widget.relayManager,
+          ),
+        ),
       ),
     );
   }

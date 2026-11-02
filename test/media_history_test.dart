@@ -59,6 +59,7 @@ void main() {
       final set = viewerSetFor(images, 'a')!;
       expect(set.paths, ['/m/c.jpg', '/m/a.jpg']);
       expect(set.index, 1);
+      expect(set.messages.map((m) => m.id), ['c', 'a']);
     });
 
     test('first picture starts at zero', () {
@@ -134,6 +135,65 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Allow photo access to save'), findsOneWidget);
+    });
+
+    testWidgets('the menu replies to the picture on screen', (tester) async {
+      final replies = <ChatMessage>[];
+      final images = [
+        msg('one', 1, file: image, path: '/x/1.jpg'),
+        msg('two', 2, file: image, path: '/x/2.jpg'),
+      ];
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: images.map((m) => m.localPath).toList(),
+        messages: images,
+        onReply: replies.add,
+      )));
+      await tester.pump();
+
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1500);
+      await tester.pumpAndSettle();
+      expect(find.text('2 / 2'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text('Save to Gallery'), findsOneWidget);
+      expect(find.text('Reply'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Reply')).dy,
+        greaterThan(tester.getTopLeft(find.text('Save to Gallery')).dy),
+      );
+
+      await tester.tap(find.text('Reply'));
+      await tester.pumpAndSettle();
+      expect(replies.map((m) => m.id), ['two']);
+    });
+
+    testWidgets('a picture that is still sending has no Reply', (tester) async {
+      final replies = <ChatMessage>[];
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: const ['/x/1.jpg'],
+        messages: [msg('temp_1', 1, file: image, path: '/x/1.jpg')],
+        onReply: replies.add,
+      )));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text('Save to Gallery'), findsOneWidget);
+      expect(find.text('Reply'), findsNothing);
+      expect(replies, isEmpty);
+    });
+
+    testWidgets('a viewer without a message has no Reply', (tester) async {
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: const ['/x/1.jpg'],
+        onReply: (_) {},
+      )));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text('Reply'), findsNothing);
     });
 
     testWidgets('an out of range start is clamped', (tester) async {

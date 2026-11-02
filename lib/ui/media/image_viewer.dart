@@ -2,6 +2,8 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../models/chat_message.dart';
+import '../../services/chat_reply.dart';
 import '../../services/gallery_save.dart';
 import '../../services/media_history.dart';
 import '../../widgets/chatme_menu.dart';
@@ -10,6 +12,12 @@ import '../../widgets/chatme_menu.dart';
 class ImageViewerPage extends StatefulWidget {
   final List<String> paths;
   final int initialIndex;
+
+  /// The messages shown in [paths], in the same order. Used for Reply.
+  final List<ChatMessage> messages;
+
+  /// Replies to the picture on screen. No Reply item is shown without it.
+  final ValueChanged<ChatMessage>? onReply;
 
   final String? _single;
 
@@ -20,12 +28,16 @@ class ImageViewerPage extends StatefulWidget {
     super.key,
     required this.paths,
     this.initialIndex = 0,
+    this.messages = const [],
+    this.onReply,
     this.saveToGallery = GallerySaver.save,
   }) : _single = null;
 
   const ImageViewerPage.single({
     super.key,
     required String path,
+    this.messages = const [],
+    this.onReply,
     this.saveToGallery = GallerySaver.save,
   })  : paths = const [],
         initialIndex = 0,
@@ -75,8 +87,21 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
     if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
   }
 
+  ChatMessage? get _currentMessage =>
+      _index < widget.messages.length ? widget.messages[_index] : null;
+
+  void _reply() {
+    final message = _currentMessage;
+    if (message == null || !canReplyTo(message)) return;
+    widget.onReply?.call(message);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final current = _currentMessage;
+    final canReply =
+        current != null && widget.onReply != null && canReplyTo(current);
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -94,10 +119,12 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
         actions: [
           ChatmeMenuButton<int>(
             icon: const Icon(Icons.more_vert, color: Colors.white),
-            entries: const [
-              ChatmeMenuEntry(value: 0, icon: Icons.save_alt_rounded, label: 'Save to Gallery'),
+            entries: [
+              const ChatmeMenuEntry(value: 0, icon: Icons.save_alt_rounded, label: 'Save to Gallery'),
+              if (canReply)
+                const ChatmeMenuEntry(value: 1, icon: Icons.reply, label: 'Reply'),
             ],
-            onSelected: (_) => _save(),
+            onSelected: (value) => value == 0 ? _save() : _reply(),
           ),
         ],
       ),

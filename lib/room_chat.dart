@@ -14,6 +14,7 @@ import 'call_overlay.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
+import 'services/chat_reply.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'notification_handler.dart';
@@ -45,10 +46,14 @@ class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
   final RelayManager relayManager;
 
+  /// A picture from the viewer that should become the reply target.
+  final ChatMessage? initialReply;
+
   const ChatDetailScreen({
     super.key,
     required this.contact,
     required this.relayManager,
+    this.initialReply,
   });
 
   @override
@@ -77,6 +82,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   ChatMessage? _replyingTo;
   final Set<String> _highlightedIds = {};
+  ChatScreenHandle? _chatHandle;
 
   Timer? _previewDebounce;
   String? _composerUrl;
@@ -159,9 +165,39 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     _messageController.addListener(_onComposerChanged);
     _messageController.addListener(_onTextPresenceChanged);
     _focusNode.addListener(_handleComposerFocusChanged);
+    if (widget.initialReply != null) {
+      _replyingTo = widget.initialReply;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusComposer();
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == null || identical(route, _chatHandle?.route)) return;
+    if (_chatHandle != null) ChatScreenRegistry.unregister(_chatHandle!);
+    _chatHandle = ChatScreenHandle(
+      pubkey: widget.contact.pubkey,
+      route: route,
+      onReply: _startReply,
+    );
+    ChatScreenRegistry.register(_chatHandle!);
+  }
+
+  void _startReply(ChatMessage message) {
+    if (!canReplyTo(message)) return;
+    setState(() => _replyingTo = message);
+    _focusComposer();
+  }
+
+  void _focusComposer() {
+    if (mounted) _focusNode.requestFocus();
   }
 
   @override
@@ -361,6 +397,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_chatHandle != null) ChatScreenRegistry.unregister(_chatHandle!);
     _removeReactionOverlay();
     stopVoicePlayer();
     _recordTicker?.cancel();
@@ -1249,9 +1286,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     }
     return message.replyToSenderPubkey ?? message.senderPubkey;
   }
-
-  bool _canReplyTo(ChatMessage m) =>
-      !m.id.startsWith('temp_') && !m.id.startsWith('pending_');
 
   @override
   Widget build(BuildContext context) {
@@ -2223,7 +2257,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         _draggingId == message.id && _dragOffsetNotifier.value <= -45;
     _resetSwipe();
 
-    if (!shouldReply || !_canReplyTo(message)) return;
+    if (!shouldReply || !canReplyTo(message)) return;
 
     HapticFeedback.mediumImpact();
     setState(() => _replyingTo = message);

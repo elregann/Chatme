@@ -174,6 +174,8 @@ class ContactProfilePage extends StatelessWidget {
                         AppSettings.instance.myPubkey,
                         current.pubkey,
                       ),
+                      contact: current,
+                      relayManager: relayManager,
                       empty: _EmptyMedia(
                         icon: Icons.photo_library_outlined,
                         label: 'No shared images or videos yet',
