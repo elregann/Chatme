@@ -1,5 +1,6 @@
 // room_chat.dart
 
+import 'core/utils/unseen_message.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -153,11 +154,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
       if (_userIsNearBottom) {
         _markAllAsRead();
-      } else {
-        setState(() => _newMessagesCount++);
       }
 
       setState(() {});
+    };
+    widget.relayManager.onIncomingMessageSaved = (peerPubkey) {
+      if (!mounted) return;
+      if (!shouldCountUnseen(
+        peerPubkey: peerPubkey,
+        openPubkey: widget.contact.pubkey,
+        nearBottom: _userIsNearBottom,
+      )) {
+        return;
+      }
+      setState(() => _newMessagesCount++);
     };
 
     _anchoredController.itemPositions.addListener(_handlePositionsChanged);
@@ -406,6 +416,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     widget.relayManager.currentlyChattingWith = null;
     NotificationHandler.activeChatPubkey = null;
     widget.relayManager.onMessageReceived = null;
+    widget.relayManager.onIncomingMessageSaved = null;
 
     _floatingDateTimer?.cancel();
     _scrollIdleTimer?.cancel();

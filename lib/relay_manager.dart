@@ -30,6 +30,7 @@ import 'services/server_lists.dart';
 
 class RelayManager {
   Function? onMessageReceived;
+  Function(String peerPubkey)? onIncomingMessageSaved;
   String? currentlyChattingWith;
 
   Function(Map<String, dynamic>)? onSignalReceived;
@@ -880,6 +881,7 @@ class RelayManager {
       final bool alreadyExistsActual = !newlySaved || isAlreadyRead;
       await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExistsActual);
 
+      if (newlySaved && !isFromMe) onIncomingMessageSaved?.call(peerPubkey);
       if (onMessageReceived != null) onMessageReceived!();
       return true;
     } catch (e) {
