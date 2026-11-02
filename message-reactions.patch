@@ -1,0 +1,147 @@
+diff --git a/lib/widgets/message_bubble.dart b/lib/widgets/message_bubble.dart
+index 4bcba93..5afcdd0 100644
+--- a/lib/widgets/message_bubble.dart
++++ b/lib/widgets/message_bubble.dart
+@@ -65,6 +65,9 @@ class MessageBubble extends StatelessWidget {
+   static const double _outerMargin = 12;
+   static const double _horizontalPadding = 10;
+ 
++  /// How far the reactions sit inside the right edge of the bubble.
++  static const double _reactionInset = 8;
++
+   /// Rough width of the time and ticks, so a short message leaves room for them
+   /// on the right instead of putting them on their own line.
+   static const double _footerReserve = 64;
+@@ -174,13 +177,7 @@ class MessageBubble extends StatelessWidget {
+                   ),
+                 ),
+               ),
+-              if (hasReactions)
+-                Positioned(
+-                  bottom: -21,
+-                  right: isMe ? 20 : null,
+-                  left: isMe ? null : 20,
+-                  child: _buildReactions(context),
+-                ),
++              if (hasReactions) _buildReactionsOverlay(context),
+             ],
+           ),
+         ),
+@@ -255,13 +252,7 @@ class MessageBubble extends StatelessWidget {
+                   ),
+                 ),
+               ),
+-              if (hasReactions)
+-                Positioned(
+-                  bottom: -21,
+-                  right: isMe ? 20 : null,
+-                  left: isMe ? null : 20,
+-                  child: _buildReactions(context),
+-                ),
++              if (hasReactions) _buildReactionsOverlay(context),
+             ],
+           ),
+         ),
+@@ -443,8 +434,20 @@ class MessageBubble extends StatelessWidget {
+     );
+   }
+ 
++  /// Reactions hang under the bottom right corner of the bubble, or of the time
++  /// pill, for sent and received messages alike.
++  Widget _buildReactionsOverlay(BuildContext context) {
++    final trailingMargin = isMe ? _outerMargin : _sideMargin;
++    return Positioned(
++      bottom: -21,
++      right: trailingMargin + _reactionInset,
++      child: _buildReactions(context),
++    );
++  }
++
+   Widget _buildReactions(BuildContext context) {
+     return Container(
++      key: const Key('message_reactions'),
+       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+       decoration: BoxDecoration(
+         color: isDark ? const Color(0xFF202C33) : const Color(0xFFF0F0F0),
+diff --git a/test/message_reactions_test.dart b/test/message_reactions_test.dart
+new file mode 100644
+index 0000000..a25aa6e
+--- /dev/null
++++ b/test/message_reactions_test.dart
+@@ -0,0 +1,76 @@
++import 'package:chatme/models/chat_message.dart';
++import 'package:chatme/widgets/message_bubble.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  const thumbsUp = '\u{1F44D}';
++  const smile = '\u{1F600}';
++
++  Widget bubble(String text, {required bool isMe}) {
++    return MessageBubble(
++      message: ChatMessage(
++        id: 'message-1',
++        senderPubkey: isMe ? 'me' : 'you',
++        receiverPubkey: isMe ? 'you' : 'me',
++        content: '',
++        plaintext: text,
++        timestamp: DateTime(2026, 1, 2, 15, 4).millisecondsSinceEpoch,
++        status: 'sent',
++        chatKey: 'chat',
++        reactions: const {'you': thumbsUp},
++      ),
++      isMe: isMe,
++      isDark: false,
++      isNostrCyber: false,
++      bubbleColor: const Color(0xFFE3F2FD),
++      textColor: Colors.black,
++      footer: const Text('15:04', style: TextStyle(fontSize: 11)),
++      imageFooter: const Text('15:04'),
++    );
++  }
++
++  Widget app(Widget child) {
++    return MaterialApp(
++      home: Scaffold(
++        body: Align(
++          alignment: Alignment.topLeft,
++          child: SizedBox(width: 360, child: SingleChildScrollView(child: child)),
++        ),
++      ),
++    );
++  }
++
++  // The visible bubble ends 12 px (sent) or 50 px (received) before the
++  // surface rect, because that is the outer margin on each side.
++  for (final isMe in [true, false]) {
++    final who = isMe ? 'sent' : 'received';
++    final margin = isMe ? 12.0 : 50.0;
++
++    testWidgets('a reaction on a $who text message sits at the bottom right',
++        (tester) async {
++      await tester.pumpWidget(app(bubble('Hello captain', isMe: isMe)));
++
++      final surface = tester.getRect(find.byKey(const Key('message_bubble_surface')));
++      final reaction = tester.getRect(find.byKey(const Key('message_reactions')));
++
++      expect(reaction.right, moreOrLessEquals(surface.right - margin - 8, epsilon: 0.5));
++      expect(reaction.bottom, greaterThan(surface.bottom));
++    });
++
++    testWidgets('a reaction on a $who emoji message sits under the right side of the message',
++        (tester) async {
++      await tester.pumpWidget(app(bubble(smile, isMe: isMe)));
++
++      final pill = tester.getRect(find.byKey(const Key('emoji_footer')));
++      final emoji = tester.getRect(find.byKey(const Key('emoji_message')));
++      final reaction = tester.getRect(find.byKey(const Key('message_reactions')));
++
++      // The content is as wide as the wider of the emoji and the pill.
++      final contentRight = emoji.right > pill.right ? emoji.right : pill.right;
++      expect(reaction.right, moreOrLessEquals(contentRight - 8, epsilon: 0.5));
++      expect(reaction.top, greaterThan(pill.top));
++      expect(reaction.bottom, greaterThan(pill.bottom));
++    });
++  }
++}

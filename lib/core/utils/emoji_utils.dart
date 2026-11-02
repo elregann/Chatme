@@ -34,6 +34,24 @@ bool isEmojiOnly(String text) => emojiOnlyCount(text) != null;
 double emojiFontSizeForCount(int count) =>
     count <= 3 ? emojiLargeFontSize : emojiSmallFontSize;
 
+/// The first emoji size used inside a reply bubble.
+///
+/// It matches the size of a stand-alone run of four emoji, so a replied emoji
+/// skips the biggest tier and keeps shrinking from there.
+const double emojiReplyFirstFontSize = emojiSmallFontSize;
+
+const double emojiReplySecondFontSize = 26.0;
+const double emojiReplyThirdFontSize = 22.0;
+const double emojiReplyMinFontSize = 18.0;
+
+/// The un-scaled font size for an emoji-only reply with [count] emoji.
+double emojiReplyFontSizeForCount(int count) {
+  if (count <= 3) return emojiReplyFirstFontSize;
+  if (count <= 6) return emojiReplySecondFontSize;
+  if (count <= 9) return emojiReplyThirdFontSize;
+  return emojiReplyMinFontSize;
+}
+
 bool _isEmojiCluster(String cluster) {
   final runes = cluster.runes.toList();
   final isKeycap = runes.contains(0x20E3);

@@ -78,6 +78,7 @@ class MessageBubble extends StatelessWidget {
     final emojiCount = (!message.isImage && !message.isVoiceNote)
         ? emojiOnlyCount(message.plaintext)
         : null;
+    final hasReply = replyPreview != null;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -93,7 +94,7 @@ class MessageBubble extends StatelessWidget {
           maxBubbleWidth - _horizontalPadding * 2,
         );
 
-        if (emojiCount != null) {
+        if (emojiCount != null && !hasReply) {
           return _buildEmojiOnly(
             context,
             hasReactions,
@@ -106,6 +107,7 @@ class MessageBubble extends StatelessWidget {
           hasReactions,
           maxBubbleWidth,
           maxContentWidth,
+          emojiCount,
         );
       },
     );
@@ -116,6 +118,7 @@ class MessageBubble extends StatelessWidget {
     bool hasReactions,
     double maxBubbleWidth,
     double maxContentWidth,
+    int? emojiCount,
   ) {
     final hasReply = replyPreview != null;
     final hasPreview = previewUrl != null;
@@ -166,7 +169,7 @@ class MessageBubble extends StatelessWidget {
                           ),
                         ),
                       const SizedBox(height: 4),
-                      _buildContent(context, maxContentWidth),
+                      _buildContent(context, maxContentWidth, emojiCount),
                     ],
                   ),
                 ),
@@ -223,7 +226,7 @@ class MessageBubble extends StatelessWidget {
                       Text(
                         message.plaintext,
                         key: const Key('emoji_message'),
-                        textAlign: isMe ? TextAlign.right : TextAlign.left,
+                        textAlign: TextAlign.left,
                         textScaler: textScaler,
                         style: TextStyle(
                           color: textColor,
@@ -266,7 +269,11 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, double maxContentWidth) {
+  Widget _buildContent(
+    BuildContext context,
+    double maxContentWidth,
+    int? emojiCount,
+  ) {
     if (message.isImage) {
       // Keep the picture at its own size; a wide reply must not stretch it.
       return Align(
@@ -290,6 +297,12 @@ class MessageBubble extends StatelessWidget {
           footer: footer,
         ),
       );
+    }
+
+    if (emojiCount != null) {
+      // An emoji-only reply keeps a normal bubble so the quoted message and a
+      // plain footer stay visible, but the emoji start at the smaller size.
+      return _buildEmojiReplyContent(context, emojiCount);
     }
 
     final textStyle = DefaultTextStyle.of(context).style.merge(
@@ -320,6 +333,36 @@ class MessageBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(message.plaintext, style: textStyle),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: footer,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmojiReplyContent(BuildContext context, int emojiCount) {
+    final textScaler = MediaQuery.textScalerOf(context).clamp(
+      maxScaleFactor: 1.3,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            message.plaintext,
+            key: const Key('emoji_message'),
+            textAlign: TextAlign.left,
+            textScaler: textScaler,
+            style: TextStyle(
+              color: textColor,
+              fontSize: emojiReplyFontSizeForCount(emojiCount),
+              height: 1.2,
+            ),
+          ),
+        ),
         Align(
           alignment: AlignmentDirectional.centerEnd,
           child: footer,

@@ -102,7 +102,7 @@ void main() {
     expect(decoration.color, const Color(0xFFE3F2FD));
   });
 
-  testWidgets('an emoji-only reply still shows the quoted message',
+  testWidgets('an emoji-only reply keeps a normal bubble and plain footer',
       (tester) async {
     await tester.pumpWidget(
       app(
@@ -114,9 +114,63 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('message_bubble_surface')), findsNothing);
+    expect(find.byKey(const Key('message_bubble_surface')), findsOneWidget);
+    expect(find.byKey(const Key('reply_card')), findsOneWidget);
+    expect(find.byKey(const Key('emoji_message')), findsOneWidget);
+    // A reply uses the plain footer, not the emoji pill.
+    expect(find.byKey(const Key('emoji_footer')), findsNothing);
     expect(find.text('You'), findsOneWidget);
     expect(find.text('quoted message'), findsOneWidget);
+    expect(find.text('15:04'), findsOneWidget);
+  });
+
+  testWidgets('an emoji-only reply starts smaller and keeps shrinking',
+      (tester) async {
+    Future<double?> sizeFor(String text) async {
+      await tester.pumpWidget(
+        app(
+          bubble(
+            text,
+            replyToContent: 'quoted message',
+            replyPreview: 'quoted message',
+          ),
+        ),
+      );
+      final emoji = tester.widget<Text>(find.byKey(const Key('emoji_message')));
+      return emoji.style?.fontSize;
+    }
+
+    // The biggest tier is skipped: one to three emoji start at the size a
+    // stand-alone run of four emoji uses, then shrink as the run grows.
+    expect(await sizeFor('😀'), emojiReplyFirstFontSize);
+    expect(await sizeFor('😀😀😀'), emojiReplyFirstFontSize);
+    expect(await sizeFor('😀' * 4), emojiReplySecondFontSize);
+    expect(await sizeFor('😀' * 7), emojiReplyThirdFontSize);
+    expect(await sizeFor('😀' * 10), emojiReplyMinFontSize);
+  });
+
+  testWidgets('a long emoji-only reply fits a narrow screen', (tester) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      app(
+        bubble(
+          '😀' * 40,
+          replyToContent: 'quoted message',
+          replyPreview: 'quoted message',
+        ),
+        width: 320,
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('message_bubble_surface')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('message_bubble_surface'))).width,
+      lessThanOrEqualTo(320),
+    );
   });
 
   testWidgets('a short reply puts the time at the right edge of a wide bubble',
@@ -202,5 +256,38 @@ void main() {
       find.byKey(const Key('message_bubble_surface')),
     );
     expect(itemSize.width, lessThanOrEqualTo(320));
+  });
+
+  testWidgets('an emoji-only reply keeps the emoji on the left side inside the bubble for sender',
+      (tester) async {
+    const quoted = 'Quoted message text';
+
+    await tester.pumpWidget(
+      app(
+        bubble('😀', replyToContent: quoted, replyPreview: quoted, isMe: true),
+        width: 360,
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    final bubbleRect = tester.getRect(find.byKey(const Key('message_bubble_surface')));
+    final emojiRect = tester.getRect(find.byKey(const Key('emoji_message')));
+
+    // Emoji should stay on the left side of the bubble surface, not pushed to the far right edge.
+    expect(emojiRect.left - bubbleRect.left, lessThan(100));
+  });
+
+  testWidgets('an emoji-only message aligns the footer pill to the right for recipient',
+      (tester) async {
+    await tester.pumpWidget(
+      app(bubble('😀', isMe: false), width: 360),
+    );
+
+    expect(tester.takeException(), isNull);
+    final emojiRect = tester.getRect(find.byKey(const Key('emoji_message')));
+    final pillRect = tester.getRect(find.byKey(const Key('emoji_footer')));
+
+    // Footer pill right edge should match or exceed emoji right edge.
+    expect(pillRect.right, greaterThanOrEqualTo(emojiRect.right - 1.0));
   });
 }
