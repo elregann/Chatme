@@ -177,8 +177,7 @@ class MessageBubble extends StatelessWidget {
               if (hasReactions)
                 Positioned(
                   bottom: -21,
-                  right: isMe ? 20 : null,
-                  left: isMe ? null : 20,
+                  right: isMe ? 20 : 58,
                   child: _buildReactions(context),
                 ),
             ],
@@ -217,9 +216,7 @@ class MessageBubble extends StatelessWidget {
                   constraints: BoxConstraints(maxWidth: maxBubbleWidth),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: isMe
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       if (hasReply) _buildReply(context),
                       if (hasReply) const SizedBox(height: 4),
@@ -258,8 +255,7 @@ class MessageBubble extends StatelessWidget {
               if (hasReactions)
                 Positioned(
                   bottom: -21,
-                  right: isMe ? 20 : null,
-                  left: isMe ? null : 20,
+                  right: isMe ? 20 : 58,
                   child: _buildReactions(context),
                 ),
             ],
