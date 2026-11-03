@@ -1837,9 +1837,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               if (_replyingTo != null) _buildReplyPreviewInside(),
               if (_composerPreview != null) _buildComposerLinkPreview(),
               if (_isRecording)
-                _buildRecordingBar(accentColor, onAccentColor, inputTextColor)
-              else
-              Row(
+                _buildRecordingBar(accentColor, onAccentColor, inputTextColor),
+              Offstage(
+                offstage: _isRecording,
+                child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   SizedBox(
@@ -2005,6 +2006,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     ),
                   ),
                 ],
+              ),
               ),
             ],
           ),
