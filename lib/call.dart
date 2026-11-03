@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:proximity_sensor/proximity_sensor.dart';
 import 'call_manager.dart';
 import 'core/utils/duration_utils.dart';
+import 'widgets/call_control_bar.dart';
 import 'widgets/user_avatar.dart';
 import 'notification_handler.dart';
 
@@ -714,91 +715,21 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Widget _buildControlSection(bool isDark) {
-    final capsuleWidth = _calculateCapsuleWidth();
+    final incomingPending = widget.isIncoming && !_isAcceptedByMe;
 
     return Container(
       padding: const EdgeInsets.only(top: 20, bottom: 32),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.fastOutSlowIn,
-        width: capsuleWidth,
-        height: 72,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(36),
-          border: Border.all(
-            color: isDark ? Colors.white10 : Colors.black12,
-            width: 1.2,
-          ),
-          color: isDark ? Colors.white.withAlpha(5) : Colors.black.withAlpha(5),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Active Call Controls (Mute & Speaker)
-            AnimatedOpacity(
-              duration: const Duration(milliseconds: 300),
-              opacity: _showCallControls ? 1.0 : 0.0,
-              child: IgnorePointer(
-                ignoring: !_showCallControls,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      left: 6,
-                      top: 6,
-                      child: _unifiedControlBtn(
-                        icon: _callManager.isMuted ? Icons.mic_off : Icons.mic,
-                        isActive: _callManager.isMuted,
-                        onTap: _toggleMute,
-                        isDark: isDark,
-                      ),
-                    ),
-                    Positioned(
-                      left: 88,
-                      top: 6,
-                      child: _unifiedControlBtn(
-                        icon: _callManager.isSpeakerOn ? Icons.volume_up : Icons.volume_down,
-                        isActive: _callManager.isSpeakerOn,
-                        onTap: _toggleSpeaker,
-                        isDark: isDark,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Incoming Call Accept Button
-            if (widget.isIncoming && !_isAcceptedByMe && !_hasError)
-              Positioned(
-                left: 6,
-                top: 6,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 300),
-                  opacity: (!_isAcceptedByMe && !_hasError) ? 1.0 : 0.0,
-                  child: _unifiedControlBtn(
-                    icon: Icons.call,
-                    color: Colors.green,
-                    onTap: _acceptIncomingCall,
-                    isDark: isDark,
-                  ),
-                ),
-              ),
-
-            // Hangup Button (animates position smoothly)
-            AnimatedAlign(
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.fastOutSlowIn,
-              alignment: _getHangupButtonAlignment(),
-              child: _unifiedControlBtn(
-                icon: Icons.call_end,
-                isHangup: true,
-                onTap: _endCall,
-                isDark: isDark,
-              ),
-            ),
-          ],
-        ),
+      child: CallControlBar(
+        isDark: isDark,
+        expanded: incomingPending || _showCallControls,
+        showControls: _showCallControls,
+        showAccept: incomingPending && !_hasError,
+        isMuted: _callManager.isMuted,
+        isSpeakerOn: _callManager.isSpeakerOn,
+        onMute: _toggleMute,
+        onSpeaker: _toggleSpeaker,
+        onAccept: _acceptIncomingCall,
+        onHangup: _endCall,
       ),
     );
   }
@@ -808,59 +739,14 @@ class _CallScreenState extends State<CallScreen> {
           _callManager.callState == CallState.reconnecting ||
           _isAcceptedByMe;
 
-  double _calculateCapsuleWidth() {
-    if (widget.isIncoming && !_isAcceptedByMe) return 235;
-    if (_showCallControls) return 235;
-    return 72;
-  }
-
-  Alignment _getHangupButtonAlignment() {
-    if (widget.isIncoming && !_isAcceptedByMe) return const Alignment(0.94, 0);
-    if (_showCallControls) return const Alignment(0.95, 0);
-    return Alignment.center;
-  }
-
   void _toggleMute() {
     _callManager.toggleMute();
     if (mounted) setState(() {});
   }
 
-  void _toggleSpeaker() {
-    _callManager.toggleSpeaker();
+  Future<void> _toggleSpeaker() async {
+    await _callManager.toggleSpeaker();
     if (mounted) setState(() {});
-  }
-
-  Widget _unifiedControlBtn({
-    required IconData icon,
-    bool isActive = false,
-    bool isHangup = false,
-    Color? color,
-    required VoidCallback onTap,
-    required bool isDark,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color ?? (isHangup
-              ? Colors.redAccent.withAlpha(229)
-              : (isActive
-              ? (isDark ? Colors.white : Colors.black)
-              : (isDark ? Colors.white.withAlpha(25) : Colors.black.withAlpha(13)))),
-          boxShadow: null,
-        ),
-        child: Icon(
-          icon,
-          color: (isActive || isHangup || color != null)
-              ? (isDark && !isHangup && color == null ? Colors.black : Colors.white)
-              : (isDark ? Colors.white : Colors.black),
-          size: 26,
-        ),
-      ),
-    );
   }
 }
 

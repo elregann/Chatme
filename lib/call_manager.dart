@@ -12,6 +12,7 @@ import 'models/call_log.dart';
 import 'models/chat_message.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
+import 'services/async_toggle.dart';
 import 'services/network_manager.dart';
 import 'relay_manager.dart';
 import 'call.dart';
@@ -181,7 +182,7 @@ class CallManager {
   bool _isDisposing = false;
 
   bool _isMuted = false;
-  bool _isSpeakerOn = false;
+  final AsyncToggle _speaker = AsyncToggle();
 
   /// Completes when ICE gathering finishes (or after a timeout).
   /// Used by vanilla-ICE mode: instead of trickling candidates over
@@ -204,7 +205,7 @@ class CallManager {
 
   // Public getters
   bool get isMuted => _isMuted;
-  bool get isSpeakerOn => _isSpeakerOn;
+  bool get isSpeakerOn => _speaker.value;
   rtc.RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
   List<CallEvent> get callLog => List.unmodifiable(_callLog);
   CallState get callState => _sharedCallState;
@@ -439,7 +440,7 @@ class CallManager {
       await Future.delayed(const Duration(milliseconds: 50));
 
       _isMuted = false;
-      _isSpeakerOn = false;
+      _speaker.reset(false);
 
       if (!kIsWeb && _localStream!.getAudioTracks().isNotEmpty) {
         try {
@@ -478,20 +479,20 @@ class CallManager {
     }
   }
 
-  void toggleSpeaker() {
+  Future<void> toggleSpeaker() async {
     if (_localStream == null || _localStream!.getAudioTracks().isEmpty) return;
-    try {
-      final track = _localStream!.getAudioTracks()[0];
-      _isSpeakerOn = !_isSpeakerOn;
-
+    final track = _localStream!.getAudioTracks()[0];
+    final changed = await _speaker.toggle((on) async {
       if (!kIsWeb) {
-        track.enableSpeakerphone(_isSpeakerOn);
+        track.enableSpeakerphone(on);
       } else {
-        debugPrint('[Call] Web speaker mode: $_isSpeakerOn');
+        debugPrint('[Call] Web speaker mode: $on');
       }
-      _logCallEvent('speaker_toggled', {'isSpeakerOn': _isSpeakerOn});
-    } catch (e) {
-      debugPrint('[Call] Toggle speaker failed | $e');
+    });
+    if (changed) {
+      _logCallEvent('speaker_toggled', {'isSpeakerOn': _speaker.value});
+    } else if (!_speaker.busy) {
+      debugPrint('[Call] Toggle speaker failed');
     }
   }
 
