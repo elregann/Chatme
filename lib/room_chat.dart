@@ -1,5 +1,6 @@
 // room_chat.dart
 
+import 'core/theme/cyber_colors.dart';
 import 'core/utils/unseen_message.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -768,7 +769,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     });
   }
 
-  Widget _buildRecordingBar(Color accentColor, Color textColor) {
+  Widget _buildRecordingBar(Color accentColor, Color onAccentColor, Color textColor) {
     final elapsed = voiceRecorder.elapsed;
     final blinkOn = (elapsed.inMilliseconds ~/ 500).isEven;
     return SizedBox(
@@ -817,8 +818,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                 height: _composerSendSize,
                 width: _composerSendSize,
                 decoration: BoxDecoration(color: accentColor, shape: BoxShape.circle),
-                child: const Center(
-                  child: Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                child: Center(
+                  child: Icon(Icons.send_rounded, color: onAccentColor, size: 20),
                 ),
               ),
             ),
@@ -1317,7 +1318,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
     final headerTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
 
-    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
+    final accentColor = isNostrCyber ? CyberColors.accent : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
     final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
 
     return Scaffold(
@@ -1621,7 +1622,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
     final accentColor = isNostrCyber
-        ? const Color(0xFFD4BBFC)
+        ? CyberColors.accent
         : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
 
     final dividerBg = isNostrCyber
@@ -1727,7 +1728,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF2196F3);
+    final accentColor = isNostrCyber ? CyberColors.accent : const Color(0xFF2196F3);
     final panelBg = isNostrCyber
         ? const Color(0xFF1B1425)
         : (isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF4F4F4));
@@ -1795,7 +1796,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final isDark = theme.brightness == Brightness.dark;
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
-    final accentColor = isNostrCyber ? const Color(0xFF7B2CBF) : const Color(0xFF2196F3);
+    final accentColor = isNostrCyber ? CyberColors.accent : const Color(0xFF2196F3);
+    final onAccentColor = isNostrCyber ? CyberColors.onAccent : Colors.white;
     final inputBgColor = isNostrCyber
         ? const Color(0xFF1B1425)
         : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
@@ -1835,7 +1837,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               if (_replyingTo != null) _buildReplyPreviewInside(),
               if (_composerPreview != null) _buildComposerLinkPreview(),
               if (_isRecording)
-                _buildRecordingBar(accentColor, inputTextColor)
+                _buildRecordingBar(accentColor, onAccentColor, inputTextColor)
               else
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -1989,12 +1991,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                             ),
                             child: Center(
                               child: _isSending
-                                  ? const SizedBox(width: 20, height: 20,
+                                  ? SizedBox(width: 20, height: 20,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
+                                      strokeWidth: 2, color: onAccentColor))
                                   : Icon(
                                       (_hasText || kIsWeb) ? Icons.send_rounded : Icons.mic_rounded,
-                                      color: Colors.white,
+                                      color: onAccentColor,
                                       size: 20),
                             ),
                           ),
@@ -2020,7 +2022,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? const Color(0xFF251C33)
         : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
     final titleColor = isNostrCyber
-        ? const Color(0xFFD4BBFC)
+        ? CyberColors.accent
         : const Color(0xFF2196F3);
     final subColor = isNostrCyber
         ? Colors.white70
@@ -2116,7 +2118,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
     final nameColor = isNostrCyber
-        ? const Color(0xFFD4BBFC)
+        ? CyberColors.accent
         : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
 
     final bgColor = isNostrCyber
@@ -2128,7 +2130,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
 
     final iconThemeColor = isNostrCyber
-        ? const Color(0xFFD4BBFC)
+        ? CyberColors.accent
         : (isDark ? Colors.white70 : Colors.black87);
 
     return Container(
@@ -2293,12 +2295,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
     final bubbleColor = isNostrCyber
-        ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
+        ? (isMe ? CyberColors.accent : const Color(0xFF251C33))
         : (isMe ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
         : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
 
     final textColor = isNostrCyber
-        ? Colors.white
+        ? (isMe ? CyberColors.onAccent : Colors.white)
         : (isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000));
 
     final previewUrl = AppSettings.instance.linkPreviewsEnabled
@@ -2313,7 +2315,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       isNostrCyber: isNostrCyber,
       bubbleColor: bubbleColor,
       textColor: textColor,
-      footer: _buildBubbleFooter(message, textColor),
+      footer: _buildBubbleFooter(message, textColor, onAccent: isNostrCyber && isMe),
       imageFooter: _buildBubbleFooter(message, Colors.white, dim: false),
       previewUrl: previewUrl,
       replySenderName: hasReply
@@ -2333,6 +2335,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     ChatMessage message,
     Color color, {
     bool dim = true,
+    bool onAccent = false,
   }) {
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
     final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
@@ -2352,13 +2355,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ),
         if (isMe) ...[
           const SizedBox(width: 4),
-          _buildStatusIcon(message.status, color),
+          _buildStatusIcon(message.status, color, onAccent: onAccent),
         ],
       ],
     );
   }
 
-  Widget _buildStatusIcon(String status, Color color) {
+  Widget _buildStatusIcon(String status, Color color, {bool onAccent = false}) {
     switch (status) {
       case 'pending':
       case 'sending':
@@ -2372,7 +2375,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             if (!AppSettings.instance.readReceiptsEnabled) {
               return Icon(Icons.done, size: 13, color: color.withAlpha(153));
             }
-            return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
+            return Icon(
+              Icons.done_all,
+              size: 13,
+              color: onAccent ? CyberColors.readTickOnAccent : const Color(0xFF34B7F1),
+            );
           },
         );
       case 'error':
@@ -2477,7 +2484,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
     final durationLabel = DurationUtils.formatCallDuration(durationSeconds);
 
-    final normalTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black87);
+    final normalTextColor = isNostrCyber
+        ? (isMe ? CyberColors.onAccent : Colors.white)
+        : (isDark ? Colors.white : Colors.black87);
     final textColor = isMissed
         ? Colors.red
         : normalTextColor;
@@ -2489,7 +2498,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         .format(DateTime.fromMillisecondsSinceEpoch(message.timestamp));
 
     final bubbleColor = isNostrCyber
-        ? (isMe ? const Color(0xFF7B2CBF) : const Color(0xFF251C33))
+        ? (isMe ? CyberColors.accent : const Color(0xFF251C33))
         : (isMe
         ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
         : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));

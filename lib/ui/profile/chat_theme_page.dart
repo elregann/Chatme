@@ -1,3 +1,4 @@
+import '../../core/theme/cyber_colors.dart';
 import 'package:flutter/material.dart';
 import '../../services/app_settings.dart';
 
@@ -85,7 +86,7 @@ class _ChatThemePageState extends State<ChatThemePage> {
                     id: 'nostr_cyber',
                     name: 'Nostr Cyber / Amethyst',
                     description: 'Deep purple & electric violet accents (Absolute Theme)',
-                    previewColors: [const Color(0xFF2A1B3D), const Color(0xFF7B2CBF)],
+                    previewColors: [const Color(0xFF2A1B3D), CyberColors.accent],
                     borderColor: borderColor,
                     textPrimary: textPrimary,
                     textSecondary: textSecondary,

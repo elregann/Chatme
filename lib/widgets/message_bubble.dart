@@ -1,5 +1,6 @@
 // message_bubble.dart
 
+import '../core/theme/cyber_colors.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -162,7 +163,9 @@ class MessageBubble extends StatelessWidget {
                             url: previewUrl!,
                             textColor: textColor,
                             backgroundColor: isNostrCyber
-                                ? Colors.white.withAlpha(20)
+                                ? (isMe
+                                    ? Colors.black.withAlpha(15)
+                                    : Colors.white.withAlpha(20))
                                 : (isDark
                                     ? Colors.black.withAlpha(40)
                                     : Colors.black.withAlpha(15)),
@@ -387,13 +390,15 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildReply(BuildContext context) {
-    final nameColor =
-        isNostrCyber ? const Color(0xFFD0BCFF) : const Color(0xFF2196F3);
+    final onAccent = isNostrCyber && isMe;
+    final nameColor = isNostrCyber
+        ? (onAccent ? CyberColors.replyNameOnAccent : CyberColors.accent)
+        : const Color(0xFF2196F3);
     final backgroundColor = isNostrCyber
-        ? Colors.white.withAlpha(20)
+        ? (onAccent ? Colors.black.withAlpha(15) : Colors.white.withAlpha(20))
         : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
     final contentColor = isNostrCyber
-        ? Colors.white70
+        ? (onAccent ? CyberColors.onAccent.withAlpha(178) : Colors.white70)
         : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
 
     return GestureDetector(

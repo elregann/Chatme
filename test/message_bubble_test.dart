@@ -1,3 +1,4 @@
+import 'package:chatme/core/theme/cyber_colors.dart';
 import 'package:chatme/core/utils/emoji_utils.dart';
 import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/widgets/message_bubble.dart';
@@ -35,12 +36,13 @@ void main() {
     String? replyToContent,
     String? replyPreview,
     bool isMe = true,
+    bool isNostrCyber = false,
   }) {
     return MessageBubble(
       message: message(text, replyToContent: replyToContent),
       isMe: isMe,
       isDark: false,
-      isNostrCyber: false,
+      isNostrCyber: isNostrCyber,
       bubbleColor: const Color(0xFFE3F2FD),
       textColor: Colors.black,
       footer: footer(Colors.black),
@@ -289,5 +291,40 @@ void main() {
 
     // Footer pill right edge should match or exceed emoji right edge.
     expect(pillRect.right, greaterThanOrEqualTo(emojiRect.right - 1.0));
+  });
+
+  group('Amethyst theme reply card', () {
+    BoxDecoration cardDecoration(WidgetTester tester) {
+      final card = tester.widget<Container>(find.byKey(const Key('reply_card')));
+      return card.decoration! as BoxDecoration;
+    }
+
+    testWidgets('your own bubble uses dark tones on the purple', (tester) async {
+      await tester.pumpWidget(app(bubble(
+        'Hello',
+        replyToContent: 'Earlier',
+        replyPreview: 'Earlier',
+        isMe: true,
+        isNostrCyber: true,
+      )));
+
+      final border = cardDecoration(tester).border! as Border;
+      expect(border.left.color, CyberColors.replyNameOnAccent);
+      expect(cardDecoration(tester).color, Colors.black.withAlpha(15));
+    });
+
+    testWidgets('their bubble uses the purple accent', (tester) async {
+      await tester.pumpWidget(app(bubble(
+        'Hello',
+        replyToContent: 'Earlier',
+        replyPreview: 'Earlier',
+        isMe: false,
+        isNostrCyber: true,
+      )));
+
+      final border = cardDecoration(tester).border! as Border;
+      expect(border.left.color, CyberColors.accent);
+      expect(cardDecoration(tester).color, Colors.white.withAlpha(20));
+    });
   });
 }
