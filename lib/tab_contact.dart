@@ -139,7 +139,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       title: 'Remove contact?',
       message: '${contact.name} will be removed from your contacts. Chat history will remain.',
       confirmLabel: 'Remove',
-      destructive: true,
     );
 
     if (confirmed) {

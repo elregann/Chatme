@@ -2,9 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:chatme/core/theme/chatme_buttons.dart';
 import 'package:chatme/widgets/confirm_dialog.dart';
 
-Future<bool?> _open(WidgetTester tester, {bool destructive = false}) async {
+Future<bool?> _open(WidgetTester tester) async {
   bool? result;
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
@@ -16,7 +17,6 @@ Future<bool?> _open(WidgetTester tester, {bool destructive = false}) async {
               title: 'Remove contact?',
               message: 'Alice will be removed from your contacts.',
               confirmLabel: 'Remove',
-              destructive: destructive,
             );
           },
           child: const Text('open'),
@@ -90,9 +90,29 @@ void main() {
     expect(result, isFalse);
   });
 
-  testWidgets('a destructive confirm button is red', (tester) async {
-    await _open(tester, destructive: true);
-    final button = tester.widget<Text>(find.text('Remove'));
-    expect(button.style?.color, Colors.red);
+  testWidgets('both buttons use the accent blue of the theme', (tester) async {
+    bool? result;
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(textButtonTheme: chatmeTextButtonTheme),
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () async => result = await showConfirmDialog(
+            context,
+            title: 'T',
+            message: 'M',
+            confirmLabel: 'Remove',
+          ),
+          child: const Text('open'),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    for (final label in ['Cancel', 'Remove']) {
+      final color = DefaultTextStyle.of(tester.element(find.text(label))).style.color;
+      expect(color, chatmeAccent, reason: label);
+    }
+    expect(result, isNull);
   });
 }

@@ -22,6 +22,7 @@ import 'services/app_settings.dart';
 import 'notification_handler.dart';
 import 'services/network_manager.dart';
 import 'services/background_service.dart';
+import 'core/theme/chatme_buttons.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/bg_inbox.dart';
 import 'room_chat.dart';
@@ -672,10 +673,19 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     );
   }
 
+  static const PageTransitionsTheme _pageTransitions = PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: ZoomPageTransitionsBuilder(),
+    },
+  );
+
   ThemeData _buildLightTheme() {
     return ThemeData(
+      textButtonTheme: chatmeTextButtonTheme,
+      switchTheme: chatmeSwitchTheme,
       brightness: Brightness.light,
       useMaterial3: true,
+      pageTransitionsTheme: _pageTransitions,
       scaffoldBackgroundColor: Colors.white,
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, surface: Colors.white),
       appBarTheme: const AppBarTheme(
@@ -693,8 +703,11 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
   ThemeData _buildDarkTheme() {
     return ThemeData(
+      textButtonTheme: chatmeTextButtonTheme,
+      switchTheme: chatmeSwitchTheme,
       brightness: Brightness.dark,
       useMaterial3: true,
+      pageTransitionsTheme: _pageTransitions,
       scaffoldBackgroundColor: const Color(0xFF121212),
       colorScheme: ColorScheme.fromSeed(brightness: Brightness.dark, seedColor: Colors.blue, surface: const Color(0xFF1E1E1E)),
       appBarTheme: const AppBarTheme(

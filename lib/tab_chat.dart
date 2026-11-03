@@ -521,7 +521,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
       title: 'Clear chat history?',
       message: 'All messages with ${contact.name} will be permanently deleted. This action cannot be undone.',
       confirmLabel: 'Delete all',
-      destructive: true,
     );
 
     if (confirmed) {

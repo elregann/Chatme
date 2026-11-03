@@ -282,7 +282,6 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
       title: 'Disconnect ID?',
       message: 'Your unique username $currentHandle will be released and removed from your profile. This action cannot be undone.',
       confirmLabel: 'Disconnect',
-      destructive: true,
     );
 
     if (confirmed && mounted) {

@@ -2432,7 +2432,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             autofocus: true,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => save(),
-            decoration: const InputDecoration(hintText: 'Enter name'),
+            decoration: const InputDecoration(
+              hintText: 'Enter name',
+              border: InputBorder.none,
+            ),
           ),
           actions: [
             TextButton(

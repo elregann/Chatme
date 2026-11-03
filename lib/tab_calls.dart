@@ -90,7 +90,6 @@ class _CallsScreenState extends State<CallsScreen> {
       title: 'Delete call?',
       message: 'This call with $displayName will be removed from your history.',
       confirmLabel: 'Delete',
-      destructive: true,
     );
     if (confirmed && log.isInBox) await log.delete();
   }

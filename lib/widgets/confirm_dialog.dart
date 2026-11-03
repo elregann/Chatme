@@ -9,7 +9,6 @@ Future<bool> showConfirmDialog(
   required String title,
   required String message,
   required String confirmLabel,
-  bool destructive = false,
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
@@ -23,10 +22,7 @@ Future<bool> showConfirmDialog(
         ),
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, true),
-          child: Text(
-            confirmLabel,
-            style: destructive ? const TextStyle(color: Colors.red) : null,
-          ),
+          child: Text(confirmLabel),
         ),
       ],
     ),
