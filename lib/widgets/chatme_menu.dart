@@ -37,6 +37,10 @@ class ChatmeMenuButton<T> extends StatelessWidget {
   /// Where the menu opens, relative to the button.
   final Offset offset;
 
+  /// Set to false to leave focus where it is while the menu is open, so a
+  /// text field that has the keyboard up keeps it. Null uses the default.
+  final bool? requestFocus;
+
   const ChatmeMenuButton({
     super.key,
     required this.icon,
@@ -46,6 +50,7 @@ class ChatmeMenuButton<T> extends StatelessWidget {
     this.textColor,
     this.splashRadius = 22,
     this.offset = Offset.zero,
+    this.requestFocus,
   });
 
   @override
@@ -59,6 +64,8 @@ class ChatmeMenuButton<T> extends StatelessWidget {
       menuPadding: EdgeInsets.zero,
       splashRadius: splashRadius,
       offset: offset,
+      requestFocus: requestFocus,
+      popUpAnimationStyle: AnimationStyle.noAnimation,
       icon: icon,
       color: color ?? (dark ? ChatmeMenu.darkColor : ChatmeMenu.lightColor),
       elevation: 4,

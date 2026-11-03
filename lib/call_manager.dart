@@ -46,13 +46,12 @@ class CallConstants {
         {'urls': 'stun:stun.relay.metered.ca:80'},
         {
           'urls': [
-            'turn:global.relay.metered.ca:80',
-            'turn:global.relay.metered.ca:80?transport=tcp',
-            'turn:global.relay.metered.ca:443',
-            'turns:global.relay.metered.ca:443?transport=tcp',
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp',
           ],
-          'username': '2e00e35e35ee4662d8629b77',
-          'credential': 'eDDxRR8GiVBH4MXr',
+          'username': 'openrelayproject',
+          'credential': 'openrelayproject',
         },
       ],
       'sdpSemantics': 'unified-plan',

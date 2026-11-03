@@ -1938,6 +1938,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                     height: 40,
                                     child: Center(
                                       child: ChatmeMenuButton<ImageSource>(
+                                        requestFocus: false,
+                                        offset: const Offset(0, -90),
                                         color: inputBgColor,
                                         textColor: inputTextColor,
                                         icon: Icon(

@@ -87,4 +87,38 @@ void main() {
     button = tester.widget<PopupMenuButton<int>>(find.byType(PopupMenuButton<int>));
     expect(button.color, const Color(0xFF1B1425));
   });
+
+  testWidgets('requestFocus false keeps focus on a text field while the menu is open', (tester) async {
+    final node = FocusNode();
+    addTearDown(node.dispose);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            TextField(focusNode: node),
+            ChatmeMenuButton<int>(
+              requestFocus: false,
+              icon: const Icon(Icons.more_vert),
+              entries: entries,
+              onSelected: (_) {},
+            ),
+          ],
+        ),
+      ),
+    ));
+
+    node.requestFocus();
+    await tester.pump();
+    expect(node.hasFocus, isTrue);
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    expect(find.text('Camera'), findsOneWidget);
+    expect(node.hasFocus, isTrue);
+
+    await tester.tap(find.text('Camera'));
+    await tester.pumpAndSettle();
+    expect(node.hasFocus, isTrue);
+  });
 }
