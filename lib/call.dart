@@ -61,6 +61,8 @@ class _CallScreenState extends State<CallScreen> {
   /// widgets after deactivation.
   Brightness _themeBrightness = Brightness.dark;
 
+  bool _systemUiChanged = false;
+
   @override
   void initState() {
     super.initState();
@@ -145,6 +147,7 @@ class _CallScreenState extends State<CallScreen> {
 
   void _updateSystemUIMode() {
     if (!kIsWeb) {
+      _systemUiChanged = true;
       SystemChrome.setEnabledSystemUIMode(
         _isNearProximity ? SystemUiMode.leanBack : SystemUiMode.edgeToEdge,
       );
@@ -517,9 +520,11 @@ class _CallScreenState extends State<CallScreen> {
     _isEndingCall = false;
 
     if (!kIsWeb) {
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.edgeToEdge,
-      );
+      if (_systemUiChanged) {
+        SystemChrome.setEnabledSystemUIMode(
+          SystemUiMode.edgeToEdge,
+        );
+      }
 
       final Brightness iconBrightness = _themeBrightness == Brightness.dark
           ? Brightness.light
