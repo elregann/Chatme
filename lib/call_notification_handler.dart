@@ -153,6 +153,13 @@ class CallNotificationHandler {
 
   static int _ongoingSeq = 0;
 
+  // Last shortcut written by the ongoing-call path. The avatar bytes are
+  // cached by NotificationProfile, so identity comparison is enough to skip
+  // redundant platform-channel round-trips on connecting → active changes.
+  static String? _lastShortcutId;
+  static String? _lastShortcutName;
+  static Uint8List? _lastShortcutAvatar;
+
   static Future<void> startOngoingCall({
     required FlutterLocalNotificationsPlugin plugin,
     required String peerName,
@@ -179,11 +186,19 @@ class CallNotificationHandler {
         debugPrint('[Notification] Ongoing call profile failed | $e');
       }
       try {
-        await ShortcutHelper.pushConversationShortcut(
-          id: peerPubkey,
-          name: displayName,
-          avatarBytes: avatarBytes,
-        );
+        final shortcutChanged = _lastShortcutId != peerPubkey ||
+            _lastShortcutName != displayName ||
+            !identical(_lastShortcutAvatar, avatarBytes);
+        if (shortcutChanged) {
+          await ShortcutHelper.pushConversationShortcut(
+            id: peerPubkey,
+            name: displayName,
+            avatarBytes: avatarBytes,
+          );
+          _lastShortcutId = peerPubkey;
+          _lastShortcutName = displayName;
+          _lastShortcutAvatar = avatarBytes;
+        }
       } catch (e) {
         debugPrint('[Notification] Ongoing call shortcut failed | $e');
       }

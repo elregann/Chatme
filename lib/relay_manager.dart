@@ -17,6 +17,7 @@ import 'main.dart';
 import 'chat_manager.dart';
 import 'core/crypto/nip04.dart';
 import 'core/crypto/nip17.dart';
+import 'core/crypto/nip17_isolate.dart';
 import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nostr_protocol.dart';
 import 'core/utils/debug_logger.dart';
@@ -94,6 +95,11 @@ class RelayManager {
   /// Timestamp (ms) of the last re-send attempt per message ID.
   /// Prevents the offline queue from hammering the same message every tick.
   final Map<String, int> _lastQueueAttempt = {};
+
+  /// Serializes outgoing call signals. Wrapping now runs on a background
+  /// isolate, so without this a later signal (e.g. hangup) could finish
+  /// wrapping before an earlier one (e.g. offer) and be delivered out of order.
+  Future<void> _callSignalSendChain = Future<void>.value();
 
   Function(Map<String, dynamic>)? onMessageReceivedWithData;
   Function(String)? onMessageDelivered;
@@ -690,7 +696,7 @@ class RelayManager {
 
       if (event['kind'] == 1059) {
         try {
-          nip17Result = await Nip17.unwrap(
+          nip17Result = await Nip17Isolate.unwrap(
             giftWrapEvent: event,
             receiverPrivkey: myPrivkey,
             receiverPubkey: myPubkey,
@@ -1540,20 +1546,43 @@ class RelayManager {
     }
   }
 
-  Future<void> sendCallSignal(String recipientPubkey, Map<String, dynamic> signalData) async {
+  Future<void> sendCallSignal(String recipientPubkey, Map<String, dynamic> signalData) {
+    // Capture the signaling context now: the state changes while the signal
+    // waits in the queue and is wrapped on the background isolate.
+    final bool callerNotConnected =
+        CallManager.instance.currentCallDirection == CallType.outgoing &&
+            CallManager.instance.callState != CallState.active &&
+            !CallManager.instance.wasCallConnected;
+
+    // Chain sends so signaling order is preserved even though wrapping runs
+    // asynchronously on a background isolate. A failure must not break the
+    // chain for the next signal.
+    final next = _callSignalSendChain.then(
+      (_) => _sendCallSignalNow(
+        recipientPubkey,
+        signalData,
+        callerNotConnected: callerNotConnected,
+      ),
+    );
+    _callSignalSendChain = next.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return next;
+  }
+
+  Future<void> _sendCallSignalNow(
+    String recipientPubkey,
+    Map<String, dynamic> signalData, {
+    required bool callerNotConnected,
+  }) async {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
       final myPrivkey = AppSettings.instance.myPrivkey;
 
       if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
 
-      // Capture now: the state changes while the signal is being wrapped.
-      final bool callerNotConnected =
-          CallManager.instance.currentCallDirection == CallType.outgoing &&
-              CallManager.instance.callState != CallState.active &&
-              !CallManager.instance.wasCallConnected;
-
-      final wrapped = await Nip17.wrap(
+      final wrapped = await Nip17Isolate.wrap(
         plaintext: jsonEncode(signalData),
         senderPrivkey: myPrivkey,
         senderPubkey: myPubkey,

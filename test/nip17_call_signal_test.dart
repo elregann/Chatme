@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:bip340/bip340.dart' as bip340;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chatme/core/crypto/nip17.dart';
+import 'package:chatme/core/crypto/nip17_isolate.dart';
 
 String _key(int n) => n.toRadixString(16).padLeft(64, '0');
 
@@ -34,5 +35,33 @@ void main() {
     expect(jsonDecode(result.plaintext), signal);
     expect(result.senderPubkey, alicePub);
     expect(result.receiverPubkey, bobPub);
+  });
+
+  test('isolate helper keeps call signals intact across the isolate boundary',
+      () async {
+    final signal = {
+      'type': 'answer',
+      'data': 'a=candidate\r\n' * 100,
+    };
+    final wrapped = await Nip17Isolate.wrap(
+      plaintext: jsonEncode(signal),
+      senderPrivkey: alicePriv,
+      senderPubkey: alicePub,
+      receiverPubkey: bobPub,
+      kind: Nip17.kindCallSignal,
+      customTags: [
+        ['p', bobPub],
+      ],
+    );
+    final result = await Nip17Isolate.unwrap(
+      giftWrapEvent: wrapped.giftWrap,
+      receiverPrivkey: bobPriv,
+      receiverPubkey: bobPub,
+    );
+    expect(result.rumorKind, Nip17.kindCallSignal);
+    expect(jsonDecode(result.plaintext), signal);
+    expect(result.senderPubkey, alicePub);
+    expect(result.receiverPubkey, bobPub);
+    expect(result.rumorId, wrapped.rumorId);
   });
 }

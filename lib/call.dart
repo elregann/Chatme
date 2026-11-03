@@ -56,6 +56,11 @@ class _CallScreenState extends State<CallScreen> {
   bool _isEndingCall = false;
   bool _closing = false;
 
+  /// Captured while the route is still alive so [dispose] can restore the
+  /// system UI with the right icon brightness without looking up inherited
+  /// widgets after deactivation.
+  Brightness _themeBrightness = Brightness.dark;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +77,12 @@ class _CallScreenState extends State<CallScreen> {
 
     if (_callManager.callState != CallState.idle) {
       debugPrint("Screen reopened: Skipping new call initialization.");
+      // A brand-new outgoing call can be requested while the previous call is
+      // still in its `ending` grace window. Wait for that teardown to finish
+      // instead of leaving the user on a screen that never dials.
+      if (!widget.isIncoming && _callManager.callState == CallState.ending) {
+        _startOutgoingWhenIdle();
+      }
     } else {
       if (!widget.isIncoming) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -93,6 +104,12 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _themeBrightness = Theme.of(context).brightness;
+  }
+
+  @override
   void dispose() {
     _cancelAllTimers();
     _cleanupResources();
@@ -109,16 +126,20 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _initProximitySensor() {
-    if (!kIsWeb) {
-      try {
-        _proximitySubscription = ProximitySensor.events.listen((int event) {
-          _isNearProximity = event == 1;
-          _updateSystemUIMode();
-          if (mounted) setState(() {});
-        });
-      } catch (e) {
-        debugPrint('Proximity sensor not available: $e');
-      }
+    if (kIsWeb) return;
+    try {
+      _proximitySubscription = ProximitySensor.events.listen((int event) {
+        final bool isNear = event == 1;
+        // The sensor emits on every report, including repeats of the same
+        // value. Skipping those avoids a full-screen rebuild and a redundant
+        // SystemChrome call while a call is in progress.
+        if (isNear == _isNearProximity) return;
+        _isNearProximity = isNear;
+        _updateSystemUIMode();
+        if (mounted) setState(() {});
+      });
+    } catch (e) {
+      debugPrint('Proximity sensor not available: $e');
     }
   }
 
@@ -189,6 +210,18 @@ class _CallScreenState extends State<CallScreen> {
     });
   }
 
+  /// Waits for a previous call to finish its `ending` teardown, then starts
+  /// this outgoing call. Without this, tapping call on a contact right after
+  /// hanging up could open a call screen that never dials.
+  Future<void> _startOutgoingWhenIdle() async {
+    for (int i = 0; i < 50; i++) {
+      if (!mounted || _callManager.callState != CallState.ending) break;
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    if (!mounted || _callManager.callState != CallState.idle) return;
+    _startAfterTransition(_startOutgoingCall);
+  }
+
   Future<void> _startOutgoingCall() async {
     if (_callManager.callState == CallState.active ||
         _callManager.callState == CallState.connecting) {
@@ -206,6 +239,15 @@ class _CallScreenState extends State<CallScreen> {
       });
       return;
     }
+
+    // Re-assert the session after any previous call finished its teardown:
+    // CallManager clears activePeer* when it reaches `idle`.
+    _callManager.currentCallDirection = CallType.outgoing;
+    _callManager.setSessionInfo(
+      widget.peerName,
+      widget.peerPubkey,
+      widget.peerColor,
+    );
 
     setState(() {
       _isInitializing = true;
@@ -285,6 +327,8 @@ class _CallScreenState extends State<CallScreen> {
   void _endCall({bool isTimeout = false}) {
     if (_isEndingCall || !mounted) return;
 
+    // Stays true until the screen is disposed. Resetting it in a finally
+    // block allowed a second hangup tap to start a parallel teardown.
     _isEndingCall = true;
     _logCallEvent('call_ending_started', {'isTimeout': isTimeout});
 
@@ -312,20 +356,23 @@ class _CallScreenState extends State<CallScreen> {
       //
       // Timeout-driven closes (isTimeout: true) are NOT user actions
       // and must remain "missed".
+      //
+      // stopCall emits `ending` synchronously; _onCallStateChanged starts the
+      // pop animation there, while media teardown/Hive writes wait inside
+      // stopCall's ~300 ms window. The screen therefore never blocks on the
+      // teardown before dismissing.
       _callManager.stopCall(
         sendHangupSignal: false,
         byUser: !isTimeout,
       );
 
-      if (mounted) {
-        setState(() {
-          _hasError = isTimeout;
-        });
-      }
+      if (isTimeout && mounted) setState(() => _hasError = true);
+
+      // Fallback for the case where another stopCall is already in flight and
+      // did not emit a state change for this screen.
+      if (!isTimeout) _closeScreen();
     } catch (e) {
       _logCallEvent('call_ending_error', {'error': e.toString()});
-    } finally {
-      _isEndingCall = false;
     }
   }
 
@@ -392,33 +439,40 @@ class _CallScreenState extends State<CallScreen> {
 
     _logCallEvent('ui_state_sync', {'state': state.toString()});
 
+    final bool hasError;
+    switch (state) {
+      case CallState.active:
+      case CallState.connecting:
+      case CallState.reconnecting:
+      case CallState.ringing:
+      case CallState.initializing:
+        hasError = false;
+        break;
+      case CallState.error:
+        hasError = true;
+        break;
+      case CallState.idle:
+      case CallState.ending:
+        hasError = false;
+        break;
+    }
+
+    // Navigation is intentionally kept outside setState: calling pop() from
+    // inside a builder-style callback while the element tree is locked is
+    // fragile and made the close order hard to reason about.
     setState(() {
-      switch (state) {
-        case CallState.active:
-          _hasError = false;
-          break;
-        case CallState.connecting:
-        case CallState.reconnecting:
-        case CallState.ringing:
-        case CallState.initializing:
-          _hasError = false;
-          break;
-        case CallState.error:
-          _hasError = true;
-          break;
-        case CallState.idle:
-        case CallState.ending:
-          _hasError = false;
-          if (mounted) {
-            _logCallEvent('closing_screen_due_to_idle_state');
-            CallScreenNavigator._endedOnScreen = true;
-            if (ModalRoute.of(context)?.isCurrent == true) {
-              _closeScreen();
-            }
-          }
-          break;
-      }
+      _hasError = hasError;
     });
+
+    if (state == CallState.ending || state == CallState.idle) {
+      _logCallEvent('closing_screen_due_to_terminal_state');
+      CallScreenNavigator._endedOnScreen = true;
+      if (ModalRoute.of(context)?.isCurrent == true) {
+        // Pop now (on `ending`) so the route animation overlaps the teardown
+        // that CallManager performs during its ~300 ms grace window.
+        _closeScreen();
+      }
+    }
   }
 
   void _handleError(String error) {
@@ -467,10 +521,14 @@ class _CallScreenState extends State<CallScreen> {
         SystemUiMode.edgeToEdge,
       );
 
+      final Brightness iconBrightness = _themeBrightness == Brightness.dark
+          ? Brightness.light
+          : Brightness.dark;
       Future.delayed(const Duration(milliseconds: 300), () {
-        SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
+          statusBarIconBrightness: iconBrightness,
+          systemNavigationBarIconBrightness: iconBrightness,
         ));
       });
     }
@@ -512,37 +570,39 @@ class _CallScreenState extends State<CallScreen> {
         body: Stack(
           children: [
             SafeArea(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                      child: IntrinsicHeight(
-                        child: Column(
-                          children: [
-                            Align(
-                              alignment: Alignment.topLeft,
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: 10, top: 10),
-                                child: IconButton(
-                                  icon: const Icon(Icons.keyboard_arrow_down, size: 35),
-                                  color: isDark ? Colors.white70 : Colors.black54,
-                                  onPressed: _minimize,
-                                ),
+              // The header area scrolls when the screen is short, while the
+              // control bar stays pinned at the bottom. This replaces the
+              // IntrinsicHeight + Spacer combo, which forced an expensive
+              // double layout pass on every rebuild.
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      child: Column(
+                        children: [
+                          Align(
+                            alignment: Alignment.topLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 10, top: 10),
+                              child: IconButton(
+                                icon: const Icon(Icons.keyboard_arrow_down, size: 35),
+                                color: isDark ? Colors.white70 : Colors.black54,
+                                onPressed: _minimize,
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            _buildHeaderSection(isDark),
-                            const Spacer(),
-                            if (_hasError) _buildErrorDisplay(isDark),
-                            _buildControlSection(isDark),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 10),
+                          _buildHeaderSection(isDark),
+                          if (_hasError) _buildErrorDisplay(isDark),
+                        ],
                       ),
                     ),
-                  );
-                },
+                  ),
+                  RepaintBoundary(
+                    child: _buildControlSection(isDark),
+                  ),
+                ],
               ),
             ),
 

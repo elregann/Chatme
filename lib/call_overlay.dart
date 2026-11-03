@@ -18,17 +18,40 @@ class CallFloatingBar extends StatefulWidget {
 
 class _CallFloatingBarState extends State<CallFloatingBar> {
   Timer? _ticker;
+  CallState _callState = CallState.idle;
 
   @override
   void initState() {
     super.initState();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
+    _callState = CallManager.instance.callState;
+    CallManager.instance.callStateNotifier.addListener(_onCallStateChanged);
+    _syncTicker();
+  }
+
+  void _onCallStateChanged() {
+    final state = CallManager.instance.callState;
+    if (state == _callState) return;
+    _callState = state;
+    _syncTicker();
+    if (mounted) setState(() {});
+  }
+
+  /// Only the active state needs a per-second rebuild (for the duration).
+  /// Connecting/ringing states used to rebuild once per second for nothing.
+  void _syncTicker() {
+    if (_callState == CallState.active) {
+      _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      _ticker?.cancel();
+      _ticker = null;
+    }
   }
 
   @override
   void dispose() {
+    CallManager.instance.callStateNotifier.removeListener(_onCallStateChanged);
     _ticker?.cancel();
     super.dispose();
   }
@@ -66,20 +89,19 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
 
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            settings: const RouteSettings(name: '/call'),
-            builder: (context) => CallScreen(
-              peerName: manager.activePeerName ?? 'Unknown',
-              peerPubkey: manager.activePeerPubkey ?? '',
-              isIncoming: false,
-              relay: widget.relay,
-              peerColor: manager.activePeerColor ?? Colors.blue,
-              onClose: () {},
-            ),
-          ),
+        final manager = CallManager.instance;
+        final String peerPubkey = manager.activePeerPubkey ?? '';
+        if (peerPubkey.isEmpty) return;
+        // Reuse the shared navigation helper: it guards against stacking two
+        // call screens and never registers a `/call` route name (which would
+        // become a ghost route in the web URL hash).
+        CallScreenNavigator.showCallScreen(
+          context: context,
+          peerName: manager.activePeerName ?? 'Unknown',
+          peerPubkey: peerPubkey,
+          isIncoming: false,
+          relay: widget.relay,
+          peerColor: manager.activePeerColor ?? Colors.blue,
         );
       },
       child: Container(

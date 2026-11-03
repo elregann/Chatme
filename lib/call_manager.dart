@@ -387,11 +387,9 @@ class CallManager {
       ),
     );
 
-    if (_sharedCallState == CallState.idle) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        makeOffer(peerPubkey, relay, () => debugPrint('[Call] Connected'));
-      });
-    }
+    // NOTE: the offer is started by CallScreen itself (after the route
+    // transition completes). Starting it here as well used to race with the
+    // screen's own start path, doing the same heavy WebRTC setup twice.
   }
 
   // Audio device management
@@ -1175,6 +1173,15 @@ class CallManager {
     _isDisposing = true;
     _setCallState(CallState.ending);
 
+    // Snapshot the call's identity NOW. The teardown below awaits (animation
+    // grace window) and the user may start a new call meanwhile, which would
+    // overwrite the active session before the call log is written.
+    final String? peerPubkey = activePeerPubkey;
+    final String? peerName = activePeerName;
+    final int duration = _actualSeconds;
+    final bool wasConnected = _wasCallConnected;
+    final CallType directionType = currentCallDirection;
+
     try {
       _cancelAllTimers();
       NetworkManager().removeChangeListener(_onNetworkChanged);
@@ -1201,12 +1208,6 @@ class CallManager {
 
       _currentRelay?.onSignalReceived = null;
       _currentRelay = null;
-
-      final String? peerPubkey = activePeerPubkey;
-      final String? peerName = activePeerName;
-      final int duration = _actualSeconds;
-      final bool wasConnected = _wasCallConnected;
-      final CallType directionType = currentCallDirection;
 
       if (peerPubkey != null && peerPubkey.isNotEmpty) {
         // Determine the call direction label.

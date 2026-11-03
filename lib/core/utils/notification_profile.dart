@@ -28,11 +28,34 @@ class NotificationProfile {
 
   static const int _size = 192; // px
 
+  /// Small in-memory cache so the notification avatar is not regenerated every
+  /// time the foreground-service notification is updated (connecting →
+  /// active → reconnecting). Keyed by pubkey + name + photo URL, so a rename
+  /// or a new profile picture still refreshes immediately.
+  static final Map<String, _CacheEntry> _cache = <String, _CacheEntry>{};
+  static const int _cacheLimit = 32;
+  static const Duration _avatarTtl = Duration(minutes: 5);
+  static const Duration _failedAvatarTtl = Duration(seconds: 30);
+
   static Future<NotificationProfile> resolve(String pubkey) async {
     await _ensureBoxes();
     final name = _resolveName(pubkey);
-    final avatar = await _buildAvatar(pubkey, name);
-    return NotificationProfile(name, avatar);
+    final photoUrl = _photoUrl(pubkey);
+    final cacheKey = '$pubkey|$name|${photoUrl ?? ''}';
+
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.profile;
+    }
+
+    final avatar = await _buildAvatar(pubkey, name, photoUrl);
+    final profile = NotificationProfile(name, avatar);
+
+    if (_cache.length >= _cacheLimit) {
+      _cache.remove(_cache.keys.first);
+    }
+    _cache[cacheKey] = _CacheEntry(profile, avatar != null);
+    return profile;
   }
 
   // ---------------------------------------------------------------- boxes
@@ -78,11 +101,14 @@ class NotificationProfile {
     return null;
   }
 
-  static Future<Uint8List?> _buildAvatar(String pubkey, String name) async {
+  static Future<Uint8List?> _buildAvatar(
+    String pubkey,
+    String name,
+    String? photoUrl,
+  ) async {
     try {
-      final url = _photoUrl(pubkey);
-      if (url != null) {
-        final photo = await _circlePhoto(url);
+      if (photoUrl != null) {
+        final photo = await _circlePhoto(photoUrl);
         if (photo != null) return photo;
       }
       return await _initialsAvatar(pubkey, name);
@@ -174,5 +200,20 @@ class NotificationProfile {
     final img = await picture.toImage(_size, _size);
     final data = await img.toByteData(format: ui.ImageByteFormat.png);
     return data?.buffer.asUint8List();
+  }
+}
+
+class _CacheEntry {
+  final NotificationProfile profile;
+  final bool hasAvatar;
+  final DateTime createdAt;
+
+  _CacheEntry(this.profile, this.hasAvatar) : createdAt = DateTime.now();
+
+  bool get isExpired {
+    final ttl = hasAvatar
+        ? NotificationProfile._avatarTtl
+        : NotificationProfile._failedAvatarTtl;
+    return DateTime.now().difference(createdAt) > ttl;
   }
 }
