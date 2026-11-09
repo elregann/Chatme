@@ -313,18 +313,44 @@ class CallManager {
       _wasCallConnected = false;
     }
 
-    if (newState == CallState.initializing ||
+    final bool isCallOngoing = newState == CallState.initializing ||
+        newState == CallState.ringing ||
+        newState == CallState.connecting ||
         newState == CallState.active ||
-        newState == CallState.reconnecting) {
+        newState == CallState.reconnecting;
+
+    if (isCallOngoing) {
+      String? statusText;
+      switch (newState) {
+        case CallState.initializing:
+          statusText = currentCallDirection == CallType.incoming ? 'Incoming call' : 'Calling';
+          break;
+        case CallState.ringing:
+          statusText = currentCallDirection == CallType.incoming ? 'Incoming call' : 'Ringing';
+          break;
+        case CallState.connecting:
+          statusText = 'Connecting';
+          break;
+        case CallState.reconnecting:
+          statusText = 'Reconnecting';
+          break;
+        case CallState.active:
+          statusText = null;
+          break;
+        default:
+          statusText = null;
+          break;
+      }
+
       NotificationHandler.startOngoingCall(
         peerName: activePeerName ?? 'Contact',
         peerPubkey: activePeerPubkey ?? '',
         startedAtMs: (callStartTime ?? DateTime.now()).millisecondsSinceEpoch,
-        status: newState == CallState.active
-            ? null
-            : (newState == CallState.reconnecting ? 'Reconnecting' : 'Connecting'),
+        status: statusText,
       );
-    } else if (newState == CallState.idle) {
+    } else if (newState == CallState.idle ||
+        newState == CallState.ending ||
+        newState == CallState.error) {
       NotificationHandler.stopOngoingCall();
     }
 
