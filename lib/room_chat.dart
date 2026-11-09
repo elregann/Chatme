@@ -1866,7 +1866,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                       ScaleTransition(scale: animation, child: child),
                                   child: Icon(
                                     (_isEmojiPanelOpen && !_isEmojiPanelClosing)
-                                        ? Icons.keyboard_rounded
+                                        ? Icons.keyboard
                                         : Icons.emoji_emotions_outlined,
                                     key: ValueKey(_isEmojiPanelOpen && !_isEmojiPanelClosing),
                                     color: (_isEmojiPanelOpen && !_isEmojiPanelClosing)
@@ -1885,10 +1885,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     ),
                   ),
                   Expanded(
-                    child: ConstrainedBox(
+                    child: Container(
                       constraints: const BoxConstraints(
                         minHeight: _composerBarHeight,
                       ),
+                      alignment: Alignment.center,
                       child: TextField(
                         controller: _messageController,
                         focusNode: _focusNode,
@@ -1898,16 +1899,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         textAlignVertical: TextAlignVertical.center,
                         style: TextStyle(
                           fontSize: 16,
+                          height: 1.25,
                           color: inputTextColor,
                         ),
                         decoration: InputDecoration(
                           hintText: 'Message',
                           hintStyle: TextStyle(
+                            fontSize: 16,
+                            height: 1.25,
                             color: inputHintColor,
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 6,
-                            vertical: 12,
+                            vertical: 10,
                           ),
                           border: InputBorder.none,
                           isDense: true,
