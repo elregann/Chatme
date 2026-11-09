@@ -15,6 +15,7 @@ import 'core/utils/key_utils.dart';
 import 'services/app_settings.dart';
 import 'ui/contacts/add_contact.dart';
 import 'widgets/user_avatar.dart';
+import 'widgets/chatme_search_bar.dart';
 import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'package:remixicon/remixicon.dart';
@@ -189,50 +190,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
         body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  focusNode: _searchFocusNode,
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val.toLowerCase();
-                    });
+            ChatmeSearchBar(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              hintText: 'Search people by ID or name',
+              onChanged: (val) {
+                setState(() => _searchQuery = val.toLowerCase());
 
-                    // Debounce 500ms before querying Firebase
-                    if (_debounce?.isActive ?? false) _debounce!.cancel();
-                    _debounce = Timer(const Duration(milliseconds: 500), () {
-                      _searchGlobalUser(_searchQuery);
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search people by ID or name',
-                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-                    prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 20),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = "";
-                        });
-                        _searchFocusNode.unfocus();
-                      },
-                    )
-                        : null,
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.only(top: 10),
-                  ),
-                ),
-              ),
+                // Debounce 500ms before querying Firebase
+                if (_debounce?.isActive ?? false) _debounce!.cancel();
+                _debounce = Timer(const Duration(milliseconds: 500), () {
+                  _searchGlobalUser(_searchQuery);
+                });
+              },
+              onClear: () => setState(() => _searchQuery = ""),
             ),
 
             ValueListenableBuilder<CallState>(

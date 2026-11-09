@@ -17,6 +17,7 @@ import 'models/chat_message.dart';
 import 'core/utils/time_utils.dart';
 import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
+import 'widgets/chatme_search_bar.dart';
 import 'ui/contacts/contact_profile.dart';
 
 class ChatsScreen extends StatefulWidget {
@@ -127,8 +128,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return GestureDetector(
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
@@ -145,44 +144,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
         ),
         body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  focusNode: _searchFocusNode,
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val.toLowerCase();
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search contact or messages',
-                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-                    prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 20),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = "";
-                        });
-                        _searchFocusNode.unfocus();
-                      },
-                    )
-                        : null,
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.only(top: 10),
-                  ),
-                ),
-              ),
+            ChatmeSearchBar(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              hintText: 'Search contact or messages',
+              onChanged: (val) {
+                setState(() => _searchQuery = val.toLowerCase());
+              },
+              onClear: () => setState(() => _searchQuery = ""),
             ),
 
             ValueListenableBuilder<CallState>(
