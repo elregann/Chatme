@@ -276,12 +276,22 @@ class CallManager {
     currentCallDirection = CallType.outgoing;
   }
 
+  static const MethodChannel _taskChannel = MethodChannel('com.chatme.app/task');
+
   Future<void> _setNativeCallActive(bool active) async {
     if (kIsWeb) return;
     try {
-      await const MethodChannel('com.chatme.app/task')
-          .invokeMethod('setCallActive', active);
+      await _taskChannel.invokeMethod('setCallActive', active);
     } catch (_) {}
+  }
+
+  Future<void> _setNativeSpeakerphone(bool enabled) async {
+    if (kIsWeb) return;
+    try {
+      await _taskChannel.invokeMethod('setSpeakerphone', enabled);
+    } catch (e) {
+      debugPrint('[Call] setNativeSpeakerphone failed | $e');
+    }
   }
 
   // State management
@@ -304,6 +314,8 @@ class CallManager {
       activePeerName = null;
       activePeerPubkey = null;
       activePeerColor = null;
+      _speaker.reset(false);
+      _setNativeSpeakerphone(false);
 
       // Reset the "was connected" flag so the next incoming call
       // starts from a clean slate. Without this reset, a call that
@@ -469,6 +481,7 @@ class CallManager {
       if (!kIsWeb && _localStream!.getAudioTracks().isNotEmpty) {
         try {
           _localStream!.getAudioTracks()[0].enableSpeakerphone(false);
+          await _setNativeSpeakerphone(false);
         } catch (e) {
           debugPrint('[Call] Cannot set speakerphone | $e');
         }
@@ -509,6 +522,7 @@ class CallManager {
     final changed = await _speaker.toggle((on) async {
       if (!kIsWeb) {
         track.enableSpeakerphone(on);
+        await _setNativeSpeakerphone(on);
       } else {
         debugPrint('[Call] Web speaker mode: $on');
       }

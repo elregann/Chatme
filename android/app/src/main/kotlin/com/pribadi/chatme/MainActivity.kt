@@ -2,7 +2,10 @@ package com.pribadi.chatme
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Bundle
 import android.os.Looper
@@ -90,8 +93,49 @@ class MainActivity: FlutterActivity() {
                 }
                 "setCallActive" -> {
                     callActive = (call.arguments as? Boolean) ?: false
-                    if (!callActive) releaseRetainedEngineIfIdle()
+                    if (!callActive) {
+                        releaseRetainedEngineIfIdle()
+                        try {
+                            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                audioManager.clearCommunicationDevice()
+                            }
+                            @Suppress("DEPRECATION")
+                            audioManager.isSpeakerphoneOn = false
+                        } catch (_: Exception) {}
+                    }
                     result.success(true)
+                }
+                "setSpeakerphone" -> {
+                    val enabled = (call.arguments as? Boolean) ?: false
+                    try {
+                        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        if (enabled && audioManager.mode != AudioManager.MODE_IN_COMMUNICATION) {
+                            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (enabled) {
+                                val devices = audioManager.availableCommunicationDevices
+                                val speakerDevice = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                                if (speakerDevice != null) {
+                                    audioManager.setCommunicationDevice(speakerDevice)
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    audioManager.isSpeakerphoneOn = true
+                                }
+                            } else {
+                                audioManager.clearCommunicationDevice()
+                                @Suppress("DEPRECATION")
+                                audioManager.isSpeakerphoneOn = false
+                            }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            audioManager.isSpeakerphoneOn = enabled
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("AUDIO_ERROR", e.message, null)
+                    }
                 }
                 else -> result.notImplemented()
             }
