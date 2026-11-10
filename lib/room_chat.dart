@@ -1548,6 +1548,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                   highlighted: _highlightedIds.contains(message.id),
                                   color: accentColor.withAlpha(56),
                                   bleed: _listSidePadding,
+                                  bottomInset: MessageBubble.bottomGap(message.reactions.isNotEmpty),
                                   child: message.senderPubkey == AppSettings.instance.myPubkey
                                       ? _wrapMyDismissible(message)
                                       : _wrapTheirDismissible(message),

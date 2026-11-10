@@ -12,6 +12,7 @@ class MessageHighlight extends StatelessWidget {
     required this.color,
     required this.child,
     this.bleed = 0,
+    this.bottomInset = 0,
   });
 
   static const Duration fade = Duration(milliseconds: 300);
@@ -19,6 +20,10 @@ class MessageHighlight extends StatelessWidget {
   final bool highlighted;
   final Color color;
   final double bleed;
+
+  /// Space at the bottom of [child] that the band should leave uncovered.
+  final double bottomInset;
+
   final Widget child;
 
   @override
@@ -30,6 +35,7 @@ class MessageHighlight extends StatelessWidget {
         Positioned.fill(
           left: -bleed,
           right: -bleed,
+          bottom: bottomInset,
           child: IgnorePointer(
             child: AnimatedOpacity(
               key: const Key('message_highlight_fade'),

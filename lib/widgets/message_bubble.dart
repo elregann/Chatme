@@ -64,6 +64,9 @@ class MessageBubble extends StatelessWidget {
   static const double _outerMargin = 12;
   static const double _horizontalPadding = 10;
 
+  /// Space under a bubble. Reactions hang below it, so they need more room.
+  static double bottomGap(bool hasReactions) => hasReactions ? 25 : 2;
+
   /// Rough width of the time and ticks, so a short message leaves room for them
   /// on the right instead of putting them on their own line.
   static const double _footerReserve = 64;
@@ -123,7 +126,7 @@ class MessageBubble extends StatelessWidget {
     final hasPreview = previewUrl != null;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: hasReactions ? 25 : 2),
+      padding: EdgeInsets.only(bottom: bottomGap(hasReactions)),
       child: GestureDetector(
         onLongPressStart: onLongPressStart,
         child: Stack(
@@ -197,7 +200,7 @@ class MessageBubble extends StatelessWidget {
     );
 
     return Padding(
-      padding: EdgeInsets.only(bottom: hasReactions ? 25 : 2),
+      padding: EdgeInsets.only(bottom: bottomGap(hasReactions)),
       child: GestureDetector(
         onLongPressStart: onLongPressStart,
         child: Stack(

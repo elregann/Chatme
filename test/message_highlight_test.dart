@@ -86,4 +86,26 @@ void main() {
     await tester.tap(find.byKey(_rowKey), warnIfMissed: false);
     expect(taps, 1);
   });
+
+  testWidgets('leaves the bottom inset uncovered', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 300,
+            child: MessageHighlight(
+              highlighted: true,
+              color: _blue,
+              bottomInset: 2,
+              child: SizedBox(key: _rowKey, width: 300, height: 40),
+            ),
+          ),
+        ),
+      ),
+    ));
+    final row = tester.getRect(find.byKey(_rowKey));
+    final band = tester.getRect(find.byKey(_bandKey));
+    expect(band.top, row.top);
+    expect(band.bottom, row.bottom - 2);
+  });
 }
