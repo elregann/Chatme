@@ -518,10 +518,8 @@ class CallManager {
 
   Future<void> toggleSpeaker() async {
     if (_localStream == null || _localStream!.getAudioTracks().isEmpty) return;
-    final track = _localStream!.getAudioTracks()[0];
     final changed = await _speaker.toggle((on) async {
       if (!kIsWeb) {
-        track.enableSpeakerphone(on);
         await _setNativeSpeakerphone(on);
       } else {
         debugPrint('[Call] Web speaker mode: $on');

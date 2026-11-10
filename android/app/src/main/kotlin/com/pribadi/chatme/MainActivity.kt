@@ -125,8 +125,6 @@ class MainActivity: FlutterActivity() {
                                 }
                             } else {
                                 audioManager.clearCommunicationDevice()
-                                @Suppress("DEPRECATION")
-                                audioManager.isSpeakerphoneOn = false
                             }
                         } else {
                             @Suppress("DEPRECATION")
