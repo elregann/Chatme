@@ -28,6 +28,7 @@ import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'services/link_preview_service.dart';
 import 'widgets/message_bubble.dart';
+import 'widgets/message_highlight.dart';
 import 'widgets/chatme_menu.dart';
 import 'services/image_prepare.dart';
 import 'package:image_picker/image_picker.dart';
@@ -43,6 +44,7 @@ const double _composerBarRadius = 26.0;
 const double _composerBarInset = 6.0;
 const double _composerInnerRadius = _composerBarRadius - _composerBarInset;
 const double _composerSendSize = 42.0;
+const double _listSidePadding = 8.0;
 
 class ChatDetailScreen extends StatefulWidget {
   final Contact contact;
@@ -51,11 +53,15 @@ class ChatDetailScreen extends StatefulWidget {
   /// A picture from the viewer that should become the reply target.
   final ChatMessage? initialReply;
 
+  /// A message to scroll to and highlight once the chat has opened.
+  final String? initialMessageId;
+
   const ChatDetailScreen({
     super.key,
     required this.contact,
     required this.relayManager,
     this.initialReply,
+    this.initialMessageId,
   });
 
   @override
@@ -185,6 +191,29 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
+    if (widget.initialMessageId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _jumpAfterRouteOpens());
+    }
+  }
+
+  Animation<double>? _openAnimation;
+
+  void _jumpAfterRouteOpens() {
+    if (!mounted) return;
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation == null || animation.isCompleted) {
+      _scrollToMessage(widget.initialMessageId);
+      return;
+    }
+    _openAnimation = animation;
+    animation.addStatusListener(_onOpenAnimationStatus);
+  }
+
+  void _onOpenAnimationStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    _openAnimation?.removeStatusListener(_onOpenAnimationStatus);
+    _openAnimation = null;
+    if (mounted) _scrollToMessage(widget.initialMessageId);
   }
 
   @override
@@ -407,6 +436,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   @override
   void dispose() {
+    _openAnimation?.removeStatusListener(_onOpenAnimationStatus);
     WidgetsBinding.instance.removeObserver(this);
     if (_chatHandle != null) ChatScreenRegistry.unregister(_chatHandle!);
     _removeReactionOverlay();
@@ -1485,7 +1515,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         itemCount: _cachedMessages.length,
                         reverse: true,
                         physics: const ClampingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: _listSidePadding, vertical: 8),
                         itemBuilder: (context, index) {
                           final message = _cachedMessages[index];
                           double topPadding = 1;
@@ -1514,9 +1544,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                               if (showDateDivider) _buildDateDivider(_getDateLabel(message.timestamp)),
                               Padding(
                                 padding: EdgeInsets.only(top: topPadding),
-                                child: message.senderPubkey == AppSettings.instance.myPubkey
-                                    ? _wrapMyDismissible(message)
-                                    : _wrapTheirDismissible(message),
+                                child: MessageHighlight(
+                                  highlighted: _highlightedIds.contains(message.id),
+                                  color: accentColor.withAlpha(56),
+                                  bleed: _listSidePadding,
+                                  child: message.senderPubkey == AppSettings.instance.myPubkey
+                                      ? _wrapMyDismissible(message)
+                                      : _wrapTheirDismissible(message),
+                                ),
                               ),
                             ],
                           );
@@ -2330,7 +2365,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       replyPreview: hasReply
           ? _formatMessagePreview(message.replyToContent!)
           : null,
-      highlighted: _highlightedIds.contains(message.id),
       onReplyTap: () => _scrollToMessage(message.replyToId),
       onLongPressStart: (details) =>
           _showReactionPopup(context, details.globalPosition, message),

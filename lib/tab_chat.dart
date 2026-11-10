@@ -298,6 +298,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                   Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(
                                     contact: contact,
                                     relayManager: widget.relayManager,
+                                    initialMessageId: msg.id,
                                   )));
                                 },
                               );

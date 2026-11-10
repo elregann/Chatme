@@ -39,7 +39,6 @@ class MessageBubble extends StatelessWidget {
   /// Already formatted reply text, if there is a reply.
   final String? replyPreview;
 
-  final bool highlighted;
   final VoidCallback? onReplyTap;
   final void Function(LongPressStartDetails details)? onLongPressStart;
 
@@ -56,7 +55,6 @@ class MessageBubble extends StatelessWidget {
     this.previewUrl,
     this.replySenderName,
     this.replyPreview,
-    this.highlighted = false,
     this.onReplyTap,
     this.onLongPressStart,
   });
@@ -126,65 +124,62 @@ class MessageBubble extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.only(bottom: hasReactions ? 25 : 2),
-      child: Container(
-        decoration: _highlightDecoration,
-        child: GestureDetector(
-          onLongPressStart: onLongPressStart,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                key: const Key('message_bubble_surface'),
-                constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-                margin: EdgeInsetsDirectional.only(
-                  start: isMe ? _sideMargin : _outerMargin,
-                  end: isMe ? _outerMargin : _sideMargin,
-                ),
-                padding: const EdgeInsets.fromLTRB(
-                  _horizontalPadding,
-                  0,
-                  _horizontalPadding,
-                  6,
-                ),
-                decoration: _bubbleDecoration,
-                child: IntrinsicWidth(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (hasReply) _buildReply(context),
-                      if (hasPreview)
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: maxContentWidth,
-                          ),
-                          child: LinkPreviewCard(
-                            key: ValueKey('${message.id}_$previewUrl'),
-                            url: previewUrl!,
-                            textColor: textColor,
-                            backgroundColor: isNostrCyber
-                                ? (isMe
-                                    ? Colors.black.withAlpha(15)
-                                    : Colors.white.withAlpha(20))
-                                : (isDark
-                                    ? Colors.black.withAlpha(40)
-                                    : Colors.black.withAlpha(15)),
-                          ),
+      child: GestureDetector(
+        onLongPressStart: onLongPressStart,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              key: const Key('message_bubble_surface'),
+              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+              margin: EdgeInsetsDirectional.only(
+                start: isMe ? _sideMargin : _outerMargin,
+                end: isMe ? _outerMargin : _sideMargin,
+              ),
+              padding: const EdgeInsets.fromLTRB(
+                _horizontalPadding,
+                0,
+                _horizontalPadding,
+                6,
+              ),
+              decoration: _bubbleDecoration,
+              child: IntrinsicWidth(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (hasReply) _buildReply(context),
+                    if (hasPreview)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: maxContentWidth,
                         ),
-                      const SizedBox(height: 4),
-                      _buildContent(context, maxContentWidth, emojiCount),
-                    ],
-                  ),
+                        child: LinkPreviewCard(
+                          key: ValueKey('${message.id}_$previewUrl'),
+                          url: previewUrl!,
+                          textColor: textColor,
+                          backgroundColor: isNostrCyber
+                              ? (isMe
+                                  ? Colors.black.withAlpha(15)
+                                  : Colors.white.withAlpha(20))
+                              : (isDark
+                                  ? Colors.black.withAlpha(40)
+                                  : Colors.black.withAlpha(15)),
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    _buildContent(context, maxContentWidth, emojiCount),
+                  ],
                 ),
               ),
-              if (hasReactions)
-                Positioned(
-                  bottom: -21,
-                  right: isMe ? 20 : 58,
-                  child: _buildReactions(context),
-                ),
-            ],
-          ),
+            ),
+            if (hasReactions)
+              Positioned(
+                bottom: -21,
+                right: isMe ? 20 : 58,
+                child: _buildReactions(context),
+              ),
+          ],
         ),
       ),
     );
@@ -203,66 +198,63 @@ class MessageBubble extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.only(bottom: hasReactions ? 25 : 2),
-      child: Container(
-        decoration: _highlightDecoration,
-        child: GestureDetector(
-          onLongPressStart: onLongPressStart,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Padding(
-                padding: EdgeInsetsDirectional.only(
-                  start: isMe ? _sideMargin : _outerMargin,
-                  end: isMe ? _outerMargin : _sideMargin,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      if (hasReply) _buildReply(context),
-                      if (hasReply) const SizedBox(height: 4),
-                      Text(
-                        message.plaintext,
-                        key: const Key('emoji_message'),
-                        textAlign: TextAlign.left,
-                        textScaler: textScaler,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: emojiFontSizeForCount(emojiCount),
-                          height: 1.2,
+      child: GestureDetector(
+        onLongPressStart: onLongPressStart,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: isMe ? _sideMargin : _outerMargin,
+                end: isMe ? _outerMargin : _sideMargin,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (hasReply) _buildReply(context),
+                    if (hasReply) const SizedBox(height: 4),
+                    Text(
+                      message.plaintext,
+                      key: const Key('emoji_message'),
+                      textAlign: TextAlign.left,
+                      textScaler: textScaler,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: emojiFontSizeForCount(emojiCount),
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      key: const Key('emoji_footer'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: bubbleColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isDark ? Colors.white12 : Colors.black12,
+                          width: 0.5,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Container(
-                        key: const Key('emoji_footer'),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: bubbleColor,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: isDark ? Colors.white12 : Colors.black12,
-                            width: 0.5,
-                          ),
-                        ),
-                        child: footer,
-                      ),
-                    ],
-                  ),
+                      child: footer,
+                    ),
+                  ],
                 ),
               ),
-              if (hasReactions)
-                Positioned(
-                  bottom: -21,
-                  right: isMe ? 20 : 58,
-                  child: _buildReactions(context),
-                ),
-            ],
-          ),
+            ),
+            if (hasReactions)
+              Positioned(
+                bottom: -21,
+                right: isMe ? 20 : 58,
+                child: _buildReactions(context),
+              ),
+          ],
         ),
       ),
     );
@@ -473,11 +465,6 @@ class MessageBubble extends StatelessWidget {
       ),
     );
   }
-
-  BoxDecoration get _highlightDecoration => BoxDecoration(
-        color: highlighted ? Colors.blue.withAlpha(40) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      );
 
   BoxDecoration get _bubbleDecoration => BoxDecoration(
         color: bubbleColor,
