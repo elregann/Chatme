@@ -33,11 +33,19 @@ class Contact {
     this.globalId,
   });
 
+  /// True when [name] is not a real, user-authored name but a placeholder
+  /// (empty, an npub stub, a "User ..." stub, or the raw pubkey). Placeholder
+  /// values must never be published as identity or stored on a contact row.
+  static bool isPlaceholderName(String name, String pubkey) {
+    if (name.isEmpty) return true;
+    if (name.startsWith('npub1')) return true;
+    if (name.startsWith('User ')) return true;
+    if (name == pubkey) return true;
+    return false;
+  }
+
   String get displayName {
-    if (name.isEmpty) return KeyUtils.formatDisplayName(pubkey);
-    if (name.startsWith('npub1')) return KeyUtils.formatDisplayName(pubkey);
-    if (name.startsWith('User ')) return KeyUtils.formatDisplayName(pubkey);
-    if (name == pubkey) return KeyUtils.formatDisplayName(pubkey);
+    if (isPlaceholderName(name, pubkey)) return KeyUtils.formatDisplayName(pubkey);
     return name;
   }
 

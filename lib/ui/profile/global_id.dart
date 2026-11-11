@@ -296,6 +296,10 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
           await widget.relayManager?.broadcastProfileKind0();
         } catch (_) {}
 
+        // The identity was just released — clear it from our own contact
+        // row too so the chat list immediately falls back to npub.
+        await AppSettings.clearContactIdentity(AppSettings.instance.myPubkey);
+
         if (!mounted) return;
         setState(() {
           _isLoading = false;

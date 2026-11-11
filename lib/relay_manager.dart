@@ -464,7 +464,15 @@ class RelayManager {
                 }
 
                 final name = content['name'] is String ? content['name'] as String : null;
-                if (name != null && name.isNotEmpty) {
+                final nip05 = content['nip05'] is String ? content['nip05'] as String : null;
+                final hasValidName = name != null &&
+                    name.isNotEmpty &&
+                    !Contact.isPlaceholderName(name, pubkey);
+
+                // Placeholder names (npub stubs etc., published by older
+                // clients while their global ID was disconnected) are not a
+                // real identity — never let them pollute the contact row.
+                if (hasValidName) {
                   try {
                     final contactsBox = Hive.box<Contact>('contacts');
                     final contact = contactsBox.get(pubkey);
@@ -498,6 +506,15 @@ class RelayManager {
                       }
                     }
                   } catch (_) {}
+                }
+
+                if (!hasValidName && (nip05 == null || nip05.isEmpty)) {
+                  // A newer kind-0 with neither a name nor a nip05 is the
+                  // signature of a released global ID (ChatMe's disconnect
+                  // broadcast; old app versions published an npub stub in
+                  // its place). Drop the cached identity so the row falls
+                  // back to npub instead of showing a stale handle.
+                  await AppSettings.clearContactIdentity(pubkey);
                 }
 
                 // Note: no manual onMessageReceived here. The UI already
@@ -1341,9 +1358,13 @@ class RelayManager {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
       final myPrivkey = AppSettings.instance.myPrivkey;
-      final myName = AppSettings.instance.myNip05.isNotEmpty
+      // Only publish a real global ID handle as the name. While the user's
+      // global ID is disconnected we omit `name` entirely rather than
+      // publishing an npub stub, so peers never store a placeholder as our
+      // identity.
+      final String? myName = AppSettings.instance.myNip05.isNotEmpty
           ? AppSettings.instance.myNip05.split('@')[0]
-          : AppSettings.formatDisplayName(myPubkey);
+          : null;
 
       String? effectivePhotoUrl = photoUrl;
       if (removePhoto) {
@@ -1355,7 +1376,7 @@ class RelayManager {
       }
 
       final content = jsonEncode({
-        'name': myName,
+        if (myName != null && myName.isNotEmpty) 'name': myName,
         if (AppSettings.instance.myNip05.isNotEmpty)
           'nip05': AppSettings.instance.myNip05,
         if (effectivePhotoUrl != null && effectivePhotoUrl.isNotEmpty) 'picture': effectivePhotoUrl,

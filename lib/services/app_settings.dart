@@ -348,6 +348,7 @@ Backup Date: ${DateTime.now().toString()}
 
   static Future<void> hydrateMissingContactNames() async {
     await _migrateContactGlobalIds();
+    await _cleanupPlaceholderGlobalIds();
     final contactsBox = Hive.box<Contact>('contacts');
     for (final key in contactsBox.keys.toList()) {
       await hydrateSingleContact(key.toString());
@@ -380,6 +381,72 @@ Backup Date: ${DateTime.now().toString()}
     } catch (e) {
       DebugLogger.log('[Settings] Global ID migration failed | $e', type: 'ERROR');
     }
+  }
+
+  /// One-time cleanup for placeholder values that leaked into `globalId`
+  /// from kind-0 profiles published by older app versions while the user's
+  /// global ID was disconnected (e.g. "npub1..." stubs). Only `globalId` is
+  /// cleared — the local `name` is user-authored and is never touched.
+  static Future<void> _cleanupPlaceholderGlobalIds() async {
+    final settingsBox = Hive.box('settings');
+    const migrationKey = 'contact_global_id_placeholder_cleanup';
+    if (settingsBox.get(migrationKey, defaultValue: false) == true) return;
+
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      var cleaned = 0;
+      for (final key in contactsBox.keys.toList()) {
+        final contact = contactsBox.get(key.toString());
+        if (contact == null) continue;
+        if (contact.globalId != null &&
+            Contact.isPlaceholderName(contact.globalId!, contact.pubkey)) {
+          contact.globalId = null;
+          await contactsBox.put(key, contact);
+          cleaned++;
+        }
+      }
+      await settingsBox.put(migrationKey, true);
+      if (cleaned > 0) {
+        DebugLogger.log(
+          '[Settings] Placeholder global ID cleanup done ($cleaned contacts)',
+          type: 'SETUP',
+        );
+      }
+    } catch (e) {
+      DebugLogger.log('[Settings] Placeholder global ID cleanup failed | $e', type: 'ERROR');
+    }
+  }
+
+  /// Clears the cached identity (globalId and, when the row is not saved,
+  /// the name) from the local contact row for [pubkey]. Called when a
+  /// global ID is released — locally on disconnect, and from the kind-0
+  /// receiver when a peer's newest profile is bare (no name, no nip05) —
+  /// so the row immediately falls back to the npub display.
+  static Future<void> clearContactIdentity(String pubkey) async {
+    if (pubkey.isEmpty) return;
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      final contact = contactsBox.get(pubkey);
+      if (contact == null) return;
+
+      var changed = false;
+      if (contact.globalId != null) {
+        contact.globalId = null;
+        changed = true;
+      }
+      if (!contact.isSaved && contact.name.isNotEmpty) {
+        contact.name = '';
+        changed = true;
+      }
+      if (changed) {
+        await contactsBox.put(pubkey, contact);
+        await ShortcutHelper.pushConversationShortcut(
+          id: pubkey,
+          name: contact.displayName,
+          avatarBytes: null,
+        );
+      }
+    } catch (_) {}
   }
 
   /// Default display name for a pubkey (fallback when no username is set)
