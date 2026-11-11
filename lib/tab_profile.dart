@@ -21,6 +21,7 @@ import 'ui/chat_image_crop_page.dart';
 import 'package:remixicon/remixicon.dart';
 import 'dart:io' show File, Platform;
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/profile_photo_viewer.dart';
@@ -45,6 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _currentHandle = "";
   String? _localPhotoPath;
   String? _remotePhotoUrl;
+  String _appVersion = "";
 
   @override
   void initState() {
@@ -61,6 +63,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _isEditing = false;
       _nip05Controller.text = _currentHandle.split('@')[0];
     }
+    _loadAppVersion();
+  }
+
+  // The version comes from the built app, which follows pubspec.yaml, so the
+  // Me page never needs a manual version bump again.
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() => _appVersion = info.version);
   }
 
   @override
@@ -873,7 +884,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.36.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text(_appVersion, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),
