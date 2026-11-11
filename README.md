@@ -10,6 +10,7 @@
 ![Platform: Android](https://img.shields.io/badge/platform-Android-3DDC84.svg)
 ![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B.svg)
 ![Protocol: Nostr](https://img.shields.io/badge/protocol-Nostr-8E44AD.svg)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/elregann/badge.svg)](https://hub.xerj.org/contributors/elregann)
 ![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)
 
 </div>

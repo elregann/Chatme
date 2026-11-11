@@ -97,6 +97,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         lastChatTime: 0,
         lastMessage: '',
         unreadCount: 0,
+        globalId: name,
       );
       await contactsBox.put(normalizedPubkey, contact);
 
@@ -154,6 +155,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
       final newName = globalName ?? '';
       contact.isSaved = false;
       contact.name = newName;
+      // Removing a contact drops the local nickname, but the claimed
+      // global ID is the peer's remote identity — keep it around so the
+      // profile page keeps showing the correct `edwards@chatme` handle.
+      if (globalName != null && globalName.isNotEmpty) {
+        contact.globalId = globalName;
+      }
 
       if (contact.lastMessage.isNotEmpty || newName.isNotEmpty) {
         await contactsBox.put(contact.pubkey, contact);
@@ -283,6 +290,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                 lastChatTime: 0,
                                 lastMessage: '',
                                 unreadCount: 0,
+                                globalId: res['username'],
                               );
 
                               Navigator.push(

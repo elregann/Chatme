@@ -14,6 +14,15 @@ class Contact {
   @HiveField(4) int unreadCount;
   @HiveField(5) bool isSaved;
 
+  /// The contact's claimed global ID handle (e.g. "edwards" in
+  /// "edwards@chatme"). This is the contact's remote identity and is kept
+  /// separate from [name] — which holds the local, possibly renamed,
+  /// nickname — so renaming a contact never clobbers it.
+  ///
+  /// Nullable so records written before this field existed (which lack
+  /// Hive field 6) still deserialize cleanly.
+  @HiveField(6) String? globalId;
+
   Contact({
     required this.pubkey,
     required this.name,
@@ -21,6 +30,7 @@ class Contact {
     this.lastMessage = '',
     this.unreadCount = 0,
     this.isSaved = false,
+    this.globalId,
   });
 
   String get displayName {
@@ -31,12 +41,11 @@ class Contact {
     return name;
   }
 
+  /// Non-null view of [globalId], handy for display ("edwards@chatme").
+  String get globalHandle => globalId ?? '';
+
   bool get hasGlobalId {
-    if (name.isEmpty) return false;
-    if (name.startsWith('npub1')) return false;
-    if (name.startsWith('User ')) return false;
-    if (name == pubkey) return false;
-    return true;
+    return globalHandle.isNotEmpty;
   }
 
   Map<String, dynamic> toMap() {

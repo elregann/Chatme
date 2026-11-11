@@ -146,7 +146,7 @@ class ContactProfilePage extends StatelessWidget {
                     if (current.hasGlobalId) ...[
                       const SizedBox(height: 4),
                       Text(
-                        '${current.name}@chatme',
+                        '${current.globalHandle}@chatme',
                         style: TextStyle(fontSize: 13, color: textSecondary),
                       ),
                     ],

@@ -321,8 +321,15 @@ Backup Date: ${DateTime.now().toString()}
       if (name != null && name.isNotEmpty) {
         final contactsBox = Hive.box<Contact>('contacts');
         final contact = contactsBox.get(pubkey);
-        if (contact != null && !contact.hasGlobalId) {
-          contact.name = name;
+        if (contact != null) {
+          // The claimed global ID is the contact's remote identity — always
+          // recorded, and never clobbered by a locally saved nickname.
+          contact.globalId = name;
+          // The display name only follows the claimed ID while the user
+          // hasn't saved their own nickname for this contact.
+          if (!contact.isSaved) {
+            contact.name = name;
+          }
           await contactsBox.put(pubkey, contact);
 
           // Keep Android conversation shortcut label in sync with the new global ID
@@ -340,9 +347,38 @@ Backup Date: ${DateTime.now().toString()}
   }
 
   static Future<void> hydrateMissingContactNames() async {
+    await _migrateContactGlobalIds();
     final contactsBox = Hive.box<Contact>('contacts');
     for (final key in contactsBox.keys.toList()) {
       await hydrateSingleContact(key.toString());
+    }
+  }
+
+  /// One-time migration for the split between local nicknames and global
+  /// IDs: wipe the per-contact hydration flags so every existing contact
+  /// re-fetches its claimed global ID once. Contacts saved before the
+  /// `globalId` field existed (e.g. renamed to a local nickname, which used
+  /// to clobber the handle shown on the profile page) recover their
+  /// `edwards@chatme` identity this way.
+  static Future<void> _migrateContactGlobalIds() async {
+    final settingsBox = Hive.box('settings');
+    const migrationKey = 'contact_global_id_split_migration';
+    if (settingsBox.get(migrationKey, defaultValue: false) == true) return;
+
+    try {
+      final flags = settingsBox.keys
+          .where((k) => k.toString().startsWith('hydrated_'))
+          .toList();
+      if (flags.isNotEmpty) {
+        await settingsBox.deleteAll(flags);
+      }
+      await settingsBox.put(migrationKey, true);
+      DebugLogger.log(
+        '[Settings] Global ID migration done (${flags.length} contacts re-hydrating)',
+        type: 'SETUP',
+      );
+    } catch (e) {
+      DebugLogger.log('[Settings] Global ID migration failed | $e', type: 'ERROR');
     }
   }
 

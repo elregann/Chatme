@@ -885,6 +885,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         lastChatTime: DateTime.now().millisecondsSinceEpoch,
         lastMessage: text,
         unreadCount: 0,
+        globalId: widget.contact.globalId,
       );
       await contactsBox.put(widget.contact.pubkey, newContact);
       DebugLogger.log('[Chat] Temporary contact registered: ${widget.contact.name}', type: 'DATABASE');

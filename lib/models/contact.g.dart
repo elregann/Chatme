@@ -23,13 +23,14 @@ class ContactAdapter extends TypeAdapter<Contact> {
       lastMessage: fields[3] as String,
       unreadCount: fields[4] as int,
       isSaved: fields[5] as bool,
+      globalId: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Contact obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.pubkey)
       ..writeByte(1)
@@ -41,7 +42,9 @@ class ContactAdapter extends TypeAdapter<Contact> {
       ..writeByte(4)
       ..write(obj.unreadCount)
       ..writeByte(5)
-      ..write(obj.isSaved);
+      ..write(obj.isSaved)
+      ..writeByte(6)
+      ..write(obj.globalId);
   }
 
   @override

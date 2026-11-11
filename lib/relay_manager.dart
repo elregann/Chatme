@@ -468,16 +468,34 @@ class RelayManager {
                   try {
                     final contactsBox = Hive.box<Contact>('contacts');
                     final contact = contactsBox.get(pubkey);
-                    if (contact != null && (!contact.hasGlobalId || !contact.isSaved)) {
-                      contact.name = name;
-                      await contactsBox.put(pubkey, contact);
+                    if (contact != null) {
+                      var changed = false;
 
-                      // Keep Android conversation shortcut label in sync with profile name
-                      await ShortcutHelper.pushConversationShortcut(
-                        id: pubkey,
-                        name: contact.displayName,
-                        avatarBytes: null,
-                      );
+                      // The global ID is the contact's remote identity —
+                      // always keep it fresh, but never let a locally saved
+                      // nickname clobber it (it lives in its own field).
+                      if (contact.globalId != name) {
+                        contact.globalId = name;
+                        changed = true;
+                      }
+
+                      // The display name only follows remote metadata while
+                      // the user hasn't saved their own nickname yet.
+                      if (!contact.isSaved && contact.name != name) {
+                        contact.name = name;
+                        changed = true;
+                      }
+
+                      if (changed) {
+                        await contactsBox.put(pubkey, contact);
+
+                        // Keep Android conversation shortcut label in sync with profile name
+                        await ShortcutHelper.pushConversationShortcut(
+                          id: pubkey,
+                          name: contact.displayName,
+                          avatarBytes: null,
+                        );
+                      }
                     }
                   } catch (_) {}
                 }
