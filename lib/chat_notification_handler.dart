@@ -12,6 +12,7 @@ import 'core/crypto/nip17.dart';
 import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nip04.dart';
 import 'core/utils/notification_profile.dart';
+import 'core/utils/sync_gate.dart';
 import 'models/contact.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'call_notification_handler.dart';
@@ -169,6 +170,14 @@ class ChatNotificationHandler {
     final senderName = message.data['senderName'] ?? 'New Message';
     final body = message.notification?.body ?? message.data['body'] ?? '';
     final eventId = message.data['eventId'] ?? '';
+    final fcmType = message.data['type'] ?? '';
+
+    // During the initial sync (account restore / first login) the relays
+    // are replaying stored history — stay silent. Incoming calls are the
+    // exception: they are live, time-sensitive signals, never history.
+    if (SyncGate.isActive && fcmType != 'call' && fcmType != 'call_cancel') {
+      return;
+    }
 
     if (eventId.isNotEmpty) {
       try {

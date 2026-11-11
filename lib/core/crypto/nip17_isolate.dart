@@ -4,9 +4,9 @@
 //
 // Wrapping/unwrapping a gift wrap performs several ECDH scalar
 // multiplications, NIP-44 encryption/decryption and Schnorr signing. The
-// pure-Dart implementation takes tens of milliseconds per operation, which is
-// enough to drop frames when it runs on the UI isolate while a call is being
-// set up or torn down (every ICE signal is gift-wrapped).
+// pure-Dart implementation takes tens of milliseconds per operation, which
+// is enough to drop frames when it runs on the UI isolate while a call is
+// being set up or torn down (every ICE signal is gift-wrapped).
 //
 // `compute` runs the callback in a short-lived isolate on native platforms and
 // transparently falls back to running inline on the web, where isolates are not
@@ -14,6 +14,10 @@
 //
 // Only plain maps/strings/ints cross the isolate boundary so both platforms
 // stay happy, and the result is rebuilt into the usual NIP-17 value objects.
+//
+// Bursts (account restore, cold start after downtime) arrive many gift wraps
+// at once: [unwrapBatch] unwraps a whole batch inside ONE isolate call, so
+// the spawn cost is paid per batch instead of per message.
 
 import 'dart:async';
 
@@ -86,31 +90,63 @@ class Nip17Isolate {
     required String receiverPrivkey,
     required String receiverPubkey,
   }) async {
+    final batch = await unwrapBatch(
+      giftWrapEvents: [giftWrapEvent],
+      receiverPrivkey: receiverPrivkey,
+      receiverPubkey: receiverPubkey,
+    );
+    final result = batch.first;
+    if (result == null) {
+      throw Exception('NIP-17 unwrap failed');
+    }
+    return result;
+  }
+
+  /// Unwraps many gift wraps in ONE isolate call. Returns one entry per
+  /// input event, in order: `null` where that single event failed to
+  /// unwrap (one bad event must not kill the whole batch — the caller
+  /// treats a null like the old single-message failure, so other relay
+  /// copies can retry it).
+  static Future<List<Nip17Result?>> unwrapBatch({
+    required List<Map<String, dynamic>> giftWrapEvents,
+    required String receiverPrivkey,
+    required String receiverPubkey,
+  }) async {
+    if (giftWrapEvents.isEmpty) return const <Nip17Result?>[];
     await _acquireUnwrapSlot();
     try {
-      final result = await compute(_unwrapInIsolate, <String, dynamic>{
-        'giftWrapEvent': giftWrapEvent,
+      final results = await compute(_unwrapBatchInIsolate, <String, dynamic>{
+        'events': giftWrapEvents,
         'receiverPrivkey': receiverPrivkey,
         'receiverPubkey': receiverPubkey,
       });
 
-      return Nip17Result(
-        plaintext: result['plaintext'] as String,
-        senderPubkey: result['senderPubkey'] as String,
-        receiverPubkey: result['receiverPubkey'] as String,
-        timestamp: result['timestamp'] as int,
-        rumorId: result['rumorId'] as String,
-        replyToId: result['replyToId'] as String?,
-        rumorTags: (result['rumorTags'] as List)
-            .map<List<String>>(
-              (tag) => (tag as List).map((value) => value.toString()).toList(),
-            )
-            .toList(),
-        rumorKind: result['rumorKind'] as int,
-      );
+      return <Nip17Result?>[
+        for (final r in results as List)
+          r == null
+              ? null
+              : _resultFromMap(Map<String, dynamic>.from(r as Map)),
+      ];
     } finally {
       _releaseUnwrapSlot();
     }
+  }
+
+  static Nip17Result _resultFromMap(Map<String, dynamic> result) {
+    return Nip17Result(
+      plaintext: result['plaintext'] as String,
+      senderPubkey: result['senderPubkey'] as String,
+      receiverPubkey: result['receiverPubkey'] as String,
+      timestamp: result['timestamp'] as int,
+      rumorId: result['rumorId'] as String,
+      replyToId: result['replyToId'] as String?,
+      rumorTags: (result['rumorTags'] as List)
+          .map<List<String>>(
+            (tag) => (tag as List).map((value) => value.toString()).toList(),
+          )
+          .toList(),
+      rumorKind: result['rumorKind'] as int,
+    );
   }
 }
 
@@ -136,21 +172,33 @@ Future<Map<String, dynamic>> _wrapInIsolate(Map<String, dynamic> args) async {
   };
 }
 
-Future<Map<String, dynamic>> _unwrapInIsolate(Map<String, dynamic> args) async {
-  final result = await Nip17.unwrap(
-    giftWrapEvent: Map<String, dynamic>.from(args['giftWrapEvent'] as Map),
-    receiverPrivkey: args['receiverPrivkey'] as String,
-    receiverPubkey: args['receiverPubkey'] as String,
-  );
+Future<List<Map<String, dynamic>?>> _unwrapBatchInIsolate(
+    Map<String, dynamic> args) async {
+  final receiverPrivkey = args['receiverPrivkey'] as String;
+  final receiverPubkey = args['receiverPubkey'] as String;
 
-  return <String, dynamic>{
-    'plaintext': result.plaintext,
-    'senderPubkey': result.senderPubkey,
-    'receiverPubkey': result.receiverPubkey,
-    'timestamp': result.timestamp,
-    'rumorId': result.rumorId,
-    'replyToId': result.replyToId,
-    'rumorTags': result.rumorTags,
-    'rumorKind': result.rumorKind,
-  };
+  final out = <Map<String, dynamic>?>[];
+  for (final event in (args['events'] as List).cast<Map<String, dynamic>>()) {
+    try {
+      final result = await Nip17.unwrap(
+        giftWrapEvent: event,
+        receiverPrivkey: receiverPrivkey,
+        receiverPubkey: receiverPubkey,
+      );
+
+      out.add(<String, dynamic>{
+        'plaintext': result.plaintext,
+        'senderPubkey': result.senderPubkey,
+        'receiverPubkey': result.receiverPubkey,
+        'timestamp': result.timestamp,
+        'rumorId': result.rumorId,
+        'replyToId': result.replyToId,
+        'rumorTags': result.rumorTags,
+        'rumorKind': result.rumorKind,
+      });
+    } catch (_) {
+      out.add(null);
+    }
+  }
+  return out;
 }

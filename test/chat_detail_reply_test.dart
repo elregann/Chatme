@@ -28,6 +28,7 @@ void main() {
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
+    await Hive.openBox<ChatMessage>('chat_msgs');
     await Hive.openBox<String>('profile_pictures');
     await Hive.openBox('processed_events');
   });

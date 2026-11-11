@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../chat_manager.dart';
 import '../core/utils/debug_logger.dart';
 import '../models/chat_message.dart';
 import '../services/file_transfer_service.dart';
@@ -33,11 +34,12 @@ class VoiceHistoryList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<Box>(
-      valueListenable: Hive.box('chats').listenable(keys: [chatKey]),
+    return ValueListenableBuilder<Box<ChatMessage>>(
+      // Filtered listenable: only this chat's messages rebuild the list.
+      valueListenable: ChatManager.instance.chatMessagesListenable(chatKey),
       builder: (context, box, _) {
-        final raw = box.get(chatKey);
-        final notes = voiceNotesNewestFirst(raw is List ? raw.cast<ChatMessage>() : const []);
+        final notes =
+            voiceNotesNewestFirst(ChatManager.instance.messagesForChatSync(chatKey));
         if (notes.isEmpty) return empty;
 
         final children = <Widget>[];

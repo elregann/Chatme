@@ -22,6 +22,7 @@ import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nostr_protocol.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/shortcut_helper.dart';
+import 'core/utils/sync_gate.dart';
 import 'services/app_settings.dart';
 import 'services/file_send_service.dart';
 import 'services/nostr_service.dart';
@@ -96,6 +97,27 @@ class RelayManager {
   /// Prevents the offline queue from hammering the same message every tick.
   final Map<String, int> _lastQueueAttempt = {};
 
+  // --- Incoming event pipeline --------------------------------------------
+  // Relay bursts (account restore, cold start after downtime) deliver many
+  // events at once. Events are queued and drained in small batches: the
+  // NIP-17 unwrap runs in ONE isolate call per batch instead of one spawn
+  // per message, and Hive/contacts/UI writes are flushed once per batch.
+  final List<Map<String, dynamic>> _eventQueue = [];
+  bool _isDrainingEvents = false;
+  static const int _maxEventBatch = 16;
+
+  // Contact rows buffered during a drain; written once per batch.
+  final Map<String, Contact> _contactBuffer = {};
+  final Set<String> _bufferedNewContacts = {};
+  final Set<String> _drainSavedPeers = {};
+  final Set<String> _drainTouchedChats = {};
+
+  // --- Initial sync gate (restore / first login) ---------------------------
+  // Relays still expected to send EOSE before the gate can end.
+  final Set<String> _syncWaitingRelays = {};
+  Timer? _syncQuietTimer;
+  Timer? _syncHardTimer;
+
   /// Serializes outgoing call signals. Wrapping now runs on a background
   /// isolate, so without this a later signal (e.g. hangup) could finish
   /// wrapping before an earlier one (e.g. offer) and be delivered out of order.
@@ -124,8 +146,14 @@ class RelayManager {
         });
       }
 
-      // Compute latestTime once here, not 7× inside each _connectToRelay.
-      final int latestTime = _computeLatestContactTime();
+      // Pick up an interrupted restore (persisted gate flag). While the
+      // gate is active the window is widened too: a restored account has
+      // no local contact history yet, so `since` falls back to the full
+      // 30-day window instead of trusting the previous account's chats.
+      SyncGate.resumeIfPending();
+      if (SyncGate.isActive) _startInitialSyncTracking();
+      final int latestTime =
+          SyncGate.useFreshWindow ? 0 : _computeLatestContactTime();
 
       final urls = relays;
       for (var i = 0; i < urls.length; i++) {
@@ -156,6 +184,11 @@ class RelayManager {
   void disconnect() {
     _cleanupTimer?.cancel();
     _queueTimer?.cancel();
+    _syncQuietTimer?.cancel();
+    _syncHardTimer?.cancel();
+    _syncQuietTimer = null;
+    _syncHardTimer = null;
+    _syncWaitingRelays.clear();
     _isProcessingQueue = false;
 
     for (var url in _connections.keys.toList()) {
@@ -173,6 +206,54 @@ class RelayManager {
     _isConnecting = false;
     _isConnected.value = false;
     _connectedCount.value = 0;
+  }
+
+  // ----------------------------------------------------------------- Gate
+
+  /// Starts EOSE/activity tracking for the active initial sync. Safety
+  /// nets make sure the gate can never silence notifications forever:
+  /// a hard timeout, and a quiet period with no incoming events.
+  void _startInitialSyncTracking() {
+    _syncWaitingRelays.clear();
+    _syncHardTimer?.cancel();
+    _syncQuietTimer?.cancel();
+    _syncHardTimer =
+        Timer(const Duration(minutes: 10), () => _finishInitialSync('hard timeout'));
+    _syncQuietTimer =
+        Timer(const Duration(seconds: 8), () => _finishInitialSync('quiet period'));
+    DebugLogger.log('[Sync] Initial sync tracking started');
+  }
+
+  /// Any raw EVENT counts as activity; pushes the quiet timer forward.
+  void _noteSyncActivity() {
+    if (!SyncGate.isActive) return;
+    _syncQuietTimer?.cancel();
+    _syncQuietTimer =
+        Timer(const Duration(seconds: 8), () => _finishInitialSync('quiet period'));
+  }
+
+  void _onRelayEose(String url) {
+    if (!SyncGate.isActive) return;
+    if (_syncWaitingRelays.isEmpty) return;
+    _syncWaitingRelays.remove(url);
+    if (_syncWaitingRelays.isEmpty) {
+      // All relays reported end-of-stored-events. Sibling subscriptions
+      // (outgoing/profile) may still stream for a moment — the quiet
+      // timer covers that tail before the gate opens.
+      _syncQuietTimer?.cancel();
+      _syncQuietTimer =
+          Timer(const Duration(seconds: 3), () => _finishInitialSync('all relays sent EOSE'));
+    }
+  }
+
+  void _finishInitialSync(String reason) {
+    _syncHardTimer?.cancel();
+    _syncQuietTimer?.cancel();
+    _syncHardTimer = null;
+    _syncQuietTimer = null;
+    _syncWaitingRelays.clear();
+    if (!SyncGate.isActive) return;
+    SyncGate.finish(reason);
   }
 
   Future<void> _connectToRelay(String relayUrl, String myPubkey, int latestTime) async {
@@ -238,6 +319,10 @@ class RelayManager {
   void _sendSubscriptions(String relayUrl, String myPubkey, int latestTime) {
     final channel = _connections[relayUrl];
     if (channel == null) return;
+
+    // While the initial sync gate is open, every subscribed relay owes us
+    // an EOSE before notifications may come back to life.
+    if (SyncGate.isActive) _syncWaitingRelays.add(relayUrl);
 
     final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     int syncSince = nowTimestamp - 2592000; // fallback 30 days
@@ -316,12 +401,20 @@ class RelayManager {
   Future<void> _handleData(dynamic data, String url) async {
     try {
       final message = data.toString();
-      if (message.contains('"EOSE"')) return;
 
       final decoded = jsonDecode(message);
       if (decoded is! List || decoded.isEmpty) return;
 
       final type = decoded[0];
+
+      // ["EOSE", <subId>] — the relay finished replaying its stored events.
+      // This is the signal the initial sync gate waits for. (The old raw
+      // substring check also swallowed any chat message that literally
+      // contained "EOSE" — decoding first fixes that.)
+      if (type == "EOSE") {
+        _onRelayEose(url);
+        return;
+      }
 
       // ["AUTH", "<challenge>"]
       if (type == "AUTH" && decoded.length >= 2) {
@@ -539,6 +632,11 @@ class RelayManager {
     if (_inFlightEventIds.contains(eventId)) return;
     _inFlightEventIds.add(eventId);
 
+    // Queued events keep the guard until the drain is done with them, so
+    // a duplicate copy arriving from another relay cannot enter the queue
+    // as well.
+    bool queued = false;
+
     try {
       // Persistent dedup: skip events already processed in a previous
       // session, BEFORE doing expensive NIP-17 unwrap. This is what
@@ -550,44 +648,165 @@ class RelayManager {
         }
       } catch (_) {}
 
+      // Anything that survives dedup counts as initial-sync activity; it
+      // pushes the quiet-period safety net forward while a backlog is
+      // still streaming in.
+      _noteSyncActivity();
+
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final myPubkey = AppSettings.instance.myPubkey;
       final senderPubkey = event['pubkey']?.toString() ?? '';
 
-      if (kind == 1 || kind == 4 || kind == 7 || kind == 1059) {
-        if (kind == 7) {
-          if (senderPubkey == myPubkey) {
-            _processedEventIds.add(eventId);
-            return;
-          }
-          if (now - createdAt > 60) {
-            _processedEventIds.add(eventId);
-            return;
-          }
+      if (kind == 7) {
+        // Read receipts are tiny and time-sensitive: handle them inline.
+        if (senderPubkey == myPubkey || now - createdAt > 60) {
+          _processedEventIds.add(eventId);
+          return;
         }
 
-        if (kind == 1 || kind == 4 || kind == 1059) {
-          final bool success = await _processIncomingEvent(event);
-          if (success) {
-            _processedEventIds.add(eventId);
-            try {
-              _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
-            } catch (_) {}
-          }
+        final bool success = await _handleReceiptEvent(event);
+        if (success) {
+          _processedEventIds.add(eventId);
+          try {
+            _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+          } catch (_) {}
         }
+        return;
+      }
 
-        if (kind == 7) {
-          final bool success = await _handleReceiptEvent(event);
-          if (success) {
-            _processedEventIds.add(eventId);
-            try {
-              _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
-            } catch (_) {}
-          }
-        }
+      if (kind == 1 || kind == 4 || kind == 1059) {
+        // Message traffic goes through the batch pipeline: one isolate
+        // call unwraps up to [_maxEventBatch] gift wraps, and
+        // Hive/contact/UI writes are flushed once per batch instead of
+        // once per message.
+        _eventQueue.add(event);
+        queued = true;
+        _scheduleEventDrain();
       }
     } finally {
-      _inFlightEventIds.remove(eventId);
+      if (!queued) _inFlightEventIds.remove(eventId);
+    }
+  }
+
+  // ------------------------------------------------------------ Event queue
+
+  /// Kicks off a drain on the next event-loop turn. Events arriving while
+  /// a drain is already running are picked up by that drain's loop.
+  void _scheduleEventDrain() {
+    if (_isDrainingEvents) return;
+    _isDrainingEvents = true;
+    Future(() => _drainEvents());
+  }
+
+  /// Chronological order for a batch: the rumor timestamp when the gift
+  /// wrap was already unwrapped (milliseconds), otherwise the event's
+  /// `created_at` (converted to milliseconds).
+  int _batchSortKey(Map<String, dynamic> event, Nip17Result? result) =>
+      result?.timestamp ?? ((event['created_at'] as int? ?? 0) * 1000);
+
+  Future<void> _drainEvents() async {
+    try {
+      while (_eventQueue.isNotEmpty) {
+        final batch = _eventQueue.take(_maxEventBatch).toList();
+        _eventQueue.removeRange(0, batch.length);
+
+        // Unwrap every gift wrap of the batch in ONE isolate call. A
+        // single null result only fails that one event; only a total
+        // isolate failure (caught below) fails them all.
+        final wrappedIndexes = <int>[
+          for (var i = 0; i < batch.length; i++)
+            if (batch[i]['kind'] == 1059) i
+        ];
+        final unwrapped = <int, Nip17Result?>{};
+        if (wrappedIndexes.isNotEmpty) {
+          List<Nip17Result?> results;
+          try {
+            results = await Nip17Isolate.unwrapBatch(
+              giftWrapEvents: [
+                for (final i in wrappedIndexes) batch[i],
+              ],
+              receiverPrivkey: AppSettings.instance.myPrivkey,
+              receiverPubkey: AppSettings.instance.myPubkey,
+            );
+          } catch (e) {
+            DebugLogger.log('[NIP-17] Batch unwrap failed | $e', type: 'ERROR');
+            results = List<Nip17Result?>.filled(wrappedIndexes.length, null);
+          }
+          for (var j = 0; j < wrappedIndexes.length; j++) {
+            unwrapped[wrappedIndexes[j]] = results[j];
+          }
+        }
+
+        // Process in chronological order so reply previews resolve.
+        final order = List<int>.generate(batch.length, (i) => i)
+          ..sort((a, b) => _batchSortKey(batch[a], unwrapped[a])
+              .compareTo(_batchSortKey(batch[b], unwrapped[b])));
+
+        // Processing counts as sync activity too: a huge backlog keeps
+        // draining long after the last event ARRIVED (and long after
+        // EOSE), and the gate must stay closed until the queue is empty.
+        _noteSyncActivity();
+
+        var anyProcessed = false;
+        for (final i in order) {
+          final event = batch[i];
+          final eventId = event['id']?.toString() ?? '';
+          var success = false;
+          try {
+            success = await _processIncomingEvent(event, unwrapped[i]);
+          } catch (e) {
+            DebugLogger.log('[Message] Incoming event error | $e', type: 'ERROR');
+          } finally {
+            // Release the duplicate guard no matter the outcome; failures
+            // are not marked processed, so another relay's copy can retry.
+            _inFlightEventIds.remove(eventId);
+          }
+          if (success) {
+            anyProcessed = true;
+            _processedEventIds.add(eventId);
+            try {
+              _processedEvents.put(eventId, DateTime.now().millisecondsSinceEpoch);
+            } catch (_) {}
+          }
+        }
+
+        if (anyProcessed) await _flushDrainSideEffects();
+
+        // Yield between batches so a fresh message or an incoming call
+        // signal never waits behind a long backlog.
+        await Future.delayed(Duration.zero);
+      }
+    } catch (e) {
+      DebugLogger.log('[Sync] Event drain failed | $e', type: 'ERROR');
+    } finally {
+      _isDrainingEvents = false;
+      // Events queued while the last batch was running must not sit idle
+      // until the next EVENT arrives.
+      if (_eventQueue.isNotEmpty) _scheduleEventDrain();
+    }
+  }
+
+  /// Writes everything the batch deferred: the chat registry (one rebuild
+  /// of the chat list per affected chat), buffered contact rows, and the
+  /// UI callbacks (once per batch instead of once per message).
+  Future<void> _flushDrainSideEffects() async {
+    try {
+      for (final chatKey in _drainTouchedChats) {
+        await ChatManager.instance.repairPendingReplies(chatKey);
+        await ChatManager.instance.touchChatRegistry(chatKey);
+      }
+      _drainTouchedChats.clear();
+
+      await _flushContactBuffer();
+
+      for (final peerPubkey in _drainSavedPeers) {
+        onIncomingMessageSaved?.call(peerPubkey);
+      }
+      _drainSavedPeers.clear();
+
+      onMessageReceived?.call();
+    } catch (e) {
+      DebugLogger.log('[Sync] Flush side effects failed | $e', type: 'ERROR');
     }
   }
 
@@ -712,7 +931,13 @@ class RelayManager {
     }
   }
 
-  Future<bool> _processIncomingEvent(Map<String, dynamic> event) async {
+  /// Processes one queued event. [nip17Result] carries the precomputed
+  /// unwrap for kind 1059 gift wraps (done per batch by [_drainEvents],
+  /// not per message); `null` means that unwrap failed.
+  Future<bool> _processIncomingEvent(
+    Map<String, dynamic> event,
+    Nip17Result? nip17Result,
+  ) async {
     try {
       final eventId = event['id']?.toString() ?? '';
       final myPubkey = AppSettings.instance.myPubkey;
@@ -727,27 +952,19 @@ class RelayManager {
       List tags = event['tags'] as List? ?? [];
       String content = event['content']?.toString() ?? '';
 
-      Nip17Result? nip17Result;
-
       if (event['kind'] == 1059) {
-        try {
-          nip17Result = await Nip17Isolate.unwrap(
-            giftWrapEvent: event,
-            receiverPrivkey: myPrivkey,
-            receiverPubkey: myPubkey,
-          );
-          decrypted = nip17Result.plaintext;
-          actualSenderPubkey = nip17Result.senderPubkey;
-          timestamp = nip17Result.timestamp;
-          actualEventId = nip17Result.rumorId;
-          receiverPubkey = nip17Result.receiverPubkey;
-
-          final bool isFromMe = (actualSenderPubkey == myPubkey);
-          peerPubkey = isFromMe ? receiverPubkey : actualSenderPubkey;
-        } catch (e) {
-          DebugLogger.log('[NIP-17] Unwrap failed | $e', type: 'ERROR');
+        if (nip17Result == null) {
+          DebugLogger.log('[NIP-17] Unwrap failed in batch | $eventId', type: 'ERROR');
           return false;
         }
+        decrypted = nip17Result.plaintext;
+        actualSenderPubkey = nip17Result.senderPubkey;
+        timestamp = nip17Result.timestamp;
+        actualEventId = nip17Result.rumorId;
+        receiverPubkey = nip17Result.receiverPubkey;
+
+        final bool isFromMe = (actualSenderPubkey == myPubkey);
+        peerPubkey = isFromMe ? receiverPubkey : actualSenderPubkey;
       } else {
         actualSenderPubkey = event['pubkey']?.toString() ?? '';
         tags = event['tags'] as List? ?? [];
@@ -911,19 +1128,26 @@ class RelayManager {
         file: fileMap,
       );
 
-      final bool newlySaved = await ChatManager.instance.saveMessage(chatMessage);
-      await ChatManager.instance.repairReplyContent(actualEventId, decrypted, chatKey);
-      await ChatManager.instance.repairPendingReplies(chatKey);
+      // Defer the per-chat side effects (registry touch, reply repairs,
+      // contact preview, callbacks) to the end of the batch — during a
+      // 1000-message restore they would otherwise fire once per message.
+      final bool newlySaved = await ChatManager.instance.saveMessage(
+        chatMessage,
+        touchChatList: false,
+        updateContactPreview: false,
+      );
 
       // If saveMessage only updated an existing entry (i.e. this is a
-      // duplicate), or if the message is already marked as read, do not increment the unread badge.
-      final savedMsg = await ChatManager.instance.getMessageById(actualEventId, chatKey);
+      // duplicate), or if the message is already marked as read, do not
+      // increment the unread badge.
+      final savedMsg = ChatManager.instance.getMessageByIdSync(actualEventId, chatKey);
       final bool isAlreadyRead = savedMsg?.status == 'read';
       final bool alreadyExistsActual = !newlySaved || isAlreadyRead;
-      await _updateContactWithMessage(peerPubkey, decrypted, timestamp, isFromMe, alreadyExistsActual);
 
-      if (newlySaved && !isFromMe) onIncomingMessageSaved?.call(peerPubkey);
-      if (onMessageReceived != null) onMessageReceived!();
+      _drainTouchedChats.add(chatKey);
+      _bufferContactUpdate(peerPubkey, decrypted, timestamp, isFromMe, alreadyExistsActual);
+
+      if (newlySaved && !isFromMe) _drainSavedPeers.add(peerPubkey);
       return true;
     } catch (e) {
       DebugLogger.log('[Message] Incoming event error | $e', type: 'ERROR');
@@ -982,15 +1206,12 @@ class RelayManager {
     if (info == null) return;
     _reactionAcks.removeWhere((_, v) => v[1] == info[1] && v[2] == info[2]);
     _reactionTimestamps.remove(info[3]);
-    final box = Hive.box('chats');
-    final dynamic raw = box.get(info[0]);
-    if (raw is! List) return;
-    final messages = raw.cast<ChatMessage>().toList();
-    final i = messages.indexWhere((m) => m.id == info[1]);
-    if (i == -1) return;
-    final pending = Map<String, String>.from(messages[i].pendingReactions)..remove(info[2]);
-    messages[i] = messages[i].copyWith(pendingReactions: pending);
-    await box.put(info[0], messages);
+    // info layout: [chatKey, messageId, reactorPubkey, tsKey]
+    await ChatManager.instance.removePendingReaction(
+      chatKey: info[0],
+      messageId: info[1],
+      reactorPubkey: info[2],
+    );
     onMessageReceived?.call();
   }
 
@@ -1678,40 +1899,77 @@ class RelayManager {
     }
   }
 
-  Future<void> _updateContactWithMessage(String peerPubkey, String message, int timestamp, bool isFromMe, bool alreadyExists) async {
+  /// Buffers a contact-row update during a drain; written once per batch
+  /// by [_flushContactBuffer]. The merge logic matches the old per-message
+  /// write, except that the unread badge is also muted while the initial
+  /// sync gate is active (a restore / first login pulls history, not fresh
+  /// conversation).
+  void _bufferContactUpdate(
+    String peerPubkey,
+    String message,
+    int timestamp,
+    bool isFromMe,
+    bool alreadyExists,
+  ) {
     try {
       final contactsBox = Hive.box<Contact>('contacts');
-      Contact? contact = contactsBox.get(peerPubkey);
-      final bool isNewContact = contact == null;
+      var contact = _contactBuffer[peerPubkey] ?? contactsBox.get(peerPubkey);
 
       if (contact == null) {
+        final bool muteUnread = isFromMe ||
+            currentlyChattingWith == peerPubkey ||
+            alreadyExists ||
+            SyncGate.isActive;
         contact = Contact(
-            pubkey: peerPubkey,
-            name: '',
-            lastChatTime: timestamp,
-            lastMessage: message,
-            unreadCount: (isFromMe || currentlyChattingWith == peerPubkey || alreadyExists) ? 0 : 1,
-            isSaved: false
+          pubkey: peerPubkey,
+          name: '',
+          lastChatTime: timestamp,
+          lastMessage: message,
+          unreadCount: muteUnread ? 0 : 1,
+          isSaved: false,
         );
-        AppSettings.hydrateSingleContact(peerPubkey);
+        // Firebase name fetch: once per new peer per drain, not per message.
+        _bufferedNewContacts.add(peerPubkey);
       } else {
         if (timestamp >= contact.lastChatTime) {
           contact.lastChatTime = timestamp;
           contact.lastMessage = message.length > 50 ? '${message.substring(0, 50)}...' : message;
         }
 
-        if (!isFromMe && currentlyChattingWith != peerPubkey && !alreadyExists) {
+        if (!isFromMe &&
+            currentlyChattingWith != peerPubkey &&
+            !alreadyExists &&
+            !SyncGate.isActive) {
           contact.unreadCount++;
         }
         if (currentlyChattingWith == peerPubkey) contact.unreadCount = 0;
       }
-      await contactsBox.put(peerPubkey, contact);
+      _contactBuffer[peerPubkey] = contact;
+    } catch (e) {
+      DebugLogger.log('[Contact] Buffer update failed | $e', type: 'ERROR');
+    }
+  }
 
-      if (isNewContact) {
+  /// Writes the buffered contact rows and fires the one-time hooks for
+  /// peers seen for the first time in this batch.
+  Future<void> _flushContactBuffer() async {
+    if (_contactBuffer.isEmpty && _bufferedNewContacts.isEmpty) return;
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      for (final entry in _contactBuffer.entries) {
+        await contactsBox.put(entry.key, entry.value);
+      }
+      _contactBuffer.clear();
+
+      if (_bufferedNewContacts.isNotEmpty) {
+        for (final peerPubkey in _bufferedNewContacts) {
+          AppSettings.hydrateSingleContact(peerPubkey);
+        }
         refreshProfileSubscription();
+        _bufferedNewContacts.clear();
       }
     } catch (e) {
-      DebugLogger.log('[Contact] Update failed | $e', type: 'ERROR');
+      DebugLogger.log('[Contact] Flush failed | $e', type: 'ERROR');
     }
   }
 
@@ -1729,36 +1987,17 @@ class RelayManager {
       String emoji,
       String chatKey
       ) async {
-    try {
-      final box = Hive.box('chats');
-      final dynamic raw = box.get(chatKey);
-      if (raw is! List) return false;
-
-      final messages = raw.cast<ChatMessage>().toList();
-      final index = messages.indexWhere((m) => m.id == messageId);
-
-      if (index != -1) {
-        final message = messages[index];
-        final updatedReactions = Map<String, String>.from(message.reactions);
-        updatedReactions[reactorPubkey] = emoji;
-
-        final updatedMessage = message.copyWith(
-          reactions: updatedReactions,
-        );
-
-        messages[index] = updatedMessage;
-        await box.put(chatKey, messages);
-
-        if (onMessageReceived != null) onMessageReceived!();
-        return true;
-      } else {
-        DebugLogger.log('[Reaction] Target message not found: $messageId', type: 'WARN');
-        return false;
-      }
-    } catch (e) {
-      DebugLogger.log('[Reaction] Update failed | $e', type: 'ERROR');
-      return false;
+    final bool applied = await ChatManager.instance.mergeReaction(
+      chatKey: chatKey,
+      messageId: messageId,
+      reactorPubkey: reactorPubkey,
+      emoji: emoji,
+    );
+    if (applied) {
+      onMessageReceived?.call();
+      return true;
     }
+    return false;
   }
 
   String _extractReceiverPubkey(dynamic tags) {
@@ -1805,12 +2044,16 @@ class RelayManager {
   void _handleError(String url, dynamic e) {
     _connectionStatus[url] = false;
     _updateConnectionStatus();
+    // A dropped relay will never send its EOSE; forget it (a reconnect
+    // re-adds it via _sendSubscriptions while the gate is still open).
+    if (SyncGate.isActive) _syncWaitingRelays.remove(url);
     _scheduleReconnect(url);
   }
 
   void _handleDisconnect(String url) {
     _connectionStatus[url] = false;
     _updateConnectionStatus();
+    if (SyncGate.isActive) _syncWaitingRelays.remove(url);
     _scheduleReconnect(url);
   }
 
@@ -2039,48 +2282,42 @@ class RelayManager {
     bool anyUnacked = false;
     try {
       final myKey = AppSettings.instance.myPubkey;
-      final chatsBox = Hive.box('chats');
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-      for (final key in chatsBox.keys.toList()) {
-        final dynamic rawData = chatsBox.get(key);
-        if (rawData is! List) continue;
+      final targets = <List<String>>[];
+      for (final m in ChatManager.instance.allMessagesSync()) {
+        final bool confirmed = (m.status == 'sent' || m.status == 'read') &&
+            !m.id.startsWith('temp_') &&
+            !m.id.startsWith('pending_');
+        if (!confirmed || m.pendingReactions.isEmpty) continue;
+        final peerKey = m.senderPubkey == myKey ? m.receiverPubkey : m.senderPubkey;
+        for (final e in m.pendingReactions.entries) {
+          targets.add([m.id, m.senderPubkey, peerKey, e.value]);
+        }
+      }
 
-        final targets = <List<String>>[];
-        for (final m in rawData.cast<ChatMessage>()) {
-          final bool confirmed = (m.status == 'sent' || m.status == 'read') &&
-              !m.id.startsWith('temp_') &&
-              !m.id.startsWith('pending_');
-          if (!confirmed || m.pendingReactions.isEmpty) continue;
-          final peerKey = m.senderPubkey == myKey ? m.receiverPubkey : m.senderPubkey;
-          for (final e in m.pendingReactions.entries) {
-            targets.add([m.id, m.senderPubkey, peerKey, e.value]);
-          }
+      for (final t in targets) {
+        anyUnacked = true;
+        final attemptKey = '${t[0]}|${t[3]}';
+        final last = _lastReactionAttempt[attemptKey] ?? 0;
+        if (nowMs - last < 15000) continue;
+        _lastReactionAttempt[attemptKey] = nowMs;
+
+        try {
+          final sent = await sendReaction(
+            messageId: t[0],
+            targetAuthorPubkey: t[1],
+            receiverPubkey: t[2],
+            emoji: t[3],
+          );
+          if (!sent) break;
+          DebugLogger.log('[Queue] Reaction ${t[3]} sent for ${t[0]}, awaiting OK');
+        } catch (e) {
+          DebugLogger.log('[Queue] Failed to send pending reaction for ${t[0]} | $e', type: 'ERROR');
+          break;
         }
 
-        for (final t in targets) {
-          anyUnacked = true;
-          final attemptKey = '${t[0]}|${t[3]}';
-          final last = _lastReactionAttempt[attemptKey] ?? 0;
-          if (nowMs - last < 15000) continue;
-          _lastReactionAttempt[attemptKey] = nowMs;
-
-          try {
-            final sent = await sendReaction(
-              messageId: t[0],
-              targetAuthorPubkey: t[1],
-              receiverPubkey: t[2],
-              emoji: t[3],
-            );
-            if (!sent) break;
-            DebugLogger.log('[Queue] Reaction ${t[3]} sent for ${t[0]}, awaiting OK');
-          } catch (e) {
-            DebugLogger.log('[Queue] Failed to send pending reaction for ${t[0]} | $e', type: 'ERROR');
-            break;
-          }
-
-          await Future.delayed(const Duration(milliseconds: 150));
-        }
+        await Future.delayed(const Duration(milliseconds: 150));
       }
     } catch (e) {
       DebugLogger.log('[Queue] Process pending reactions failed | $e', type: 'ERROR');

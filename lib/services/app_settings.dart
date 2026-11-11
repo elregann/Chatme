@@ -11,6 +11,7 @@ import '../core/crypto/key_generator.dart';
 import '../core/utils/shortcut_helper.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
+import '../core/utils/sync_gate.dart';
 import '../models/contact.dart';
 import 'server_lists.dart';
 
@@ -76,6 +77,11 @@ class AppSettings {
         await settingsBox.put('my_pubkey', myPubkey);
         await settingsBox.put('my_privkey', myPrivkey);
         await settingsBox.put('my_name', myName);
+
+        // The very first login is an initial sync too: open the gate
+        // before anything connects, so the first relay round-trip stays
+        // silent. It closes as soon as every relay sends EOSE.
+        SyncGate.start('fresh install');
 
         DebugLogger.log('[Settings] Generated new Nostr identity: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
       }

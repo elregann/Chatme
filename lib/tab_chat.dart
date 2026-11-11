@@ -174,8 +174,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 valueListenable: Hive.box<Contact>('contacts').listenable(),
                 builder: (context, contactBox, _) {
                   return ValueListenableBuilder(
+                    // Registry listenable: one rebuild of the chat list per
+                    // flushed batch (the registry is touched once per chat).
                     valueListenable: Hive.box('chats').listenable(),
-                    builder: (context, Box chatBox, _) {
+                    builder: (context, Box chatRegistry, _) {
                       final myPubkey = AppSettings.instance.myPubkey;
                       final isDark = Theme.of(context).brightness == Brightness.dark;
                       final contactList = contactBox.values.toList();
@@ -201,18 +203,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             (displayName.toLowerCase().contains(_searchQuery) ||
                                 contact.pubkey.toLowerCase().contains(_searchQuery));
 
-                        // Only inspect chatBox when searching message bodies
+                        // Only inspect messages when searching message bodies
                         if (_searchQuery.length >= 2) {
                           final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
-                          final dynamic rawData = chatBox.get(chatKey);
-                          if (rawData is List) {
-                            for (var m in rawData.cast<ChatMessage>()) {
-                              if (m.plaintext.toLowerCase().contains(_searchQuery)) {
-                                messageResults.add({
-                                  'contact': contact,
-                                  'message': m,
-                                });
-                              }
+                          for (var m in ChatManager.instance.messagesForChatSync(chatKey)) {
+                            if (m.plaintext.toLowerCase().contains(_searchQuery)) {
+                              messageResults.add({
+                                'contact': contact,
+                                'message': m,
+                              });
                             }
                           }
                         }

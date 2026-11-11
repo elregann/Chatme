@@ -68,12 +68,19 @@ void main() async {
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
+    await Hive.openBox<ChatMessage>('chat_msgs');
     await Hive.openBox<String>('profile_pictures');
     await Hive.openBox<CallLog>('call_logs');
     await Hive.openBox('processed_events');
     await LinkPreviewService.instance.init();
 
     await AppSettings.instance.load();
+
+    // Storage v2 migration: move legacy per-chat message lists into the
+    // one-key-per-message layout BEFORE anything connects to the relays,
+    // so there is no race with incoming events. Idempotent — an
+    // interrupted run resumes on the next start.
+    await ChatManager.instance.migrateLegacyChats();
 
     // CRITICAL: Set both launch flags BEFORE runApp() to avoid race condition with build()
     CallManager.instance.launchCallerPubkey = await NotificationHandler.peekCallLaunchPubkey();

@@ -3,6 +3,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../chat_manager.dart';
 import '../core/utils/debug_logger.dart';
 import '../models/chat_message.dart';
 import '../models/contact.dart';
@@ -38,11 +39,12 @@ class MediaHistoryGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<Box>(
-      valueListenable: Hive.box('chats').listenable(keys: [chatKey]),
+    return ValueListenableBuilder<Box<ChatMessage>>(
+      // Filtered listenable: only this chat's messages rebuild the grid.
+      valueListenable: ChatManager.instance.chatMessagesListenable(chatKey),
       builder: (context, box, _) {
-        final raw = box.get(chatKey);
-        final images = imagesNewestFirst(raw is List ? raw.cast<ChatMessage>() : const []);
+        final images =
+            imagesNewestFirst(ChatManager.instance.messagesForChatSync(chatKey));
         if (images.isEmpty) return empty;
 
         return GridView.builder(

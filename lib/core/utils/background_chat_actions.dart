@@ -36,7 +36,7 @@ class BackgroundChatActions {
   /// Message ids come from two places:
   ///  - [BgInbox]: messages received via FCM while the app was closed (they are
   ///    not in Hive yet).
-  ///  - the `chats` box: messages already saved by the main app (read-only).
+  ///  - the `chat_msgs` box: messages already saved by the main app (read-only).
   ///
   /// The ids that received a receipt are noted in [BgInbox], so the main app can
   /// mark exactly those messages as read (and clear the badge) when it opens.
@@ -54,19 +54,20 @@ class BackgroundChatActions {
 
       final chatKey = _chatKey(myPubkey, peerPubkey);
       try {
-        final chatsBox = await _openBox('chats');
-        final raw = chatsBox.get(chatKey);
-        if (raw is List) {
-          for (final m in raw.cast<ChatMessage>()) {
-            if (m.senderPubkey == peerPubkey &&
-                m.status != 'read' &&
-                !m.id.startsWith('temp_')) {
-              idSet.add(m.id);
-            }
+        final messagesBox = await _openBoxTyped<ChatMessage>('chat_msgs');
+        final prefix = _messageStorageKey(chatKey, '');
+        for (final k in messagesBox.keys.toList()) {
+          if (k is! String || !k.startsWith(prefix)) continue;
+          final m = messagesBox.get(k);
+          if (m == null) continue;
+          if (m.senderPubkey == peerPubkey &&
+              m.status != 'read' &&
+              !m.id.startsWith('temp_')) {
+            idSet.add(m.id);
           }
         }
       } catch (e) {
-        debugPrint('[BgChat] chats box unavailable | $e');
+        debugPrint('[BgChat] chat_msgs box unavailable | $e');
       }
 
       final ids = idSet.toList();
@@ -130,24 +131,25 @@ class BackgroundChatActions {
       final wrappedSelf = wrappedList[1];
 
       // Save the reply locally so the chat already contains it on next open.
-      final chatsBox = await _openBox('chats');
-      final raw = chatsBox.get(chatKey);
-      final List<ChatMessage> messages =
-      (raw is List) ? raw.cast<ChatMessage>().toList() : [];
-
-      messages.add(ChatMessage(
-        id: wrappedRecipient.rumorId,
-        senderPubkey: myPubkey,
-        receiverPubkey: peerPubkey,
-        content: wrappedRecipient.giftWrap['content']?.toString() ?? '',
-        plaintext: replyText,
-        timestamp: messageTs,
-        status: 'sent',
-        chatKey: chatKey,
-        giftWrapId: wrappedRecipient.giftWrapId,
-      ));
-      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      await chatsBox.put(chatKey, messages);
+      // Storage v2: one key per message, plus a registry touch so the chat
+      // list rebuilds once.
+      final messagesBox = await _openBoxTyped<ChatMessage>('chat_msgs');
+      await messagesBox.put(
+        _messageStorageKey(chatKey, wrappedRecipient.rumorId),
+        ChatMessage(
+          id: wrappedRecipient.rumorId,
+          senderPubkey: myPubkey,
+          receiverPubkey: peerPubkey,
+          content: wrappedRecipient.giftWrap['content']?.toString() ?? '',
+          plaintext: replyText,
+          timestamp: messageTs,
+          status: 'sent',
+          chatKey: chatKey,
+          giftWrapId: wrappedRecipient.giftWrapId,
+        ),
+      );
+      final registryBox = await _openBox('chats');
+      await registryBox.put(chatKey, DateTime.now().millisecondsSinceEpoch);
 
       await BgInbox.recordSentReply(peerPubkey);
 
@@ -176,6 +178,13 @@ class BackgroundChatActions {
     return 'chat_${sorted[0]}_${sorted[1]}';
   }
 
+  // Storage v2 key scheme, duplicated from ChatManager (which must not be
+  // imported here: it drags the whole relay stack into this isolate).
+  static const String _messageKeySeparator = '\x1f';
+
+  static String _messageStorageKey(String chatKey, String messageId) =>
+      '$chatKey$_messageKeySeparator$messageId';
+
   static Future<void> _prepareHive() async {
     await Hive.initFlutter();
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
@@ -186,6 +195,12 @@ class BackgroundChatActions {
   static Future<Box> _openBox(String name) async {
     if (Hive.isBoxOpen(name)) return Hive.box(name);
     return Hive.openBox(name, compactionStrategy: (_, __) => false);
+  }
+
+  /// Typed variant of [_openBox] for the message storage box.
+  static Future<Box<T>> _openBoxTyped<T>(String name) async {
+    if (Hive.isBoxOpen(name)) return Hive.box<T>(name);
+    return Hive.openBox<T>(name, compactionStrategy: (_, __) => false);
   }
 
   /// Publishes [payloads] to every relay without waiting for the result, so the

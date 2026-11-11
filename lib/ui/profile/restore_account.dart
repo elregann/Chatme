@@ -1,6 +1,7 @@
 // restore_account.dart
 
 import 'package:flutter/material.dart';
+import '../../core/utils/sync_gate.dart';
 import '../../services/app_settings.dart';
 import '../../relay_manager.dart';
 
@@ -118,6 +119,11 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
                 setState(() => _isLoading = true);
                 try {
                   await AppSettings.instance.importAccount(input);
+                  // Open the initial-sync gate BEFORE connecting: the
+                  // relays will replay this account's whole backlog, and
+                  // that history must arrive silently (no notification
+                  // spam, no unread badges) until every relay sends EOSE.
+                  SyncGate.start('account restore');
                   widget.relayManager.disconnect();
                   widget.relayManager.connect();
                   if (mounted) navigator.pop();

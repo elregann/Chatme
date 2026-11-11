@@ -29,6 +29,7 @@ void main() {
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
     await Hive.openBox('chats');
+    await Hive.openBox<ChatMessage>('chat_msgs');
     await Hive.openBox<String>('profile_pictures');
     await Hive.openBox('processed_events');
   });
@@ -42,8 +43,12 @@ void main() {
     ChatScreenRegistry.clear();
     AppSettings.instance.myPubkey = 'me';
     final chatKey = ChatManager.instance.getChatKey('me', 'peer');
-    await Hive.box('chats').put(chatKey, [
-      for (var i = 1; i <= 60; i++)
+    await Hive.box('chats').clear();
+    await Hive.box<ChatMessage>('chat_msgs').clear();
+    await Hive.box('chats').put(chatKey, DateTime.now().millisecondsSinceEpoch);
+    for (var i = 1; i <= 60; i++) {
+      await Hive.box<ChatMessage>('chat_msgs').put(
+        ChatManager.messageStorageKey(chatKey, 'm$i'),
         ChatMessage(
           id: 'm$i',
           senderPubkey: 'me',
@@ -53,7 +58,8 @@ void main() {
           timestamp: i * 1000,
           chatKey: chatKey,
         ),
-    ]);
+      );
+    }
   });
 
   Widget app({String? initialMessageId}) => MaterialApp(

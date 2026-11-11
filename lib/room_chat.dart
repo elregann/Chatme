@@ -1090,21 +1090,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     HapticFeedback.lightImpact();
 
     try {
-      final myPubkey = AppSettings.instance.myPubkey;
       final chatKey = targetMessage.chatKey;
       final targetId = targetMessage.id;
-      final box = Hive.box('chats');
 
-      ChatMessage? findTarget() {
-        final dynamic r = box.get(chatKey);
-        if (r is! List) return null;
-        for (final m in r.cast<ChatMessage>()) {
-          if (m.id == targetId) return m;
-        }
-        return null;
-      }
-
-      final before = findTarget();
+      final before = ChatManager.instance.getMessageByIdSync(targetId, chatKey);
       if (before == null) return;
 
       final bool isMessageReady =
@@ -1112,16 +1101,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               !targetId.startsWith('temp_') &&
               !targetId.startsWith('pending_');
 
-      final dynamic rawBefore = box.get(chatKey);
-      if (rawBefore is! List) return;
-      final listBefore = rawBefore.cast<ChatMessage>().toList();
-      final idxBefore = listBefore.indexWhere((m) => m.id == targetId);
-      if (idxBefore == -1) return;
-      listBefore[idxBefore] = listBefore[idxBefore].copyWith(
-        reactions: {...listBefore[idxBefore].reactions, myPubkey: emoji},
-        pendingReactions: {...listBefore[idxBefore].pendingReactions, myPubkey: emoji},
+      await ChatManager.instance.setMessageReaction(
+        chatKey: chatKey,
+        messageId: targetId,
+        reactorPubkey: AppSettings.instance.myPubkey,
+        emoji: emoji,
       );
-      await box.put(chatKey, listBefore);
 
       if (isMessageReady) {
         try {
@@ -1469,20 +1454,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
           Expanded(
             child: ValueListenableBuilder(
-              valueListenable: Hive.box('chats').listenable(),
-              builder: (context, Box box, _) {
+              // Filtered listenable: only writes to THIS chat rebuild the
+              // room. A plain box listenable would rebuild it for every
+              // message saved anywhere (e.g. a full restore backlog).
+              valueListenable: ChatManager.instance.chatMessagesListenable(chatKey),
+              builder: (context, Box<ChatMessage> box, _) {
                 if (_suppressChatRebuild && _lastChatListWidget != null) {
                   return _lastChatListWidget!;
                 }
 
-                final dynamic rawData = box.get(chatKey);
-                if (rawData is List) {
-                  final List<ChatMessage> messages = rawData.cast<ChatMessage>().toList();
-                  messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-                  _cachedMessages = messages;
-                } else {
-                  _cachedMessages = [];
-                }
+                final List<ChatMessage> messages =
+                    ChatManager.instance.messagesForChatSync(chatKey);
+                messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+                _cachedMessages = messages;
 
                 final int newCount = _cachedMessages.length;
                 if (_previousMessageCount >= 0 && newCount > _previousMessageCount) {
