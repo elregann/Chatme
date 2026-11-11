@@ -10,6 +10,7 @@ import '../../models/contact.dart';
 import '../../relay_manager.dart';
 import '../../services/app_settings.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/profile_photo_viewer.dart';
 import '../../widgets/media_history_grid.dart';
 import '../../widgets/voice_history_list.dart';
 import '../qr/qr_code_page.dart';
@@ -30,6 +31,18 @@ class ContactProfilePage extends StatelessWidget {
     return ValueListenableBuilder<Box<Contact>>(
       valueListenable: box.listenable(keys: [contact.pubkey]),
       builder: (context, box, _) => _buildPage(context, box.get(contact.pubkey) ?? contact),
+    );
+  }
+
+  void _openContactPhotoPreview(BuildContext context, Contact current) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfilePhotoViewer(
+          pubkey: current.pubkey,
+          name: AppSettings.getContactDisplayName(current),
+          relayManager: relayManager,
+        ),
+      ),
     );
   }
 
@@ -109,11 +122,14 @@ class ContactProfilePage extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                 child: Column(
                   children: [
-                    UserAvatar(
-                      pubkey: current.pubkey,
-                      name: displayName,
-                      radius: 56,
-                      relayManager: relayManager,
+                    GestureDetector(
+                      onTap: () => _openContactPhotoPreview(context, current),
+                      child: UserAvatar(
+                        pubkey: current.pubkey,
+                        name: displayName,
+                        radius: 56,
+                        relayManager: relayManager,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(

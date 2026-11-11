@@ -34,7 +34,7 @@ void main() {
 
   group('dim tag', () {
     test('is written as widthxheight', () {
-      expect(image().toTags(), contains(['dim', '1600x1200']));
+      expect(image().toTags(), contains(equals(['dim', '1600x1200'])));
     });
 
     test('is left out when the size is unknown', () {

@@ -23,6 +23,7 @@ import 'notification_handler.dart';
 import 'package:remixicon/remixicon.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/duration_utils.dart';
+import 'ui/chat_image_crop_page.dart';
 import 'widgets/user_avatar.dart';
 import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
@@ -740,8 +741,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     if (kIsWeb) return;
     try {
       final picked = await ImagePicker().pickImage(source: source);
-      if (picked == null) return;
-      final prepared = await prepareImage(await picked.readAsBytes());
+      if (picked == null || !mounted) return;
+
+      final imageBytes = await picked.readAsBytes();
+      if (!mounted) return;
+      final croppedBytes = await ChatImageCropPage.open(context, imageBytes);
+      if (croppedBytes == null || !mounted) return;
+
+      final prepared = await prepareImage(croppedBytes);
+      if (!mounted) return;
 
       final replyId = _replyingTo?.id;
       final replyContent = _replyingTo?.plaintext;

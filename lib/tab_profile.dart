@@ -22,6 +22,7 @@ import 'dart:io' show File;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'widgets/user_avatar.dart';
+import 'widgets/profile_photo_viewer.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeToggle;
@@ -65,6 +66,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _nip05Controller.dispose();
     super.dispose();
+  }
+
+  void _openMyPhotoPreview() {
+    final settings = AppSettings.instance;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfilePhotoViewer(
+          pubkey: settings.myPubkey,
+          name: settings.myName.isNotEmpty
+              ? settings.myName
+              : (_currentHandle.isNotEmpty ? _currentHandle : null),
+          localPhotoPath: _localPhotoPath ?? settings.myPhotoPath,
+          photoUrl: _remotePhotoUrl ?? settings.myPhotoUrl,
+          relayManager: widget.relayManager,
+        ),
+      ),
+    );
   }
 
   Future<void> _pickPhoto() async {
@@ -459,7 +477,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     children: [
                       GestureDetector(
-                        onTap: _pickPhoto,
+                        onTap: _openMyPhotoPreview,
                         child: Stack(
                           children: [
                             (_localPhotoPath != null && !kIsWeb)
@@ -485,18 +503,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Positioned(
                               bottom: 0,
                               right: 0,
-                              child: Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF2196F3),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: isDark ? const Color(0xFF121212) : Colors.white,
-                                    width: 2,
+                              child: GestureDetector(
+                                onTap: _pickPhoto,
+                                behavior: HitTestBehavior.opaque,
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2196F3),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isDark ? const Color(0xFF121212) : Colors.white,
+                                      width: 2,
+                                    ),
                                   ),
+                                  child: const Icon(Icons.edit_rounded, size: 12, color: Colors.white),
                                 ),
-                                child: const Icon(Icons.edit_rounded, size: 12, color: Colors.white),
                               ),
                             ),
                           ],
@@ -842,7 +864,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.33.1-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.34.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),
