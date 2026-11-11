@@ -2,7 +2,7 @@ name: chatme
 description: "Chat App with Nostr"
 publish_to: 'none'
 
-version: 1.35.1+1
+version: 1.36.0+1
 
 environment:
   sdk: '>=3.4.4 <4.0.0'
@@ -46,7 +46,6 @@ dependencies:
   image_picker: ^1.2.2
   gal: ^2.3.1
   image: ^4.5.0
-  image_cropper: ^12.2.1
   crop_your_image: ^2.0.1
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.2

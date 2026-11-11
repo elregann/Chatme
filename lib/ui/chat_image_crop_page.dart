@@ -12,18 +12,27 @@ const double _cropMarkStroke = 2.0;
 class ChatImageCropPage extends StatefulWidget {
   final Uint8List imageBytes;
 
+  /// Locks the crop rect to this aspect ratio (width / height), e.g. 1 for a
+  /// square. Null keeps the free-form crop used by the chat image sender.
+  final double? aspectRatio;
+
   const ChatImageCropPage({
     super.key,
     required this.imageBytes,
+    this.aspectRatio,
   });
 
   static Future<Uint8List?> open(
     BuildContext context,
-    Uint8List imageBytes,
-  ) {
+    Uint8List imageBytes, {
+    double? aspectRatio,
+  }) {
     return Navigator.of(context).push<Uint8List>(
       MaterialPageRoute(
-        builder: (_) => ChatImageCropPage(imageBytes: imageBytes),
+        builder: (_) => ChatImageCropPage(
+          imageBytes: imageBytes,
+          aspectRatio: aspectRatio,
+        ),
       ),
     );
   }
@@ -146,6 +155,7 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
       edge: edge,
       delta: delta,
       bounds: bounds,
+      aspectRatio: widget.aspectRatio,
     );
   }
 
@@ -252,15 +262,20 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
                                     key: ValueKey(_imageRevision),
                                     image: _imageBytes,
                                     controller: _cropController,
+                                    aspectRatio: widget.aspectRatio,
                                     initialRectBuilder:
-                                        InitialRectBuilder.withArea(
-                                      Rect.fromLTWH(
-                                        0,
-                                        0,
-                                        imageSize.width,
-                                        imageSize.height,
-                                      ),
-                                    ),
+                                        widget.aspectRatio == null
+                                            ? InitialRectBuilder.withArea(
+                                                Rect.fromLTWH(
+                                                  0,
+                                                  0,
+                                                  imageSize.width,
+                                                  imageSize.height,
+                                                ),
+                                              )
+                                            : InitialRectBuilder.withSizeAndRatio(
+                                                aspectRatio: widget.aspectRatio,
+                                              ),
                                     onCropped: _onCropped,
                                     onStatusChanged: _onCropStatusChanged,
                                     onMoved: (viewportRect, _) {

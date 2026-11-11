@@ -17,10 +17,11 @@ import 'ui/profile/relay_status.dart';
 import 'ui/profile/file_servers.dart';
 import 'ui/profile/key_converter.dart';
 import 'ui/qr/qr_code_page.dart';
+import 'ui/chat_image_crop_page.dart';
 import 'package:remixicon/remixicon.dart';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
+import 'package:path_provider/path_provider.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/profile_photo_viewer.dart';
 
@@ -212,38 +213,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted) return;
 
-    final cropped = await ImageCropper().cropImage(
-      sourcePath: picked.path,
-      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-      uiSettings: [
-        if (kIsWeb)
-          WebUiSettings(
-            context: context,
-            presentStyle: WebPresentStyle.dialog,
-            size: const CropperSize(width: 420, height: 420),
-          )
-        else
-          AndroidUiSettings(
-            toolbarTitle: 'Crop photo',
-            toolbarColor: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF121212) : Colors.white,
-            toolbarWidgetColor: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white : Colors.black,
-            backgroundColor: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF121212) : Colors.white,
-            activeControlsWidgetColor: const Color(0xFF2196F3),
-            hideBottomControls: false,
-            lockAspectRatio: true,
-          ),
-      ],
-    );
+    final imageBytes = await picked.readAsBytes();
+    if (imageBytes.isEmpty || !mounted) return;
 
-    if (cropped != null && mounted) {
-      setState(() => _localPhotoPath = cropped.path);
-      await AppSettings.instance.savePhotoPath(cropped.path);
+    // Crop in the same page the chat image sender uses, locked to 1:1.
+    final croppedBytes = await ChatImageCropPage.open(
+      context,
+      imageBytes,
+      aspectRatio: 1,
+    );
+    if (croppedBytes == null || croppedBytes.isEmpty || !mounted) return;
+
+    // Saving and uploading a photo is not supported on web.
+    if (kIsWeb) return;
+
+    final directory = await getTemporaryDirectory();
+    final croppedFile = File(
+      '${directory.path}${Platform.pathSeparator}'
+      'profile_photo_${DateTime.now().millisecondsSinceEpoch}'
+      '${_photoFileExtension(croppedBytes)}',
+    );
+    await croppedFile.writeAsBytes(croppedBytes, flush: true);
+
+    if (mounted) {
+      setState(() => _localPhotoPath = croppedFile.path);
+      await AppSettings.instance.savePhotoPath(croppedFile.path);
 
       // Upload dan broadcast ke relay
-      final url = await widget.relayManager.uploadPhotoToNostrBuild(cropped.path);
+      final url = await widget.relayManager.uploadPhotoToNostrBuild(croppedFile.path);
       if (url != null) {
         await widget.relayManager.broadcastProfileKind0(photoUrl: url);
         await AppSettings.instance.savePhotoUrl(url);
@@ -255,6 +252,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     }
+  }
+
+  /// The file extension that matches the bytes of a cropped image.
+  String _photoFileExtension(Uint8List bytes) {
+    const pngHeader = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    if (bytes.length >= pngHeader.length) {
+      for (var i = 0; i < pngHeader.length; i++) {
+        if (bytes[i] != pngHeader[i]) return '.jpg';
+      }
+      return '.png';
+    }
+    return '.jpg';
   }
 
   Color _getAvatarColor(String pubkey) {
@@ -864,7 +873,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
                     title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text('1.35.1-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    trailing: Text('1.36.0-beta', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),
