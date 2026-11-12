@@ -11,9 +11,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/crypto/nip17.dart';
 import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nip04.dart';
+import 'core/utils/chat_notification_history.dart';
 import 'core/utils/notification_profile.dart';
 import 'core/utils/sync_gate.dart';
-import 'models/contact.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'call_notification_handler.dart';
 import 'core/utils/bg_inbox.dart';
@@ -137,8 +137,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class ChatNotificationHandler {
-  // In-memory message history per contact (for MessagingStyle stacking)
-  static final Map<String, List<Map<String, String>>> _messageHistory = {};
+  // Messages stacked in each contact's notification (MessagingStyle). Every
+  // isolate has its own copy, so the system decides when a stack is stale.
+  static final ChatNotificationHistory _history = ChatNotificationHistory();
 
   // Channel & action constants
   static const String channelId = 'chat_me_urgent_channel_v2';
@@ -225,43 +226,35 @@ class ChatNotificationHandler {
         ? ByteArrayAndroidIcon(profile.avatarPng!)
         : null;
 
-    // Fix Stale Message Bug: Check if unreadCount for this contact is 0 or box doesn't have unread history,
-    // if so, clear stale history so old read messages don't reappear alongside new ones.
-    try {
-      if (Hive.isBoxOpen('contacts')) {
-        final contactsBox = Hive.box<Contact>('contacts');
-        final contact = contactsBox.get(senderPubkey);
-        if (contact != null && contact.unreadCount <= 1) {
-          _messageHistory.remove(senderPubkey);
-        }
-      }
-    } catch (_) {}
+    final int notifId = notificationId(senderPubkey);
 
-    // Append to history for this contact
-    final history = _messageHistory.putIfAbsent(senderPubkey, () => []);
-    history.add({
-      'sender': displayName,
-      'message': message,
-      'time': DateTime.now().millisecondsSinceEpoch.toString(),
-    });
+    // Messages that were read, replied to or dismissed must not come back
+    // stacked with the new one: stack only on a notification still on screen.
+    final bool previousStillShown =
+        pluginInstance == null || await _isNotificationShown(pluginInstance, notifId);
 
-    // Cap history at 10 messages per contact
-    if (history.length > 10) {
-      history.removeAt(0);
-    }
-
-    // Build MessagingStyle messages
-    final List<Message> styleMessages = history
-        .map((m) => Message(
-      m['message']!,
-      DateTime.fromMillisecondsSinceEpoch(int.parse(m['time']!)),
-      Person(
-        name: m['sender']!,
-        key: senderPubkey,
-        important: false,
-        icon: avatarIcon,
+    _history.add(
+      senderPubkey,
+      NotificationEntry(
+        sender: displayName,
+        message: message,
+        timeMs: DateTime.now().millisecondsSinceEpoch,
       ),
-    ))
+      previousStillShown: previousStillShown,
+    );
+
+    final List<Message> styleMessages = _history
+        .entriesFor(senderPubkey)
+        .map((entry) => Message(
+              entry.message,
+              DateTime.fromMillisecondsSinceEpoch(entry.timeMs),
+              Person(
+                name: entry.sender,
+                key: senderPubkey,
+                important: false,
+                icon: avatarIcon,
+              ),
+            ))
         .toList();
 
     final MessagingStyleInformation messagingStyle = MessagingStyleInformation(
@@ -315,7 +308,6 @@ class ChatNotificationHandler {
     );
 
     final NotificationDetails details = NotificationDetails(android: androidDetails);
-    final int notifId = notificationId(senderPubkey);
 
     if (pluginInstance != null) {
       try {
@@ -326,12 +318,30 @@ class ChatNotificationHandler {
     }
   }
 
+  /// Whether the notification with [id] is on screen right now. When the
+  /// system cannot say, it is assumed to be shown, so stacked messages are
+  /// kept rather than dropped.
+  static Future<bool> _isNotificationShown(
+    FlutterLocalNotificationsPlugin plugin,
+    int id,
+  ) async {
+    try {
+      final android = plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final shown = await android?.getActiveNotifications();
+      if (shown == null) return true;
+      return shown.any((notification) => notification.id == id);
+    } catch (_) {
+      return true;
+    }
+  }
+
   /// Show or update the group summary notification.
   static Future<void> showSummaryIfNeeded(FlutterLocalNotificationsPlugin plugin) async {
-    final activeCount = _messageHistory.length;
+    final activeCount = _history.contactCount;
     if (activeCount < 2) return;
 
-    final total = _messageHistory.values.fold<int>(0, (sum, list) => sum + list.length);
+    final total = _history.messageCount;
 
     const AndroidNotificationDetails summaryDetails = AndroidNotificationDetails(
       channelId,
@@ -363,9 +373,9 @@ class ChatNotificationHandler {
   static Future<void> clearNotification(String senderPubkey, FlutterLocalNotificationsPlugin plugin) async {
     final int notifId = notificationId(senderPubkey);
     await plugin.cancel(notifId);
-    _messageHistory.remove(senderPubkey);
+    _history.clear(senderPubkey);
 
-    if (_messageHistory.length < 2) {
+    if (_history.contactCount < 2) {
       await plugin.cancel(summaryNotificationId);
     } else {
       await showSummaryIfNeeded(plugin);
@@ -375,6 +385,6 @@ class ChatNotificationHandler {
   /// Dismiss all chat notifications.
   static Future<void> clearAllNotifications(FlutterLocalNotificationsPlugin plugin) async {
     await plugin.cancelAll();
-    _messageHistory.clear();
+    _history.clearAll();
   }
 }
