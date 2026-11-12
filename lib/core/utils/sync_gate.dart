@@ -14,8 +14,9 @@
 // The state is persisted in the settings box so an interrupted restore
 // resumes quietly after a cold start instead of spamming notifications for
 // the remaining backlog. RelayManager ends the gate when every relay has
-// sent EOSE (end of stored events), backed by a quiet-period and a hard
-// timeout safety net.
+// finished its incoming subscription's stored-event replay (EOSE, CLOSED,
+// disconnect, or a per-relay deadline), followed by a short tail that lets
+// the event pipeline flush.
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -26,8 +27,13 @@ class SyncGate {
   static const String _startedAtKey = 'initial_sync_started_at';
   static const String _freshWindowKey = 'initial_sync_fresh_window';
 
+  /// Hard upper bound for an initial sync. The normal path (EOSE plus the
+  /// short tail) ends the gate much sooner; this only protects against a
+  /// stuck pipeline or a relay that keeps the connection busy forever.
+  static const int maxDurationMs = 10 * 60 * 1000;
+
   /// A persisted gate older than this is considered stale and dropped.
-  static const int _resumeWindowMs = 10 * 60 * 1000;
+  static const int _resumeWindowMs = maxDurationMs;
 
   static final ValueNotifier<bool> _activeNotifier = ValueNotifier<bool>(false);
 
@@ -72,6 +78,22 @@ class SyncGate {
         '(${(age / 1000).toStringAsFixed(0)}s after start)',
       );
     } catch (_) {}
+  }
+
+  /// Time left before [maxDurationMs], measured from the persisted start.
+  /// Resuming an interrupted restore must not give the hard cap a fresh
+  /// window on top of the time the gate was already active.
+  static int get remainingMs {
+    try {
+      final box = Hive.box('settings');
+      final startedAt = box.get(_startedAtKey, defaultValue: 0) as int;
+      if (startedAt == 0) return maxDurationMs;
+      final remaining =
+          maxDurationMs - (DateTime.now().millisecondsSinceEpoch - startedAt);
+      return remaining > 0 ? remaining : 0;
+    } catch (_) {
+      return maxDurationMs;
+    }
   }
 
   /// Ends the gate. Safe to call multiple times.

@@ -70,9 +70,12 @@ void main() {
 
   test('resumeIfPending ignores a stale gate from long ago', () {
     final box = Hive.box('settings');
-    // A gate older than the 10-minute resume window is dropped silently.
-    box.put('initial_sync_started_at',
-        DateTime.now().millisecondsSinceEpoch - 11 * 60 * 1000);
+    // A gate older than the hard cap is dropped silently.
+    box.put(
+        'initial_sync_started_at',
+        DateTime.now().millisecondsSinceEpoch -
+            SyncGate.maxDurationMs -
+            60 * 1000);
     box.put('initial_sync_fresh_window', true);
 
     SyncGate.resumeIfPending();
@@ -80,6 +83,36 @@ void main() {
     expect(SyncGate.isActive, isFalse);
     expect(SyncGate.useFreshWindow, isFalse);
     expect(box.get('initial_sync_started_at', defaultValue: 0), 0);
+  });
+
+  test('remainingMs counts down from the persisted start', () {
+    SyncGate.start('restore');
+    expect(
+      SyncGate.remainingMs,
+      inInclusiveRange(
+        SyncGate.maxDurationMs - 2000,
+        SyncGate.maxDurationMs,
+      ),
+    );
+
+    // A resumed gate must not get a fresh hard-cap window.
+    final box = Hive.box('settings');
+    box.put('initial_sync_started_at',
+        DateTime.now().millisecondsSinceEpoch - 60 * 1000);
+    expect(
+      SyncGate.remainingMs,
+      inInclusiveRange(
+        SyncGate.maxDurationMs - 62000,
+        SyncGate.maxDurationMs - 58000,
+      ),
+    );
+  });
+
+  test('remainingMs never goes below zero', () {
+    final box = Hive.box('settings');
+    box.put('initial_sync_started_at',
+        DateTime.now().millisecondsSinceEpoch - SyncGate.maxDurationMs - 1000);
+    expect(SyncGate.remainingMs, 0);
   });
 
   test('resumeIfPending does nothing without a persisted gate', () {

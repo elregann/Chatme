@@ -113,10 +113,23 @@ class RelayManager {
   final Set<String> _drainTouchedChats = {};
 
   // --- Initial sync gate (restore / first login) ---------------------------
-  // Relays still expected to send EOSE before the gate can end.
+  // EOSE is per subscription, so the gate only waits for the `_incoming`
+  // REQ: that is the one carrying messages we may notify about. A relay
+  // leaves this set on EOSE, a non-auth CLOSED, disconnect, or its own
+  // deadline. A short tail then lets the batch pipeline finish flushing.
   final Set<String> _syncWaitingRelays = {};
-  Timer? _syncQuietTimer;
+  final Map<String, Timer> _syncRelayTimers = {};
+  Timer? _syncTailTimer;
   Timer? _syncHardTimer;
+  Timer? _syncStartupTimer;
+
+  /// A relay that never sends EOSE (or CLOSED) is released after this.
+  static const Duration _syncRelayDeadline = Duration(seconds: 30);
+
+  /// Short grace period after the last relay finishes, so events already in
+  /// flight and the remaining drain batches land before notifications come
+  /// back.
+  static const Duration _syncTailDelay = Duration(seconds: 3);
 
   /// Serializes outgoing call signals. Wrapping now runs on a background
   /// isolate, so without this a later signal (e.g. hangup) could finish
@@ -161,6 +174,26 @@ class RelayManager {
           _connectToRelay(urls[i], myPubkey, latestTime);
         });
       }
+
+      // Safety net for the case where no incoming subscription is ever sent
+      // (no relays configured, or every connect attempt fails before REQ).
+      // Without this the gate would sit idle until the hard cap.
+      if (SyncGate.isActive) {
+        if (urls.isEmpty) {
+          _finishInitialSync('no relays');
+        } else {
+          _syncStartupTimer?.cancel();
+          _syncStartupTimer = Timer(
+            Duration(milliseconds: urls.length * 300 + 5000),
+            () {
+              if (SyncGate.isActive && _syncWaitingRelays.isEmpty) {
+                _finishInitialSync('no incoming subscriptions');
+              }
+            },
+          );
+        }
+      }
+
       _isInitialized = true;
       _isConnecting = false;
     } catch (e) {
@@ -184,11 +217,7 @@ class RelayManager {
   void disconnect() {
     _cleanupTimer?.cancel();
     _queueTimer?.cancel();
-    _syncQuietTimer?.cancel();
-    _syncHardTimer?.cancel();
-    _syncQuietTimer = null;
-    _syncHardTimer = null;
-    _syncWaitingRelays.clear();
+    _clearSyncTracking();
     _isProcessingQueue = false;
 
     for (var url in _connections.keys.toList()) {
@@ -210,50 +239,103 @@ class RelayManager {
 
   // ----------------------------------------------------------------- Gate
 
-  /// Starts EOSE/activity tracking for the active initial sync. Safety
-  /// nets make sure the gate can never silence notifications forever:
-  /// a hard timeout, and a quiet period with no incoming events.
+  /// Starts EOSE tracking for the active initial sync. Relays join as their
+  /// subscriptions are sent. The hard timer is measured from the persisted
+  /// start so resuming an interrupted restore cannot double the window.
   void _startInitialSyncTracking() {
-    _syncWaitingRelays.clear();
-    _syncHardTimer?.cancel();
-    _syncQuietTimer?.cancel();
-    _syncHardTimer =
-        Timer(const Duration(minutes: 10), () => _finishInitialSync('hard timeout'));
-    _syncQuietTimer =
-        Timer(const Duration(seconds: 8), () => _finishInitialSync('quiet period'));
+    _clearSyncTracking();
+    _syncHardTimer = Timer(
+      Duration(milliseconds: SyncGate.remainingMs),
+      () => _finishInitialSync('hard timeout'),
+    );
     DebugLogger.log('[Sync] Initial sync tracking started');
   }
 
-  /// Any raw EVENT counts as activity; pushes the quiet timer forward.
-  void _noteSyncActivity() {
+  /// Starts waiting for [relayUrl]'s `_incoming` EOSE. Called whenever the
+  /// subscription is (re)sent, so an AUTH retry restarts its deadline.
+  void _waitForIncomingEose(String relayUrl) {
     if (!SyncGate.isActive) return;
-    _syncQuietTimer?.cancel();
-    _syncQuietTimer =
-        Timer(const Duration(seconds: 8), () => _finishInitialSync('quiet period'));
+    _syncStartupTimer?.cancel();
+    _syncStartupTimer = null;
+
+    // A reconnect or late AUTH retry re-opens a relay: cancel a tail that
+    // was already counting down.
+    _syncTailTimer?.cancel();
+    _syncTailTimer = null;
+
+    _syncWaitingRelays.add(relayUrl);
+    _syncRelayTimers.remove(relayUrl)?.cancel();
+    _syncRelayTimers[relayUrl] = Timer(_syncRelayDeadline, () {
+      _syncRelayTimers.remove(relayUrl);
+      _onIncomingSyncDone(relayUrl, 'deadline');
+    });
   }
 
-  void _onRelayEose(String url) {
+  /// Releases a relay from the gate. Also used for relays that were never
+  /// waiting (e.g. a connection error before the REQ was sent).
+  void _onIncomingSyncDone(String relayUrl, String reason) {
     if (!SyncGate.isActive) return;
-    if (_syncWaitingRelays.isEmpty) return;
-    _syncWaitingRelays.remove(url);
-    if (_syncWaitingRelays.isEmpty) {
-      // All relays reported end-of-stored-events. Sibling subscriptions
-      // (outgoing/profile) may still stream for a moment — the quiet
-      // timer covers that tail before the gate opens.
-      _syncQuietTimer?.cancel();
-      _syncQuietTimer =
-          Timer(const Duration(seconds: 3), () => _finishInitialSync('all relays sent EOSE'));
-    }
+    _syncRelayTimers.remove(relayUrl)?.cancel();
+    if (!_syncWaitingRelays.remove(relayUrl)) return;
+    DebugLogger.log('[Sync] Incoming sync done: $relayUrl ($reason)');
+    if (_syncWaitingRelays.isEmpty) _scheduleSyncTail();
+  }
+
+  /// Subscription ID that carries messages addressed to us. Only this REQ
+  /// participates in the notification gate; our own events and kind 0
+  /// profiles must not end it.
+  String? get _incomingSubscriptionId =>
+      _subscriptionId == null ? null : '${_subscriptionId}_incoming';
+
+  void _onRelayEose(String relayUrl, String subId) {
+    if (!SyncGate.isActive) return;
+    if (subId != _incomingSubscriptionId) return;
+    _onIncomingSyncDone(relayUrl, 'EOSE');
+  }
+
+  void _scheduleSyncTail() {
+    _syncTailTimer?.cancel();
+    _syncTailTimer = Timer(_syncTailDelay, () {
+      // EOSE can arrive before the batch pipeline has finished writing the
+      // backlog it already received. Keep the gate closed while the queue
+      // or the drain is still busy.
+      if (_eventQueue.isNotEmpty || _isDrainingEvents) {
+        _scheduleSyncTail();
+        return;
+      }
+      _finishInitialSync('all relays finished incoming sync');
+    });
+  }
+
+  /// Message activity extends the tail only once every relay is done. Before
+  /// that the relay state owns the gate; a busy stream must not keep
+  /// notifications suppressed until the hard cap.
+  void _noteSyncActivity() {
+    if (!SyncGate.isActive) return;
+    if (_syncWaitingRelays.isNotEmpty) return;
+    final tail = _syncTailTimer;
+    if (tail == null || !tail.isActive) return;
+    _scheduleSyncTail();
   }
 
   void _finishInitialSync(String reason) {
-    _syncHardTimer?.cancel();
-    _syncQuietTimer?.cancel();
-    _syncHardTimer = null;
-    _syncQuietTimer = null;
-    _syncWaitingRelays.clear();
+    _clearSyncTracking();
     if (!SyncGate.isActive) return;
     SyncGate.finish(reason);
+  }
+
+  void _clearSyncTracking() {
+    _syncTailTimer?.cancel();
+    _syncHardTimer?.cancel();
+    _syncStartupTimer?.cancel();
+    for (final timer in _syncRelayTimers.values) {
+      timer.cancel();
+    }
+    _syncRelayTimers.clear();
+    _syncTailTimer = null;
+    _syncHardTimer = null;
+    _syncStartupTimer = null;
+    _syncWaitingRelays.clear();
   }
 
   Future<void> _connectToRelay(String relayUrl, String myPubkey, int latestTime) async {
@@ -321,8 +403,9 @@ class RelayManager {
     if (channel == null) return;
 
     // While the initial sync gate is open, every subscribed relay owes us
-    // an EOSE before notifications may come back to life.
-    if (SyncGate.isActive) _syncWaitingRelays.add(relayUrl);
+    // an EOSE for its `_incoming` request before notifications may come
+    // back to life.
+    if (SyncGate.isActive) _waitForIncomingEose(relayUrl);
 
     final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     int syncSince = nowTimestamp - 2592000; // fallback 30 days
@@ -407,12 +490,12 @@ class RelayManager {
 
       final type = decoded[0];
 
-      // ["EOSE", <subId>] — the relay finished replaying its stored events.
-      // This is the signal the initial sync gate waits for. (The old raw
-      // substring check also swallowed any chat message that literally
-      // contained "EOSE" — decoding first fixes that.)
-      if (type == "EOSE") {
-        _onRelayEose(url);
+      // ["EOSE", <subId>] — the relay finished replaying stored events for
+      // that subscription. (The old raw substring check also swallowed any
+      // chat message that literally contained "EOSE" — decoding first fixes
+      // that.)
+      if (type == "EOSE" && decoded.length >= 2) {
+        _onRelayEose(url, decoded[1].toString());
         return;
       }
 
@@ -431,7 +514,18 @@ class RelayManager {
         // Only re-sub after AUTH is *confirmed* (OK true). Do not re-sub
         // while AUTH is still pending — that causes the loop you saw.
         final lower = reason.toLowerCase();
-        if (lower.contains('auth-required') &&
+        final isAuthRequired = lower.contains('auth-required');
+
+        // A relay that refuses or kills the incoming subscription will
+        // never send its EOSE. Treat it as finished for the gate, unless
+        // we are about to retry it after AUTH.
+        if (SyncGate.isActive &&
+            !isAuthRequired &&
+            subId == _incomingSubscriptionId) {
+          _onIncomingSyncDone(url, 'CLOSED');
+        }
+
+        if (isAuthRequired &&
             _authenticatedRelays.contains(url) &&
             !_pendingAuthEventIds.values.contains(url)) {
           final myPubkey = AppSettings.instance.myPubkey;
@@ -2046,14 +2140,14 @@ class RelayManager {
     _updateConnectionStatus();
     // A dropped relay will never send its EOSE; forget it (a reconnect
     // re-adds it via _sendSubscriptions while the gate is still open).
-    if (SyncGate.isActive) _syncWaitingRelays.remove(url);
+    _onIncomingSyncDone(url, 'connection error');
     _scheduleReconnect(url);
   }
 
   void _handleDisconnect(String url) {
     _connectionStatus[url] = false;
     _updateConnectionStatus();
-    if (SyncGate.isActive) _syncWaitingRelays.remove(url);
+    _onIncomingSyncDone(url, 'disconnected');
     _scheduleReconnect(url);
   }
 
