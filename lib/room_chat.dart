@@ -601,43 +601,32 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     }
     _isMarkingRead = true;
     final peerPubkey = widget.contact.pubkey;
-    final myPubkey = AppSettings.instance.myPubkey;
-    final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
 
     try {
       do {
         _markReadAgain = false;
 
-        final messages = await ChatManager.instance.getMessages(peerPubkey);
-        final unread = messages
-            .where((m) => m.senderPubkey == peerPubkey && m.status != 'read')
-            .toList();
-        if (unread.isEmpty) continue;
+        // Marks the whole history read in one storage batch and returns only
+        // the newest few ids that deserve a receipt. Older history must not
+        // be acknowledged: each receipt is a NIP-17 wrap on the UI isolate.
+        // `_suppressChatRebuild` keeps the open room from rebuilding once per
+        // status write; a single rebuild follows below.
+        _suppressChatRebuild = true;
+        final List<String> toAck;
+        try {
+          toAck = await ChatManager.instance
+              .markIncomingAsRead(peerPubkey: peerPubkey);
+        } finally {
+          _suppressChatRebuild = false;
+        }
 
-        final sentIds = <String>[];
-        for (final m in unread) {
+        for (final id in toAck) {
           if (!mounted) break;
           try {
-            await widget.relayManager.sendReceipt(m.id, peerPubkey, 'read');
-            sentIds.add(m.id);
+            await widget.relayManager.sendReceipt(id, peerPubkey, 'read');
           } catch (e) {
             DebugLogger.log('[Chat] sendReceipt failed | $e', type: 'ERROR');
           }
-        }
-        if (sentIds.isEmpty) continue;
-
-        _suppressChatRebuild = true;
-        try {
-          for (final id in sentIds) {
-            try {
-              // Pass chatKey directly to avoid a full scan of all chat boxes.
-              await ChatManager.instance.updateMessageStatus(id, 'read', chatKey: chatKey);
-            } catch (e) {
-              DebugLogger.log('[Chat] updateMessageStatus failed | $e', type: 'ERROR');
-            }
-          }
-        } finally {
-          _suppressChatRebuild = false;
         }
 
         await ChatManager.instance.clearUnreadCount(peerPubkey);

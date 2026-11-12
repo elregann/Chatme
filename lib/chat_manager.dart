@@ -50,6 +50,13 @@ class ChatManager {
 
   int _getStatusWeight(String status) => _statusWeight[status] ?? 0;
 
+  /// How many of the newest unread messages are acknowledged to the sender
+  /// with a read receipt. Older history is only marked read locally: one
+  /// receipt means one NIP-17 wrap (ECDH + signature) on the UI isolate, so
+  /// acknowledging a whole restored backlog would freeze the app. Matches
+  /// the cap already used by the notification-action path.
+  static const int maxReadReceipts = 20;
+
   // ---------------------------------------------------------------- Layout
 
   /// Separator between chatKey and message id inside a `chat_msgs` key.
@@ -629,6 +636,47 @@ class ChatManager {
     } catch (e) {
       DebugLogger.log('[Contact] Preview update failed | $e', type: 'ERROR');
     }
+  }
+
+  /// Marks every unread incoming message from [peerPubkey] as read and
+  /// returns the ids that should be acknowledged to the sender, newest
+  /// first, capped at [maxReceipts].
+  ///
+  /// Only this newest slice gets a read receipt. The rest of the history is
+  /// marked read locally in one batch, so opening a long / restored chat
+  /// cannot fire hundreds of NIP-17 wraps on the UI isolate. Callers must
+  /// send the receipts after this returns; the local status is already
+  /// correct even if a receipt fails.
+  Future<List<String>> markIncomingAsRead({
+    required String peerPubkey,
+    int maxReceipts = maxReadReceipts,
+  }) async {
+    final receiptIds = <String>[];
+    try {
+      final chatKey = getChatKey(AppSettings.instance.myPubkey, peerPubkey);
+      await _lock.synchronized(() async {
+        // messagesForChatSync returns oldest first.
+        final unread = messagesForChatSync(chatKey)
+            .where((m) => m.senderPubkey == peerPubkey && m.status != 'read')
+            .toList();
+        if (unread.isEmpty) return;
+
+        for (var i = unread.length - 1;
+            i >= 0 && receiptIds.length < maxReceipts;
+            i--) {
+          receiptIds.add(unread[i].id);
+        }
+
+        final updates = <String, ChatMessage>{
+          for (final m in unread)
+            messageStorageKey(chatKey, m.id): m.copyWithStatus('read'),
+        };
+        await _messagesBox.putAll(updates);
+      });
+    } catch (e) {
+      DebugLogger.log('[Chat] Mark incoming read failed | $e', type: 'ERROR');
+    }
+    return receiptIds;
   }
 
   Future<void> clearUnreadCount(String peerPubkey) async {

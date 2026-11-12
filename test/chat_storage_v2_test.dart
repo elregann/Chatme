@@ -222,6 +222,66 @@ void main() {
     });
   });
 
+  group('mark incoming as read', () {
+    test('marks the whole backlog read but only acks the newest receipts',
+        () async {
+      // 25 unread incoming + one already read + one of our own.
+      for (var i = 1; i <= 25; i++) {
+        await ChatManager.instance.saveMessage(
+          msg('i$i', sender: 'peer', receiver: 'me', timestamp: i * 1000),
+        );
+      }
+      await ChatManager.instance.saveMessage(
+        msg('old', sender: 'peer', receiver: 'me',
+            timestamp: 500, status: 'read'),
+      );
+      await ChatManager.instance.saveMessage(
+        msg('mine', sender: 'me', receiver: 'peer', timestamp: 26000),
+      );
+
+      final toAck =
+          await ChatManager.instance.markIncomingAsRead(peerPubkey: 'peer');
+
+      // Newest first, capped at maxReadReceipts.
+      expect(toAck.length, ChatManager.maxReadReceipts);
+      expect(toAck.first, 'i25');
+      expect(toAck.last, 'i${26 - ChatManager.maxReadReceipts}');
+
+      // Every incoming message is read locally, own message is untouched.
+      for (var i = 1; i <= 25; i++) {
+        expect(
+          ChatManager.instance.getMessageByIdSync('i$i', chatKey)?.status,
+          'read',
+        );
+      }
+      expect(
+        ChatManager.instance.getMessageByIdSync('mine', chatKey)?.status,
+        'sent',
+      );
+
+      // Nothing left to acknowledge on the next open.
+      expect(
+        await ChatManager.instance.markIncomingAsRead(peerPubkey: 'peer'),
+        isEmpty,
+      );
+    });
+
+    test('maxReceipts = 0 still marks everything read locally', () async {
+      await ChatManager.instance.saveMessage(
+        msg('m1', sender: 'peer', receiver: 'me'),
+      );
+
+      final toAck = await ChatManager.instance
+          .markIncomingAsRead(peerPubkey: 'peer', maxReceipts: 0);
+
+      expect(toAck, isEmpty);
+      expect(
+        ChatManager.instance.getMessageByIdSync('m1', chatKey)?.status,
+        'read',
+      );
+    });
+  });
+
   group('reactions', () {
     test('setMessageReaction, mergeReaction and removePendingReaction',
         () async {

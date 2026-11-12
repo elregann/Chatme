@@ -115,6 +115,27 @@ void main() {
     expect(SyncGate.remainingMs, 0);
   });
 
+  test('startedAtMs exposes the persisted start and survives a restart', () {
+    expect(SyncGate.startedAtMs, 0);
+
+    SyncGate.start('restore');
+    final startedAt = SyncGate.startedAtMs;
+    expect(startedAt, greaterThan(0));
+    expect(
+      startedAt,
+      inInclusiveRange(
+        DateTime.now().millisecondsSinceEpoch - 2000,
+        DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+
+    // Simulate an app kill: in-memory state is gone, the box keeps the start.
+    SyncGate.resetForTest(keepPersisted: true);
+    expect(SyncGate.startedAtMs, startedAt);
+    SyncGate.resumeIfPending();
+    expect(SyncGate.startedAtMs, startedAt);
+  });
+
   test('resumeIfPending does nothing without a persisted gate', () {
     SyncGate.resumeIfPending();
     expect(SyncGate.isActive, isFalse);

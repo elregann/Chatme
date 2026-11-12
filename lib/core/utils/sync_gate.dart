@@ -80,20 +80,26 @@ class SyncGate {
     } catch (_) {}
   }
 
+  /// Epoch millis when the current gate started, or 0 when it is inactive.
+  /// Used to tell restored history (older than the start) apart from
+  /// messages that arrive live while the gate is still open.
+  static int get startedAtMs {
+    try {
+      return Hive.box('settings').get(_startedAtKey, defaultValue: 0) as int;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Time left before [maxDurationMs], measured from the persisted start.
   /// Resuming an interrupted restore must not give the hard cap a fresh
   /// window on top of the time the gate was already active.
   static int get remainingMs {
-    try {
-      final box = Hive.box('settings');
-      final startedAt = box.get(_startedAtKey, defaultValue: 0) as int;
-      if (startedAt == 0) return maxDurationMs;
-      final remaining =
-          maxDurationMs - (DateTime.now().millisecondsSinceEpoch - startedAt);
-      return remaining > 0 ? remaining : 0;
-    } catch (_) {
-      return maxDurationMs;
-    }
+    final startedAt = startedAtMs;
+    if (startedAt == 0) return maxDurationMs;
+    final remaining =
+        maxDurationMs - (DateTime.now().millisecondsSinceEpoch - startedAt);
+    return remaining > 0 ? remaining : 0;
   }
 
   /// Ends the gate. Safe to call multiple times.

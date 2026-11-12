@@ -183,17 +183,13 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
               await NotificationHandler.clearNotification(payload);
               await ChatManager.instance.clearUnreadCount(payload);
 
-              final myPubkey = AppSettings.instance.myPubkey;
-              final chatKey = ChatManager.instance.getChatKey(myPubkey, payload);
-              final messages = await ChatManager.instance.getMessages(payload);
-
-              for (final m in messages) {
-                if (m.senderPubkey == payload && m.status != 'read') {
-                  await ChatManager.instance.updateMessageStatus(
-                    m.id, 'read', chatKey: chatKey,
-                  );
-                  await _relayManager.sendReceipt(m.id, payload, 'read');
-                }
+              // Same policy as opening the chat: mark the whole history
+              // read locally, but only acknowledge the newest few, so a
+              // restored backlog cannot flood the relays or the UI isolate.
+              final toAck = await ChatManager.instance
+                  .markIncomingAsRead(peerPubkey: payload);
+              for (final id in toAck) {
+                await _relayManager.sendReceipt(id, payload, 'read');
               }
               _relayManager.onMessageReceived?.call();
             } catch (e) {

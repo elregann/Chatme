@@ -1204,7 +1204,17 @@ class RelayManager {
         replyToSenderPubkey = originalMsg?.senderPubkey;
       }
 
-      final String initialStatus = isFromMe ? 'sending' : 'sent';
+      // History pulled during the initial sync is not new conversation:
+      // store the incoming copy as already read (no unread badge, no read
+      // receipt storm when the chat is opened) and our own copy as already
+      // sent, so the offline queue never re-wraps and re-publishes it.
+      // Messages that arrive live while the gate is open keep their normal
+      // status and are handled like any other message.
+      final bool isHistory =
+          SyncGate.isActive && timestamp <= SyncGate.startedAtMs;
+      final String initialStatus = isFromMe
+          ? (isHistory ? 'sent' : 'sending')
+          : (isHistory ? 'read' : 'sent');
 
       final chatMessage = ChatMessage(
         id: actualEventId,
