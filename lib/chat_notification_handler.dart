@@ -11,7 +11,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/crypto/nip17.dart';
 import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nip04.dart';
-import 'core/utils/chat_notification_history.dart';
+import 'core/utils/notification_entry.dart';
 import 'core/utils/notification_profile.dart';
 import 'core/utils/sync_gate.dart';
 import 'core/utils/shortcut_helper.dart';
@@ -65,6 +65,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       message: 'Missed Call',
       showActions: true,
       replyOnly: true,
+      messageId: eventId,
       pluginInstance: cancelPlugin,
     );
     return;
@@ -132,15 +133,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     senderName: senderName,
     message: plaintext,
     showActions: true,
+    messageId: eventId,
     pluginInstance: plugin,
   );
 }
 
 class ChatNotificationHandler {
-  // Messages stacked in each contact's notification (MessagingStyle). Every
-  // isolate has its own copy, so the system decides when a stack is stale.
-  static final ChatNotificationHistory _history = ChatNotificationHistory();
-
   // Channel & action constants
   static const String channelId = 'chat_me_urgent_channel_v2';
   static const String channelName = 'Messages & Calls';
@@ -195,6 +193,7 @@ class ChatNotificationHandler {
         senderPubkey: senderPubkey,
         senderName: senderName,
         message: body,
+        messageId: eventId,
         pluginInstance: plugin,
       );
     }
@@ -206,12 +205,15 @@ class ChatNotificationHandler {
     return ((digest[0] << 24) | (digest[1] << 16) | (digest[2] << 8) | digest[3]).abs() % 1000000;
   }
 
-  /// Show a chat notification with MessagingStyle stacking.
+  /// Show a chat notification with MessagingStyle stacking. The stack holds
+  /// every unread message of the contact until the chat is read or replied
+  /// to, [messageId] being what tells one message from another.
   /// Name + avatar are resolved with the same rules as the in-app UI.
   static Future<void> showChatNotification({
     required String senderPubkey,
     required String senderName,
     required String message,
+    required String messageId,
     bool showActions = true,
     bool replyOnly = false,
     FlutterLocalNotificationsPlugin? pluginInstance,
@@ -228,28 +230,23 @@ class ChatNotificationHandler {
 
     final int notifId = notificationId(senderPubkey);
 
-    // Messages that were read, replied to or dismissed must not come back
-    // stacked with the new one: stack only on a notification still on screen.
-    final bool previousStillShown =
-        pluginInstance == null || await _isNotificationShown(pluginInstance, notifId);
-
-    _history.add(
+    final NotificationEntry entry = NotificationEntry(
+      sender: displayName,
+      message: message,
+      timeMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    final List<NotificationEntry> stack = await _stackWith(
       senderPubkey,
-      NotificationEntry(
-        sender: displayName,
-        message: message,
-        timeMs: DateTime.now().millisecondsSinceEpoch,
-      ),
-      previousStillShown: previousStillShown,
+      messageId.isNotEmpty ? messageId : '${entry.timeMs}',
+      entry,
     );
 
-    final List<Message> styleMessages = _history
-        .entriesFor(senderPubkey)
-        .map((entry) => Message(
-              entry.message,
-              DateTime.fromMillisecondsSinceEpoch(entry.timeMs),
+    final List<Message> styleMessages = stack
+        .map((item) => Message(
+              item.message,
+              DateTime.fromMillisecondsSinceEpoch(item.timeMs),
               Person(
-                name: entry.sender,
+                name: item.sender,
                 key: senderPubkey,
                 important: false,
                 icon: avatarIcon,
@@ -318,30 +315,45 @@ class ChatNotificationHandler {
     }
   }
 
-  /// Whether the notification with [id] is on screen right now. When the
-  /// system cannot say, it is assumed to be shown, so stacked messages are
-  /// kept rather than dropped.
-  static Future<bool> _isNotificationShown(
-    FlutterLocalNotificationsPlugin plugin,
-    int id,
+  /// Adds [entry] to the stack of [senderPubkey] and returns the whole stack.
+  /// If the stack cannot be stored, the new message is still shown alone.
+  static Future<List<NotificationEntry>> _stackWith(
+    String senderPubkey,
+    String key,
+    NotificationEntry entry,
   ) async {
     try {
-      final android = plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      final shown = await android?.getActiveNotifications();
-      if (shown == null) return true;
-      return shown.any((notification) => notification.id == id);
+      await BgInbox.addToStack(senderPubkey, key, entry);
+      return await BgInbox.stackOf(senderPubkey);
+    } catch (e) {
+      debugPrint('[Notification] Stack unavailable | $e');
+      return [entry];
+    }
+  }
+
+  static Future<void> _clearStack(String senderPubkey) async {
+    try {
+      await BgInbox.clearStack(senderPubkey);
+    } catch (e) {
+      debugPrint('[Notification] Stack clear failed | $e');
+    }
+  }
+
+  static Future<Map<String, int>> _stackSizes() async {
+    try {
+      return await BgInbox.stackSizes();
     } catch (_) {
-      return true;
+      return const {};
     }
   }
 
   /// Show or update the group summary notification.
   static Future<void> showSummaryIfNeeded(FlutterLocalNotificationsPlugin plugin) async {
-    final activeCount = _history.contactCount;
+    final sizes = await _stackSizes();
+    final activeCount = sizes.length;
     if (activeCount < 2) return;
 
-    final total = _history.messageCount;
+    final total = sizes.values.fold<int>(0, (sum, count) => sum + count);
 
     const AndroidNotificationDetails summaryDetails = AndroidNotificationDetails(
       channelId,
@@ -373,9 +385,9 @@ class ChatNotificationHandler {
   static Future<void> clearNotification(String senderPubkey, FlutterLocalNotificationsPlugin plugin) async {
     final int notifId = notificationId(senderPubkey);
     await plugin.cancel(notifId);
-    _history.clear(senderPubkey);
+    await _clearStack(senderPubkey);
 
-    if (_history.contactCount < 2) {
+    if ((await _stackSizes()).length < 2) {
       await plugin.cancel(summaryNotificationId);
     } else {
       await showSummaryIfNeeded(plugin);
@@ -385,6 +397,10 @@ class ChatNotificationHandler {
   /// Dismiss all chat notifications.
   static Future<void> clearAllNotifications(FlutterLocalNotificationsPlugin plugin) async {
     await plugin.cancelAll();
-    _history.clearAll();
+    try {
+      await BgInbox.clearAllStacks();
+    } catch (e) {
+      debugPrint('[Notification] Stack clear failed | $e');
+    }
   }
 }

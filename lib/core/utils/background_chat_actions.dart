@@ -49,6 +49,8 @@ class BackgroundChatActions {
       final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
       if (myPrivkey.isEmpty || myPubkey.isEmpty) return;
 
+      await _forgetNotificationStack(peerPubkey);
+
       final idSet = <String>{};
       idSet.addAll(await BgInbox.takeUnread(peerPubkey));
 
@@ -116,6 +118,8 @@ class BackgroundChatActions {
       final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
       if (myPrivkey.isEmpty || myPubkey.isEmpty) return;
 
+      await _forgetNotificationStack(peerPubkey);
+
       final messageTs = DateTime.now().millisecondsSinceEpoch;
       final chatKey = _chatKey(myPubkey, peerPubkey);
 
@@ -176,6 +180,16 @@ class BackgroundChatActions {
   static String _chatKey(String pubkeyA, String pubkeyB) {
     final sorted = [pubkeyA, pubkeyB]..sort();
     return 'chat_${sorted[0]}_${sorted[1]}';
+  }
+
+  /// The chat is being read or replied to, so its notification no longer has
+  /// unread messages to remember. A failure here must not stop the action.
+  static Future<void> _forgetNotificationStack(String peerPubkey) async {
+    try {
+      await BgInbox.clearStack(peerPubkey);
+    } catch (e) {
+      debugPrint('[BgChat] Notification stack clear failed | $e');
+    }
   }
 
   // Storage v2 key scheme, duplicated from ChatManager (which must not be

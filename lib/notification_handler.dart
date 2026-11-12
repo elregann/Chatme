@@ -228,6 +228,7 @@ class NotificationHandler {
     required String senderPubkey,
     required String senderName,
     required String message,
+    required String messageId,
     bool showActions = true,
     bool replyOnly = false,
   }) async {
@@ -236,6 +237,7 @@ class NotificationHandler {
       senderPubkey: senderPubkey,
       senderName: senderName,
       message: message,
+      messageId: messageId,
       showActions: showActions,
       replyOnly: replyOnly,
       pluginInstance: _plugin,

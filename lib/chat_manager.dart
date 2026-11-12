@@ -331,6 +331,7 @@ class ChatManager {
         senderPubkey: message.senderPubkey,
         senderName: senderName,
         message: notifBody,
+        messageId: dedupKey,
         replyOnly: isMissedCall,
       );
     } catch (e) {
