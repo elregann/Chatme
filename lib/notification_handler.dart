@@ -22,6 +22,27 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   return await chat_notif.firebaseMessagingBackgroundHandler(message);
 }
 
+Future<bool> _isMainIsolateReady(SendPort? sendPort) async {
+  if (sendPort == null) return false;
+
+  final responsePort = ReceivePort();
+  try {
+    sendPort.send({
+      'type': 'PING',
+      'replyTo': responsePort.sendPort,
+    });
+
+    final response = await responsePort.first.timeout(
+      const Duration(milliseconds: 700),
+    );
+    return response == 'PONG';
+  } catch (_) {
+    return false;
+  } finally {
+    responsePort.close();
+  }
+}
+
 /// Entry point for notification action buttons (Answer, Decline, Reply,
 /// Mark as Read) tapped while the app is in background or closed.
 ///
@@ -36,14 +57,20 @@ Future<void> backgroundNotificationResponseHandler(NotificationResponse response
 
   final String? peerPubkey = response.payload;
   final SendPort? sendPort = IsolateNameServer.lookupPortByName('chatme_notification_port');
-  final bool appIsAlive = sendPort != null;
+  final bool isReplyAction =
+      response.actionId == chat_notif.ChatNotificationHandler.replyActionId;
+  final bool appIsAlive = isReplyAction
+      ? await _isMainIsolateReady(sendPort)
+      : sendPort != null;
 
-  // Let the live app do its own UI cleanup.
-  sendPort?.send({
-    'actionId': response.actionId,
-    'input': response.input,
-    'payload': response.payload,
-  });
+  // Forward only when the main isolate is responsive for Reply.
+  if (appIsAlive) {
+    sendPort?.send({
+      'actionId': response.actionId,
+      'input': response.input,
+      'payload': response.payload,
+    });
+  }
 
   if (peerPubkey == null || peerPubkey.isEmpty) return;
 
