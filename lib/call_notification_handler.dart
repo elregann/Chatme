@@ -248,6 +248,7 @@ class CallNotificationHandler {
           'End call',
           showsUserInterface: false,
           cancelNotification: false,
+          titleColor: ChatmeColors.callEnd,
         ),
       ],
     );

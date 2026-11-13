@@ -806,7 +806,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   isLabelVisible: totalUnread > 0,
                   child: const Icon(
                     Remix.chat_3_line,
-                    color: ChatmeColors.accentPrimary,
+                    color: ChatmeColors.textPrimary,
                   )),
               selectedIcon: Badge(
                   label: Text(
@@ -822,12 +822,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               label: 'Chats',
             ),
             const NavigationDestination(
-              icon: Icon(Remix.contacts_line, color: ChatmeColors.accentPrimary),
+              icon: Icon(Remix.contacts_line, color: ChatmeColors.textPrimary),
               selectedIcon: Icon(Remix.contacts_fill, color: ChatmeColors.accentPrimary),
               label: 'Contacts',
             ),
             const NavigationDestination(
-              icon: Icon(Icons.phone_outlined, color: ChatmeColors.accentPrimary),
+              icon: Icon(Icons.phone_outlined, color: ChatmeColors.textPrimary),
               selectedIcon: Icon(Icons.phone, color: ChatmeColors.accentPrimary),
               label: 'Calls',
             ),
