@@ -14,33 +14,13 @@ import 'chat_notification_handler.dart' as chat_notif;
 import 'core/utils/background_call_signal.dart';
 import 'core/utils/background_chat_actions.dart';
 import 'core/utils/bg_inbox.dart';
+import 'core/utils/main_isolate_ping.dart';
 
 /// Entry point for FCM messages received while the app is in background or
 /// closed. The real work lives in chat_notification_handler.dart.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   return await chat_notif.firebaseMessagingBackgroundHandler(message);
-}
-
-Future<bool> _isMainIsolateReady(SendPort? sendPort) async {
-  if (sendPort == null) return false;
-
-  final responsePort = ReceivePort();
-  try {
-    sendPort.send({
-      'type': 'PING',
-      'replyTo': responsePort.sendPort,
-    });
-
-    final response = await responsePort.first.timeout(
-      const Duration(milliseconds: 700),
-    );
-    return response == 'PONG';
-  } catch (_) {
-    return false;
-  } finally {
-    responsePort.close();
-  }
 }
 
 /// Entry point for notification action buttons (Answer, Decline, Reply,
@@ -57,13 +37,18 @@ Future<void> backgroundNotificationResponseHandler(NotificationResponse response
 
   final String? peerPubkey = response.payload;
   final SendPort? sendPort = IsolateNameServer.lookupPortByName('chatme_notification_port');
-  final bool isReplyAction =
-      response.actionId == chat_notif.ChatNotificationHandler.replyActionId;
-  final bool appIsAlive = isReplyAction
-      ? await _isMainIsolateReady(sendPort)
-      : sendPort != null;
+  final String? actionId = response.actionId;
 
-  // Forward only when the main isolate is responsive for Reply.
+  // These actions are done here only when the app is not there to do them, so
+  // a port that is merely registered is not enough: the app has to answer.
+  final bool appDecides =
+      actionId == chat_notif.ChatNotificationHandler.replyActionId ||
+      actionId == CallNotificationHandler.declineActionId ||
+      actionId == CallNotificationHandler.endCallActionId;
+  final bool appIsAlive =
+      appDecides ? await isMainIsolateReady(sendPort) : sendPort != null;
+
+  // Forward only to an app that is there to receive it.
   if (appIsAlive) {
     sendPort?.send({
       'actionId': response.actionId,

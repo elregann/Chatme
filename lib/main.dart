@@ -25,6 +25,7 @@ import 'services/background_service.dart';
 import 'core/theme/chatme_buttons.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/bg_inbox.dart';
+import 'core/utils/main_isolate_ping.dart';
 import 'room_chat.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
@@ -146,13 +147,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       });
       _notificationPort!.listen((dynamic data) async {
         if (data is Map) {
-          if (data['type'] == 'PING') {
-            final replyPort = data['replyTo'];
-            if (replyPort is SendPort) {
-              replyPort.send('PONG');
-            }
-            return;
-          }
+          if (answerPing(data)) return;
 
           debugPrint('[Nav] port tap id=${data['id']} action=${data['actionId']} state=${CallManager.instance.callState}');
           final actionId = data['actionId'];
