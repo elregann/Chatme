@@ -9,7 +9,8 @@ class ChatmeColors {
   static const Color surfaceBase = Color(0xFF0A0D16);
   static const Color surfaceRaised = Color(0xFF121622);
   static const Color surfaceOverlay = Color(0xFF1A1F2E);
-  static const Color surfaceMenu = Color(0xFF0E3333);
+  static const Color surfaceMenu = Color(0xFF132020);
+  static const Color surfaceAction = Color(0xFF0E3333);
 
   // Accent mint
   static const Color accentPrimary = Color(0xFF97FCE4);

@@ -329,7 +329,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ],
         ),
         floatingActionButton: Material(
-          color: ChatmeColors.surfaceMenu,
+          color: ChatmeColors.surfaceAction,
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
           child: InkWell(

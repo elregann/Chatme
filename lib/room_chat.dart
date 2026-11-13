@@ -2255,11 +2255,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       isMe: isMe,
       bubbleColor: bubbleColor,
       textColor: textColor,
-      footer: _buildBubbleFooter(
-        message,
-        textColor,
-        statusColor: isMe ? ChatmeColors.onAccent : null,
-      ),
+      footer: _buildBubbleFooter(message, textColor),
       imageFooter: _buildBubbleFooter(message, ChatmeColors.textPrimary, dim: false),
       previewUrl: previewUrl,
       replySenderName: hasReply
@@ -2277,7 +2273,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   Widget _buildBubbleFooter(
     ChatMessage message,
     Color color, {
-    Color? statusColor,
     bool dim = true,
   }) {
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
@@ -2298,7 +2293,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ),
         if (isMe) ...[
           const SizedBox(width: 4),
-          _buildStatusIcon(message.status, statusColor ?? color),
+          _buildStatusIcon(message.status, color),
         ],
       ],
     );
