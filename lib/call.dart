@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:proximity_sensor/proximity_sensor.dart';
 import 'call_manager.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/duration_utils.dart';
 import 'widgets/call_control_bar.dart';
 import 'widgets/user_avatar.dart';
@@ -592,7 +593,7 @@ class _CallScreenState extends State<CallScreen> {
                               padding: const EdgeInsets.only(left: 10, top: 10),
                               child: IconButton(
                                 icon: const Icon(Icons.keyboard_arrow_down, size: 35),
-                                color: isDark ? Colors.white70 : Colors.black54,
+                                color: ChatmeColors.textSecondary,
                                 onPressed: _minimize,
                               ),
                             ),
@@ -614,7 +615,7 @@ class _CallScreenState extends State<CallScreen> {
             if (_isNearProximity && !kIsWeb)
               Positioned.fill(
                 child: Container(
-                  color: Colors.black,
+                  color: ChatmeColors.backgroundPrimary,
                 ),
               ),
           ],
@@ -630,21 +631,21 @@ class _CallScreenState extends State<CallScreen> {
       child: Column(
         children: [
           // End-to-end encryption label (plain, no background)
-          Row(
+          const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.lock_outline,
                 size: 13,
-                color: isDark ? Colors.white54 : Colors.black45,
+                color: ChatmeColors.textMuted,
               ),
-              const SizedBox(width: 6),
+              SizedBox(width: 6),
               Text(
                 'End-to-end encrypted',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white54 : Colors.black45,
+                  color: ChatmeColors.textMuted,
                   letterSpacing: 0.2,
                 ),
               ),
@@ -661,9 +662,9 @@ class _CallScreenState extends State<CallScreen> {
           const SizedBox(height: 25),
           Text(
             widget.peerName,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 24,
-              color: isDark ? Colors.white : Colors.black,
+              color: ChatmeColors.textPrimary,
               fontWeight: FontWeight.w500,
             ),
             maxLines: 1,
@@ -676,7 +677,7 @@ class _CallScreenState extends State<CallScreen> {
             Text(
               stateText,
               style: const TextStyle(
-                color: Colors.orange,
+                color: ChatmeColors.statusWarning,
                 fontSize: 13,
               ),
             ),
@@ -691,7 +692,7 @@ class _CallScreenState extends State<CallScreen> {
       return Text(
         _errorMessage ?? "Error",
         style: const TextStyle(
-          color: Colors.redAccent,
+          color: ChatmeColors.statusDanger,
           fontSize: 15,
           fontWeight: FontWeight.w500,
         ),
@@ -699,9 +700,9 @@ class _CallScreenState extends State<CallScreen> {
     }
 
     if (_callManager.callState == CallState.active) {
-      return _CallDurationText(
+      return const _CallDurationText(
         style: TextStyle(
-          color: isDark ? Colors.white : Colors.black,
+          color: ChatmeColors.textPrimary,
           fontSize: 15,
           fontWeight: FontWeight.w500,
         ),
@@ -731,8 +732,8 @@ class _CallScreenState extends State<CallScreen> {
 
     return Text(
       statusStr,
-      style: TextStyle(
-        color: isDark ? Colors.white38 : Colors.black38,
+      style: const TextStyle(
+        color: ChatmeColors.textSubtle,
         fontSize: 15,
         fontWeight: FontWeight.w500,
       ),
@@ -757,19 +758,19 @@ class _CallScreenState extends State<CallScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.redAccent.withAlpha(25),
+        color: ChatmeColors.statusDanger.withAlpha(25),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.redAccent.withAlpha(76)),
+        border: Border.all(color: ChatmeColors.statusDanger.withAlpha(76)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: Colors.redAccent, size: 24),
+          const Icon(Icons.error_outline, color: ChatmeColors.statusDanger, size: 24),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               _errorMessage ?? 'An error occurred',
               style: const TextStyle(
-                color: Colors.redAccent,
+                color: ChatmeColors.statusDanger,
                 fontSize: 14,
               ),
             ),

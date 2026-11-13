@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// The blue of the send button, used for every text button and popup action.
-const Color chatmeAccent = Color(0xFF2196F3);
+import 'chatme_colors.dart';
+
+/// Accent color used for text buttons and switches.
+const Color chatmeAccent = ChatmeColors.accentPrimary;
 
 final TextButtonThemeData chatmeTextButtonTheme = TextButtonThemeData(
   style: TextButton.styleFrom(foregroundColor: chatmeAccent),
@@ -9,6 +11,11 @@ final TextButtonThemeData chatmeTextButtonTheme = TextButtonThemeData(
 
 final SwitchThemeData chatmeSwitchTheme = SwitchThemeData(
   trackColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected) ? chatmeAccent : null,
+    (states) =>
+        states.contains(WidgetState.selected) ? ChatmeColors.accentStrong : null,
+  ),
+  thumbColor: WidgetStateProperty.resolveWith(
+    (states) =>
+        states.contains(WidgetState.selected) ? ChatmeColors.accentPrimary : null,
   ),
 );

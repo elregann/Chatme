@@ -3,6 +3,7 @@
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/notification_profile.dart';
 import 'core/utils/shortcut_helper.dart';
 
@@ -64,7 +65,7 @@ class CallNotificationHandler {
       'Answer',
       showsUserInterface: true,
       cancelNotification: true,
-      titleColor: Color(0xFF2E7D32),
+      titleColor: ChatmeColors.callAccept,
     );
 
     const AndroidNotificationAction declineAction = AndroidNotificationAction(
@@ -72,7 +73,7 @@ class CallNotificationHandler {
       'Decline',
       showsUserInterface: false,
       cancelNotification: true,
-      titleColor: Color(0xFFC62828),
+      titleColor: ChatmeColors.callEnd,
     );
 
     // Resolve local display name and avatar (same logic as chat notifications)
@@ -131,7 +132,7 @@ class CallNotificationHandler {
           ),
         ],
       ),
-      color: const Color(0xFF2196F3),
+      color: ChatmeColors.notificationAccent,
     );
 
     try {
@@ -223,7 +224,7 @@ class CallNotificationHandler {
       when: showTimer ? startedAtMs : null,
       usesChronometer: showTimer,
       icon: '@drawable/ic_stat_call',
-      color: const Color(0xFF2196F3),
+      color: ChatmeColors.notificationAccent,
       shortcutId: peerPubkey.isEmpty ? null : 'chat_shortcut_$peerPubkey',
       styleInformation: MessagingStyleInformation(
         const Person(name: 'You', key: 'me'),

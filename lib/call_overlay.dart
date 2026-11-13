@@ -3,9 +3,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'call_manager.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/duration_utils.dart';
 import 'call.dart';
-import 'services/app_settings.dart';
 
 class CallFloatingBar extends StatefulWidget {
   final dynamic relay;
@@ -77,45 +77,32 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final manager = CallManager.instance;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final bgColor = isNostrCyber
-        ? const Color(0xFF1B1425)
-        : (isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10));
-
-    final textColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black87);
 
     return GestureDetector(
       onTap: () {
-        final manager = CallManager.instance;
         final String peerPubkey = manager.activePeerPubkey ?? '';
         if (peerPubkey.isEmpty) return;
-        // Reuse the shared navigation helper: it guards against stacking two
-        // call screens and never registers a `/call` route name (which would
-        // become a ghost route in the web URL hash).
         CallScreenNavigator.showCallScreen(
           context: context,
           peerName: manager.activePeerName ?? 'Unknown',
           peerPubkey: peerPubkey,
           isIncoming: false,
           relay: widget.relay,
-          peerColor: manager.activePeerColor ?? Colors.blue,
+          peerColor: manager.activePeerColor ?? ChatmeColors.accentStrong,
         );
       },
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          color: bgColor,
+          color: ChatmeColors.floatingBarBackground,
           borderRadius: BorderRadius.circular(24),
-          border: isNostrCyber ? Border.all(color: Colors.white.withAlpha(25), width: 0.5) : null,
+          border: Border.all(color: ChatmeColors.borderSubtle, width: 0.5),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(
             children: [
-              // Mute Button
               GestureDetector(
                 onTap: () {
                   manager.toggleMute();
@@ -124,22 +111,18 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                 child: Container(
                   width: 32,
                   height: 32,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isNostrCyber
-                        ? Colors.white.withAlpha(35)
-                        : (isDark ? Colors.white.withAlpha(25) : Colors.black.withAlpha(20)),
+                    color: ChatmeColors.callControlSurfaceActive,
                   ),
                   child: Icon(
                     manager.isMuted ? Icons.mic_off : Icons.mic,
-                    color: textColor,
+                    color: ChatmeColors.callControlIcon,
                     size: 16,
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-
-              // Name + Status/Duration
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -147,10 +130,10 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                   children: [
                     Text(
                       manager.activePeerName ?? 'Unknown',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: textColor,
+                        color: ChatmeColors.textPrimary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -158,19 +141,16 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                     const SizedBox(height: 1),
                     Text(
                       _getStatusText(manager),
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 11,
-                        color: isNostrCyber ? Colors.white70 : Colors.grey,
+                        color: ChatmeColors.textMuted,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(width: 12),
-
-              // End Call Button
               GestureDetector(
                 onTap: () async {
                   widget.relay.sendCallSignal(
@@ -183,12 +163,12 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                   width: 32,
                   height: 32,
                   decoration: const BoxDecoration(
-                    color: Colors.redAccent,
+                    color: ChatmeColors.callEnd,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.call_end,
-                    color: Colors.white,
+                    color: ChatmeColors.textPrimary,
                     size: 16,
                   ),
                 ),

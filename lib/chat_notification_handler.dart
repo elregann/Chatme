@@ -11,6 +11,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/crypto/nip17.dart';
 import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nip04.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/notification_entry.dart';
 import 'core/utils/notification_profile.dart';
 import 'core/utils/sync_gate.dart';
@@ -297,7 +298,7 @@ class ChatNotificationHandler {
           : [],
       groupKey: groupKey,
       icon: '@drawable/ic_stat_chatme',
-      color: const Color(0xFF2196F3),
+      color: ChatmeColors.notificationAccent,
       shortcutId: 'chat_shortcut_$senderPubkey',
       autoCancel: true,
       ongoing: false,
@@ -365,7 +366,7 @@ class ChatNotificationHandler {
       groupKey: groupKey,
       setAsGroupSummary: true,
       icon: '@drawable/ic_stat_chatme',
-      color: Color(0xFF2196F3),
+      color: ChatmeColors.notificationAccent,
       autoCancel: true,
     );
 

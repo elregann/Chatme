@@ -30,8 +30,6 @@ class AppSettings {
   String myNip05 = '';
   String myPhotoPath = '';
   String myPhotoUrl = '';
-  ThemeMode themeMode = ThemeMode.dark;
-  String roomChatTheme = 'default'; // 'default' or 'nostr_cyber'
   bool linkPreviewsEnabled = false;
   bool readReceiptsEnabled = true;
 
@@ -86,11 +84,6 @@ class AppSettings {
         DebugLogger.log('[Settings] Generated new Nostr identity: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
       }
 
-      // Load theme
-      final savedTheme = settingsBox.get('theme_mode', defaultValue: 'system');
-      themeMode = savedTheme == 'dark' ? ThemeMode.dark : (savedTheme == 'light' ? ThemeMode.light : ThemeMode.system);
-
-      roomChatTheme = settingsBox.get('room_chat_theme', defaultValue: 'default');
       linkPreviewsEnabled = settingsBox.get('link_previews_enabled', defaultValue: false);
       readReceiptsEnabled = settingsBox.get('read_receipts_enabled', defaultValue: true);
       saveToGalleryEnabled = settingsBox.get('save_to_gallery', defaultValue: false);
@@ -109,12 +102,6 @@ class AppSettings {
       DebugLogger.log('[Settings] Load failed | $e', type: 'ERROR');
       rethrow;
     }
-  }
-
-  Future<void> setRoomChatTheme(String theme) async {
-    roomChatTheme = theme;
-    final settingsBox = Hive.box('settings');
-    await settingsBox.put('room_chat_theme', theme);
   }
 
   Future<void> setLinkPreviewsEnabled(bool value) async {
@@ -229,12 +216,6 @@ class AppSettings {
       DebugLogger.log('[Settings] Import account failed | $e', type: 'ERROR');
       rethrow;
     }
-  }
-
-  Future<void> saveTheme(ThemeMode mode) async {
-    themeMode = mode;
-    String themeString = (mode == ThemeMode.dark) ? 'dark' : (mode == ThemeMode.light ? 'light' : 'system');
-    await Hive.box('settings').put('theme_mode', themeString);
   }
 
   Future<void> savePhotoPath(String path) async {

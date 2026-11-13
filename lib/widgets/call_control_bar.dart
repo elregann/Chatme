@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/chatme_colors.dart';
+
 /// The capsule under the call timer: mute, speaker and hangup, or accept and
 /// hangup for an incoming call. All positions come from the constants below.
 class CallControlBar extends StatelessWidget {
@@ -57,12 +59,12 @@ class CallControlBar extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(height / 2),
-        color: isDark ? Colors.white.withAlpha(5) : Colors.black.withAlpha(5),
+        color: ChatmeColors.callControlSurface,
       ),
       foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(height / 2),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black12,
+          color: ChatmeColors.callControlBorder,
           width: borderWidth,
         ),
       ),
@@ -109,7 +111,7 @@ class CallControlBar extends StatelessWidget {
               child: CallControlButton(
                 key: acceptKey,
                 icon: Icons.call,
-                color: Colors.green,
+                color: ChatmeColors.callAccept,
                 onTap: onAccept,
                 isDark: isDark,
               ),
@@ -152,16 +154,25 @@ class CallControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filled = isActive || isHangup || color != null;
-    final background = color ??
-        (isHangup
-            ? Colors.redAccent.withAlpha(229)
-            : (isActive
-                ? (isDark ? Colors.white : Colors.black)
-                : (isDark ? Colors.white.withAlpha(25) : Colors.black.withAlpha(13))));
-    final foreground = filled
-        ? (isDark && !isHangup && color == null ? Colors.black : Colors.white)
-        : (isDark ? Colors.white : Colors.black);
+    final Color background;
+    if (color != null) {
+      background = color!;
+    } else if (isHangup) {
+      background = ChatmeColors.callEnd;
+    } else if (isActive) {
+      background = ChatmeColors.callControlSurfaceActive;
+    } else {
+      background = ChatmeColors.callControlSurface;
+    }
+
+    final Color foreground;
+    if (color != null || isHangup) {
+      foreground = ChatmeColors.textPrimary;
+    } else if (isActive) {
+      foreground = ChatmeColors.callControlIconOnActive;
+    } else {
+      foreground = ChatmeColors.callControlIcon;
+    }
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

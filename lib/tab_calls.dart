@@ -8,6 +8,7 @@ import 'models/contact.dart';
 import 'relay_manager.dart';
 import 'call_overlay.dart';
 import 'call_manager.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/ui_utils.dart';
 import 'core/utils/key_utils.dart';
 import 'widgets/confirm_dialog.dart';
@@ -96,8 +97,6 @@ class _CallsScreenState extends State<CallsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -140,22 +139,21 @@ class _CallsScreenState extends State<CallsScreen> {
                       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
                     if (logs.isEmpty) {
-                      return Center(
+                      return const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
                               Icons.phone,
                               size: 64,
-                              color: isDark ? Colors.white24 : Colors.black26,
+                              color: ChatmeColors.textSubtle,
                             ),
-                            const SizedBox(height: 16),
+                            SizedBox(height: 16),
                             Text(
                               'No call history yet',
                               style: TextStyle(
                                 fontSize: 15,
-                                color:
-                                isDark ? Colors.white54 : Colors.black45,
+                                color: ChatmeColors.textMuted,
                               ),
                             ),
                           ],
@@ -170,7 +168,6 @@ class _CallsScreenState extends State<CallsScreen> {
                         return _buildCallLogItem(
                           context,
                           log,
-                          isDark,
                           contactsBox,
                         );
                       },
@@ -188,7 +185,6 @@ class _CallsScreenState extends State<CallsScreen> {
   Widget _buildCallLogItem(
       BuildContext context,
       CallLog log,
-      bool isDark,
       Box<Contact> contactsBox,
       ) {
     // Prefer live contact displayName; fall back to shortened npub when
@@ -203,13 +199,13 @@ class _CallsScreenState extends State<CallsScreen> {
 
     if (log.isMissed) {
       directionIcon = Icons.call_missed;
-      iconColor = Colors.red;
+      iconColor = ChatmeColors.statusDanger;
     } else if (log.isIncoming) {
       directionIcon = Icons.call_received;
-      iconColor = Colors.green;
+      iconColor = ChatmeColors.statusPositive;
     } else {
       directionIcon = Icons.call_made;
-      iconColor = Colors.blue;
+      iconColor = ChatmeColors.accentStrong;
     }
 
     final durationText = log.formattedDuration;
@@ -226,9 +222,7 @@ class _CallsScreenState extends State<CallsScreen> {
         style: TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 15,
-          color: log.isMissed
-              ? Colors.red
-              : (isDark ? Colors.white : Colors.black87),
+          color: log.isMissed ? ChatmeColors.statusDanger : ChatmeColors.textPrimary,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -241,9 +235,9 @@ class _CallsScreenState extends State<CallsScreen> {
             const SizedBox(width: 4),
             Text(
               '($durationText)',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                color: isDark ? Colors.white60 : Colors.black54,
+                color: ChatmeColors.textMuted,
               ),
             ),
           ],
@@ -251,9 +245,9 @@ class _CallsScreenState extends State<CallsScreen> {
           Expanded(
             child: Text(
               _formatCallTimestamp(context, log.timestamp),
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                color: isDark ? Colors.white38 : Colors.black38,
+                color: ChatmeColors.textSubtle,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -262,7 +256,7 @@ class _CallsScreenState extends State<CallsScreen> {
         ],
       ),
       trailing: IconButton(
-        icon: const Icon(Icons.phone, color: Colors.green),
+        icon: const Icon(Icons.phone, color: ChatmeColors.statusPositive),
         onPressed: () => _callPeer(context, log.peerPubkey, displayName),
       ),
       onLongPress: () => _deleteLog(log, displayName),

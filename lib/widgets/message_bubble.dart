@@ -1,10 +1,10 @@
 // message_bubble.dart
 
-import '../core/theme/cyber_colors.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../core/theme/chatme_colors.dart';
 import '../core/utils/emoji_utils.dart';
 import '../models/chat_message.dart';
 import 'image_bubble.dart';
@@ -20,7 +20,6 @@ class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMe;
   final bool isDark;
-  final bool isNostrCyber;
   final Color bubbleColor;
   final Color textColor;
 
@@ -46,8 +45,7 @@ class MessageBubble extends StatelessWidget {
     super.key,
     required this.message,
     required this.isMe,
-    required this.isDark,
-    required this.isNostrCyber,
+    this.isDark = true,
     required this.bubbleColor,
     required this.textColor,
     required this.footer,
@@ -161,13 +159,9 @@ class MessageBubble extends StatelessWidget {
                           key: ValueKey('${message.id}_$previewUrl'),
                           url: previewUrl!,
                           textColor: textColor,
-                          backgroundColor: isNostrCyber
-                              ? (isMe
-                                  ? Colors.black.withAlpha(15)
-                                  : Colors.white.withAlpha(20))
-                              : (isDark
-                                  ? Colors.black.withAlpha(40)
-                                  : Colors.black.withAlpha(15)),
+                          backgroundColor: isMe
+                              ? ChatmeColors.accentDeep.withAlpha(80)
+                              : ChatmeColors.surfaceOverlay,
                         ),
                       ),
                     const SizedBox(height: 4),
@@ -241,7 +235,7 @@ class MessageBubble extends StatelessWidget {
                         color: bubbleColor,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isDark ? Colors.white12 : Colors.black12,
+                          color: ChatmeColors.borderSubtle,
                           width: 0.5,
                         ),
                       ),
@@ -385,16 +379,11 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildReply(BuildContext context) {
-    final onAccent = isNostrCyber && isMe;
-    final nameColor = isNostrCyber
-        ? (onAccent ? CyberColors.replyNameOnAccent : CyberColors.accent)
-        : const Color(0xFF2196F3);
-    final backgroundColor = isNostrCyber
-        ? (onAccent ? Colors.black.withAlpha(15) : Colors.white.withAlpha(20))
-        : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
-    final contentColor = isNostrCyber
-        ? (onAccent ? CyberColors.onAccent.withAlpha(178) : Colors.white70)
-        : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
+    final nameColor = isMe ? ChatmeColors.accentPrimary : ChatmeColors.accentStrong;
+    final backgroundColor = isMe
+        ? ChatmeColors.accentDeep.withAlpha(90)
+        : ChatmeColors.surfaceOverlay;
+    final contentColor = isMe ? ChatmeColors.onAccent.withAlpha(178) : ChatmeColors.textSecondary;
 
     return GestureDetector(
       onTap: onReplyTap,
@@ -441,10 +430,10 @@ class MessageBubble extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF202C33) : const Color(0xFFF0F0F0),
+        color: ChatmeColors.surfaceOverlay,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black12,
+          color: ChatmeColors.borderSubtle,
           width: 0.5,
         ),
         boxShadow: [
@@ -477,8 +466,6 @@ class MessageBubble extends StatelessWidget {
           bottomLeft: Radius.circular(isMe ? 16 : 4),
           bottomRight: Radius.circular(isMe ? 4 : 16),
         ),
-        border: isDark && !isMe
-            ? Border.all(color: Colors.white10, width: 0.5)
-            : null,
+        border: !isMe ? Border.all(color: ChatmeColors.borderSubtle, width: 0.5) : null,
       );
 }

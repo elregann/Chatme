@@ -1,4 +1,4 @@
-import 'package:chatme/core/theme/cyber_colors.dart';
+import 'package:chatme/core/theme/chatme_colors.dart';
 import 'package:chatme/core/utils/emoji_utils.dart';
 import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/widgets/message_bubble.dart';
@@ -36,17 +36,14 @@ void main() {
     String? replyToContent,
     String? replyPreview,
     bool isMe = true,
-    bool isNostrCyber = false,
   }) {
     return MessageBubble(
       message: message(text, replyToContent: replyToContent),
       isMe: isMe,
-      isDark: false,
-      isNostrCyber: isNostrCyber,
-      bubbleColor: const Color(0xFFE3F2FD),
-      textColor: Colors.black,
-      footer: footer(Colors.black),
-      imageFooter: footer(Colors.white),
+      bubbleColor: isMe ? ChatmeColors.bubbleOutgoing : ChatmeColors.bubbleIncoming,
+      textColor: isMe ? ChatmeColors.onAccent : ChatmeColors.textPrimary,
+      footer: footer(ChatmeColors.textMuted),
+      imageFooter: footer(ChatmeColors.textPrimary),
       replySenderName: replyToContent == null ? null : 'You',
       replyPreview: replyPreview,
     );
@@ -101,7 +98,7 @@ void main() {
     final pill =
         tester.widget<Container>(find.byKey(const Key('emoji_footer')));
     final decoration = pill.decoration! as BoxDecoration;
-    expect(decoration.color, const Color(0xFFE3F2FD));
+    expect(decoration.color, ChatmeColors.bubbleOutgoing);
   });
 
   testWidgets('an emoji-only reply keeps a normal bubble and plain footer',
@@ -293,38 +290,36 @@ void main() {
     expect(pillRect.right, greaterThanOrEqualTo(emojiRect.right - 1.0));
   });
 
-  group('Amethyst theme reply card', () {
+  group('reply card colors', () {
     BoxDecoration cardDecoration(WidgetTester tester) {
       final card = tester.widget<Container>(find.byKey(const Key('reply_card')));
       return card.decoration! as BoxDecoration;
     }
 
-    testWidgets('your own bubble uses dark tones on the purple', (tester) async {
+    testWidgets('uses outgoing reply colors on my bubble', (tester) async {
       await tester.pumpWidget(app(bubble(
         'Hello',
         replyToContent: 'Earlier',
         replyPreview: 'Earlier',
         isMe: true,
-        isNostrCyber: true,
       )));
 
       final border = cardDecoration(tester).border! as Border;
-      expect(border.left.color, CyberColors.replyNameOnAccent);
-      expect(cardDecoration(tester).color, Colors.black.withAlpha(15));
+      expect(border.left.color, ChatmeColors.accentPrimary);
+      expect(cardDecoration(tester).color, ChatmeColors.accentDeep.withAlpha(90));
     });
 
-    testWidgets('their bubble uses the purple accent', (tester) async {
+    testWidgets('uses incoming reply colors on their bubble', (tester) async {
       await tester.pumpWidget(app(bubble(
         'Hello',
         replyToContent: 'Earlier',
         replyPreview: 'Earlier',
         isMe: false,
-        isNostrCyber: true,
       )));
 
       final border = cardDecoration(tester).border! as Border;
-      expect(border.left.color, CyberColors.accent);
-      expect(cardDecoration(tester).color, Colors.white.withAlpha(20));
+      expect(border.left.color, ChatmeColors.accentStrong);
+      expect(cardDecoration(tester).color, ChatmeColors.surfaceOverlay);
     });
   });
 }

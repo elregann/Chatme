@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
+import '../core/theme/chatme_colors.dart';
 import 'crop_geometry.dart';
 
 const double _cropMarkStroke = 2.0;
@@ -231,10 +232,10 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF2196F3);
+    const accent = ChatmeColors.accentPrimary;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: ChatmeColors.backgroundPrimary,
       body: SafeArea(
         child: Column(
           children: [
@@ -281,8 +282,8 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
                                     onMoved: (viewportRect, _) {
                                       _cropRect.value = viewportRect;
                                     },
-                                    baseColor: Colors.black,
-                                    maskColor: const Color(0x99000000),
+                                    baseColor: ChatmeColors.backgroundPrimary,
+                                    maskColor: ChatmeColors.scrim,
                                     cornerDotBuilder: (size, alignment) =>
                                         CustomPaint(
                                       size: Size.square(size),
@@ -308,9 +309,9 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
                   ),
                   if (_imageSize == null || _isRotating || _isCropping)
                     const ColoredBox(
-                      color: Color(0x55000000),
+                      color: ChatmeColors.scrim,
                       child: Center(
-                        child: CircularProgressIndicator(color: Colors.white),
+                        child: CircularProgressIndicator(color: ChatmeColors.textPrimary),
                       ),
                     ),
                 ],
@@ -337,7 +338,7 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
                         : _rotatePhoto,
                     icon: const Icon(
                       Icons.rotate_right_rounded,
-                      color: Colors.white,
+                      color: ChatmeColors.textPrimary,
                       size: 30,
                     ),
                   ),

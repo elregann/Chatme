@@ -23,6 +23,7 @@ import 'notification_handler.dart';
 import 'services/network_manager.dart';
 import 'services/background_service.dart';
 import 'core/theme/chatme_buttons.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/bg_inbox.dart';
 import 'core/utils/main_isolate_ping.dart';
@@ -619,106 +620,93 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  void _toggleTheme(ThemeMode mode) async {
-    await AppSettings.instance.saveTheme(mode);
-    setState(() {});
-  }
-
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: Hive.box('settings').listenable(),
-      builder: (context, Box box, _) {
-        final isDark = AppSettings.instance.themeMode == ThemeMode.dark ||
-            (AppSettings.instance.themeMode == ThemeMode.system &&
-                MediaQuery.platformBrightnessOf(context) == Brightness.dark);
-
-        final navBarColor = isDark ? const Color(0xFF121212) : Colors.white;
-
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: SystemUiOverlayStyle(
-            systemNavigationBarColor: navBarColor,
-            systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-          ),
-          child: MaterialApp(
-            navigatorKey: navigatorKey,
-            debugShowCheckedModeBanner: false,
-            themeMode: AppSettings.instance.themeMode,
-            theme: _buildLightTheme(),
-            darkTheme: _buildDarkTheme(),
-            initialRoute: '/',
-            routes: {
-              '/': (context) {
-                final callerPubkey = CallManager.instance.launchCallerPubkey;
-                if (callerPubkey != null && callerPubkey.isNotEmpty) {
-                  final contact = Hive.box<Contact>('contacts').get(callerPubkey);
-                  return CallScreen(
-                    peerName: contact?.displayName ??
-                        AppSettings.formatDisplayName(callerPubkey),
-                    peerPubkey: callerPubkey,
-                    isIncoming: true,
-                    relay: _relayManager,
-                    peerColor: Color(
-                        int.parse(callerPubkey.substring(0, 8), radix: 16) | 0xFF000000),
-                    onClose: () {},
-                    autoAccept: CallManager.instance.launchAutoAccept,
-                  );
-                }
-                return MainScreen(
-                  relayManager: _relayManager,
-                  onThemeToggle: _toggleTheme,
-                  networkManager: _networkManager,
-                );
-              },
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  ThemeData _buildLightTheme() {
-    return ThemeData(
-      textButtonTheme: chatmeTextButtonTheme,
-      switchTheme: chatmeSwitchTheme,
-      brightness: Brightness.light,
-      useMaterial3: true,
-      scaffoldBackgroundColor: Colors.white,
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, surface: Colors.white),
-      appBarTheme: const AppBarTheme(
-        elevation: 0, centerTitle: true, backgroundColor: Colors.white,
-        scrolledUnderElevation: 0,
-        titleTextStyle: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        systemNavigationBarColor: ChatmeColors.backgroundPrimary,
+        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
       ),
-      navigationBarTheme: const NavigationBarThemeData(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        shadowColor: Colors.transparent,
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
+        debugShowCheckedModeBanner: false,
+        themeMode: ThemeMode.dark,
+        theme: _buildTheme(),
+        darkTheme: _buildTheme(),
+        initialRoute: '/',
+        routes: {
+          '/': (context) {
+            final callerPubkey = CallManager.instance.launchCallerPubkey;
+            if (callerPubkey != null && callerPubkey.isNotEmpty) {
+              final contact = Hive.box<Contact>('contacts').get(callerPubkey);
+              Color peerColor = ChatmeColors.accentStrong;
+              try {
+                peerColor = Color(
+                    int.parse(callerPubkey.substring(0, 8), radix: 16) | 0xFF000000);
+              } catch (_) {}
+              return CallScreen(
+                peerName: contact?.displayName ??
+                    AppSettings.formatDisplayName(callerPubkey),
+                peerPubkey: callerPubkey,
+                isIncoming: true,
+                relay: _relayManager,
+                peerColor: peerColor,
+                onClose: () {},
+                autoAccept: CallManager.instance.launchAutoAccept,
+              );
+            }
+            return MainScreen(
+              relayManager: _relayManager,
+              networkManager: _networkManager,
+            );
+          },
+        },
       ),
     );
   }
 
-  ThemeData _buildDarkTheme() {
+  ThemeData _buildTheme() {
+    const scheme = ColorScheme.dark(
+      primary: ChatmeColors.accentPrimary,
+      onPrimary: ChatmeColors.onAccent,
+      secondary: ChatmeColors.accentStrong,
+      onSecondary: ChatmeColors.onAccent,
+      surface: ChatmeColors.surfaceRaised,
+      onSurface: ChatmeColors.textPrimary,
+      error: ChatmeColors.statusDanger,
+      onError: ChatmeColors.textPrimary,
+    );
+
     return ThemeData(
       textButtonTheme: chatmeTextButtonTheme,
       switchTheme: chatmeSwitchTheme,
       brightness: Brightness.dark,
       useMaterial3: true,
-      scaffoldBackgroundColor: const Color(0xFF121212),
-      colorScheme: ColorScheme.fromSeed(brightness: Brightness.dark, seedColor: Colors.blue, surface: const Color(0xFF1E1E1E)),
+      scaffoldBackgroundColor: ChatmeColors.backgroundPrimary,
+      colorScheme: scheme,
       appBarTheme: const AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        backgroundColor: Color(0xFF121212),
+        backgroundColor: ChatmeColors.backgroundPrimary,
+        foregroundColor: ChatmeColors.textPrimary,
+        titleTextStyle: TextStyle(
+          color: ChatmeColors.textPrimary,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
       ),
       navigationBarTheme: const NavigationBarThemeData(
-        backgroundColor: Color(0xFF121212),
+        backgroundColor: ChatmeColors.backgroundPrimary,
+        indicatorColor: ChatmeColors.navIndicator,
         elevation: 0,
         shadowColor: Colors.transparent,
       ),
+      cardColor: ChatmeColors.surfaceRaised,
+      dividerColor: ChatmeColors.dividerSubtle,
+      iconTheme: const IconThemeData(color: ChatmeColors.textPrimary),
     );
   }
 }
@@ -726,9 +714,8 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 class MainScreen extends StatefulWidget {
   final RelayManager relayManager;
   final NetworkManager networkManager;
-  final Function(ThemeMode) onThemeToggle;
 
-  const MainScreen({super.key, required this.relayManager, required this.onThemeToggle, required this.networkManager});
+  const MainScreen({super.key, required this.relayManager, required this.networkManager});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -788,7 +775,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ChatsScreen(relayManager: widget.relayManager),
           ContactsScreen(relayManager: widget.relayManager),
           CallsScreen(relayManager: widget.relayManager),
-          ProfileScreen(onThemeToggle: widget.onThemeToggle, relayManager: widget.relayManager),
+          ProfileScreen(relayManager: widget.relayManager),
         ],
       ),
       bottomNavigationBar: _buildBottomNav(),
@@ -807,18 +794,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             _pageController.jumpToPage(index);
           },
 
-          // Footer App
-          indicatorColor: Theme.of(context).brightness == Brightness.dark
-              ? Colors.grey.shade800
-              : Colors.grey.shade300,
+
           destinations: [
             NavigationDestination(
               icon: Badge(
                   label: Text(
                     '$totalUnread',
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: ChatmeColors.badgeOnDanger),
                   ),
-                  backgroundColor: Colors.red,
+                  backgroundColor: ChatmeColors.badgeDanger,
                   isLabelVisible: totalUnread > 0,
                   child: Icon(
                     Remix.chat_3_line,
@@ -827,9 +811,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               selectedIcon: Badge(
                   label: Text(
                     '$totalUnread',
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: ChatmeColors.badgeOnDanger),
                   ),
-                  backgroundColor: Colors.red,
+                  backgroundColor: ChatmeColors.badgeDanger,
                   isLabelVisible: totalUnread > 0,
                   child: Icon(
                     Remix.chat_3_fill,

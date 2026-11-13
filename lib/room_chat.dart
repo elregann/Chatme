@@ -1,6 +1,6 @@
 // room_chat.dart
 
-import 'core/theme/cyber_colors.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/unseen_message.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -109,7 +109,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   final ValueNotifier<bool> _emojiPanelMounted = ValueNotifier<bool>(false);
   Widget? _cachedEmojiPanel;
   bool? _cachedEmojiPanelDark;
-  bool? _cachedEmojiPanelCyber;
   double? _cachedEmojiPanelSafeBottom;
   double _keyboardInsetBottom = 0.0;
   bool _wasLandscape = false;
@@ -1314,37 +1313,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     final contactsBox = Hive.box<Contact>('contacts');
     final currentContact = contactsBox.get(widget.contact.pubkey) ?? widget.contact;
     String displayName = AppSettings.getContactDisplayName(currentContact);
 
     final chatKey = ChatManager.instance.getChatKey(AppSettings.instance.myPubkey, widget.contact.pubkey);
 
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final headerColor = isNostrCyber
-        ? const Color(0xFF1B1425)
-        : (isDark ? const Color(0xFF121212) : Colors.white);
-
-    final headerTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
-
-    final accentColor = isNostrCyber ? CyberColors.accent : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
-    final dividerBg = isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230);
+    const headerColor = ChatmeColors.surfaceBase;
+    const headerTextColor = ChatmeColors.textPrimary;
+    const accentColor = ChatmeColors.accentPrimary;
 
     return Scaffold(
-      backgroundColor: isNostrCyber
-          ? const Color(0xFF130F1A)
-          : (isDark ? const Color(0xFF121212) : const Color(0xFFE5DDD5)),
+      backgroundColor: ChatmeColors.backgroundPrimary,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: headerColor,
         scrolledUnderElevation: 0,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(
+          icon: const Icon(
             Icons.arrow_back_ios_rounded,
             color: headerTextColor,
             size: 18,
@@ -1375,7 +1362,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               Expanded(
                 child: Text(
                   displayName,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w600,
                     color: headerTextColor,
@@ -1389,7 +1376,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         titleSpacing: 0,
         actions: [
           IconButton(
-            icon: Icon(Icons.phone_outlined, color: headerTextColor),
+            icon: const Icon(Icons.phone_outlined, color: headerTextColor),
             onPressed: () {
               final String pubkey = widget.contact.pubkey;
               final int colorValue = int.tryParse(pubkey.substring(0, 8), radix: 16) ?? 0xFF000000;
@@ -1410,7 +1397,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             },
           ),
           ChatmeMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: headerTextColor),
+            icon: const Icon(Icons.more_vert, color: headerTextColor),
             offset: const Offset(0, 40),
             entries: [
               ChatmeMenuEntry(
@@ -1548,7 +1535,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         margin: const EdgeInsets.only(top: 12),
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: dividerBg,
+                          color: ChatmeColors.surfaceOverlay,
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(color: Colors.black.withAlpha(25), blurRadius: 4, offset: const Offset(0, 2))
@@ -1556,7 +1543,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         ),
                         child: Text(
                           _floatingDate,
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentColor),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: ChatmeColors.accentPrimary),
                         ),
                       ),
                     ),
@@ -1573,10 +1560,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                 width: 38,
                                 height: 38,
                                 decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                                  color: ChatmeColors.surfaceOverlay,
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: isDark ? Colors.white10 : Colors.black12,
+                                    color: ChatmeColors.borderSubtle,
                                     width: 0.5,
                                   ),
                                   boxShadow: [
@@ -1587,9 +1574,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                     )
                                   ],
                                 ),
-                                child: Icon(
+                                child: const Icon(
                                   Icons.keyboard_arrow_down_rounded,
-                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  color: ChatmeColors.textSecondary,
                                   size: 24,
                                 ),
                               ),
@@ -1636,24 +1623,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   Widget _buildDateDivider(String label) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final accentColor = isNostrCyber
-        ? CyberColors.accent
-        : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
-
-    final dividerBg = isNostrCyber
-        ? const Color(0xFF1B1425)
-        : (isDark ? const Color(0xFF182229) : const Color(0xFFFFFFFF).withAlpha(230));
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20),
       child: Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: dividerBg,
+            color: ChatmeColors.surfaceOverlay,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 1)
@@ -1661,10 +1637,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
           child: Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: accentColor
+                color: ChatmeColors.accentPrimary
             ),
           ),
         ),
@@ -1726,39 +1702,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   // One picker is kept and reused while the keyboard animates, since building
   // it is expensive.
   Widget _emojiPanelFor(double safeBottom) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
     final cached = _cachedEmojiPanel;
     if (cached != null &&
-        _cachedEmojiPanelDark == isDark &&
-        _cachedEmojiPanelCyber == isCyber &&
+        _cachedEmojiPanelDark == true &&
         _cachedEmojiPanelSafeBottom == safeBottom) {
       return cached;
     }
-    _cachedEmojiPanelDark = isDark;
-    _cachedEmojiPanelCyber = isCyber;
+    _cachedEmojiPanelDark = true;
     _cachedEmojiPanelSafeBottom = safeBottom;
     return _cachedEmojiPanel = RepaintBoundary(child: _buildEmojiPanel(safeBottom));
   }
 
   Widget _buildEmojiPanel(double safeBottom) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final accentColor = isNostrCyber ? CyberColors.accent : const Color(0xFF2196F3);
-    final panelBg = isNostrCyber
-        ? const Color(0xFF1B1425)
-        : (isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF4F4F4));
-    final iconColor = isNostrCyber
-        ? Colors.white54
-        : (isDark ? Colors.white38 : Colors.black38);
-    final dividerColor = isNostrCyber
-        ? Colors.white.withAlpha(20)
-        : (isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15));
+    const accentColor = ChatmeColors.accentPrimary;
+    const panelBg = ChatmeColors.surfaceRaised;
+    const iconColor = ChatmeColors.textMuted;
+    const dividerColor = ChatmeColors.dividerSubtle;
 
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: panelBg,
         border: Border(top: BorderSide(color: dividerColor, width: 0.5)),
       ),
@@ -1767,7 +1729,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           Expanded(
             child: emoji.EmojiPicker(
               textEditingController: _messageController,
-              config: emoji.Config(
+              config: const emoji.Config(
                 height: null,
                 emojiViewConfig: emoji.EmojiViewConfig(
                   columns: 8,
@@ -1775,11 +1737,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                   backgroundColor: panelBg,
                   verticalSpacing: 2,
                   horizontalSpacing: 2,
-                  gridPadding: const EdgeInsets.symmetric(
+                  gridPadding: EdgeInsets.symmetric(
                     horizontal: 6,
                     vertical: 6,
                   ),
-                  noRecents: const Text(
+                  noRecents: Text(
                     'No recent emoji',
                     style: TextStyle(fontSize: 13, color: Color(0xFF9E9E9E)),
                   ),
@@ -1810,17 +1772,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   Widget _buildFloatingInputBar() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final accentColor = isNostrCyber ? CyberColors.accent : const Color(0xFF2196F3);
-    final onAccentColor = isNostrCyber ? CyberColors.onAccent : Colors.white;
-    final inputBgColor = isNostrCyber
-        ? const Color(0xFF1B1425)
-        : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
-    final inputTextColor = isNostrCyber ? Colors.white : (isDark ? Colors.white : Colors.black);
-    final inputHintColor = isNostrCyber ? Colors.white54 : (isDark ? Colors.white38 : Colors.black38);
+    const accentColor = ChatmeColors.accentPrimary;
+    const onAccentColor = ChatmeColors.onAccent;
+    const inputBgColor = ChatmeColors.surfaceRaised;
+    const inputTextColor = ChatmeColors.textPrimary;
+    const inputHintColor = ChatmeColors.textSubtle;
 
     return SafeArea(
       top: false,
@@ -1843,7 +1799,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             borderRadius: BorderRadius.circular(_composerBarRadius),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withAlpha(isDark ? 30 : 15),
+                color: Colors.black.withAlpha(30),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -1889,9 +1845,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                     key: ValueKey(_isEmojiPanelOpen && !_isEmojiPanelClosing),
                                     color: (_isEmojiPanelOpen && !_isEmojiPanelClosing)
                                         ? accentColor
-                                        : (isNostrCyber
-                                            ? Colors.white70
-                                            : (isDark ? Colors.white70 : Colors.black54)),
+                                        : ChatmeColors.textSecondary,
                                     size: 24,
                                   ),
                                 ),
@@ -1915,19 +1869,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         maxLines: 5,
                         minLines: 1,
                         textAlignVertical: TextAlignVertical.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
                           height: 1.25,
                           color: inputTextColor,
                         ),
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           hintText: 'Message',
                           hintStyle: TextStyle(
                             fontSize: 16,
                             height: 1.25,
                             color: inputHintColor,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(
+                          contentPadding: EdgeInsets.symmetric(
                             horizontal: 6,
                             vertical: 10,
                           ),
@@ -1967,12 +1921,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                         offset: const Offset(0, -90),
                                         color: inputBgColor,
                                         textColor: inputTextColor,
-                                        icon: Icon(
+                                        icon: const Icon(
                                           Icons.photo_camera_outlined,
                                           size: 24,
-                                          color: isNostrCyber
-                                              ? Colors.white70
-                                              : (isDark ? Colors.white70 : Colors.black54),
+                                          color: ChatmeColors.textSecondary,
                                         ),
                                         onSelected: _pickImage,
                                         entries: const [
@@ -2008,13 +1960,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                             duration: const Duration(milliseconds: 200),
                             height: _composerSendSize,
                             width: _composerSendSize,
-                            decoration: BoxDecoration(
+                            decoration: const BoxDecoration(
                               color: accentColor,
                               shape: BoxShape.circle,
                             ),
                             child: Center(
                               child: _isSending
-                                  ? SizedBox(width: 20, height: 20,
+                                  ? const SizedBox(width: 20, height: 20,
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2, color: onAccentColor))
                                   : Icon(
@@ -2039,18 +1991,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   Widget _buildComposerLinkPreview() {
     final data = _composerPreview!;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final bgColor = isNostrCyber
-        ? const Color(0xFF251C33)
-        : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
-    final titleColor = isNostrCyber
-        ? CyberColors.accent
-        : const Color(0xFF2196F3);
-    final subColor = isNostrCyber
-        ? Colors.white70
-        : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
+    const bgColor = ChatmeColors.surfaceOverlay;
+    const titleColor = ChatmeColors.accentPrimary;
+    const subColor = ChatmeColors.textSecondary;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(
@@ -2087,7 +2030,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       data.title ?? data.host,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: titleColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
@@ -2097,14 +2040,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       data.description ?? data.host,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: subColor, fontSize: 12),
+                      style: const TextStyle(color: subColor, fontSize: 12),
                     ),
                   ],
                 ),
               ),
             ),
             IconButton(
-              icon: Icon(Icons.close, size: 20, color: subColor),
+              icon: const Icon(Icons.close, size: 20, color: subColor),
               onPressed: _dismissComposerPreview,
               constraints: const BoxConstraints(),
               padding: const EdgeInsets.only(right: 8),
@@ -2137,25 +2080,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   Widget _buildReplyPreviewInside() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final nameColor = isNostrCyber
-        ? CyberColors.accent
-        : (isDark ? const Color(0xFF2196F3) : const Color(0xFF2196F3));
-
-    final bgColor = isNostrCyber
-        ? const Color(0xFF251C33)
-        : (isDark ? Colors.black.withAlpha(40) : Colors.black.withAlpha(15));
-
-    final previewTextColor = isNostrCyber
-        ? Colors.white70
-        : (isDark ? Colors.white.withAlpha(153) : Colors.black.withAlpha(153));
-
-    final iconThemeColor = isNostrCyber
-        ? CyberColors.accent
-        : (isDark ? Colors.white70 : Colors.black87);
+    const nameColor = ChatmeColors.accentPrimary;
+    const bgColor = ChatmeColors.surfaceOverlay;
+    const previewTextColor = ChatmeColors.textSecondary;
+    const iconThemeColor = ChatmeColors.accentPrimary;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(
@@ -2171,7 +2099,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       ),
       child: Row(
         children: [
-          Icon(Icons.reply, color: iconThemeColor, size: 20),
+          const Icon(Icons.reply, color: iconThemeColor, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -2179,7 +2107,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               children: [
                 Text(
                     _getReplyName(_replyingTo!.senderPubkey),
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: nameColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 12
@@ -2189,7 +2117,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     _formatMessagePreview(_replyingTo!.plaintext),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: previewTextColor,
                         fontSize: 12
                     )
@@ -2198,7 +2126,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             ),
           ),
           IconButton(
-              icon: Icon(
+              icon: const Icon(
                   Icons.close,
                   size: 20,
                   color: iconThemeColor
@@ -2313,19 +2241,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       return _buildCallMessageBubble(message);
     }
 
-    final theme = Theme.of(context);
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
-    final isDark = theme.brightness == Brightness.dark;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
-
-    final bubbleColor = isNostrCyber
-        ? (isMe ? CyberColors.accent : const Color(0xFF251C33))
-        : (isMe ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
-        : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
-
-    final textColor = isNostrCyber
-        ? (isMe ? CyberColors.onAccent : Colors.white)
-        : (isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000));
+    final bubbleColor = isMe ? ChatmeColors.bubbleOutgoing : ChatmeColors.bubbleIncoming;
+    final textColor = isMe ? ChatmeColors.onAccent : ChatmeColors.textPrimary;
 
     final previewUrl = AppSettings.instance.linkPreviewsEnabled
         ? LinkPreviewService.extractFirstUrl(message.plaintext)
@@ -2335,12 +2253,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     return MessageBubble(
       message: message,
       isMe: isMe,
-      isDark: isDark,
-      isNostrCyber: isNostrCyber,
       bubbleColor: bubbleColor,
       textColor: textColor,
-      footer: _buildBubbleFooter(message, textColor, onAccent: isNostrCyber && isMe),
-      imageFooter: _buildBubbleFooter(message, Colors.white, dim: false),
+      footer: _buildBubbleFooter(message, textColor),
+      imageFooter: _buildBubbleFooter(message, ChatmeColors.textPrimary, dim: false),
       previewUrl: previewUrl,
       replySenderName: hasReply
           ? _getReplyName(_resolveReplySenderPubkey(message))
@@ -2358,7 +2274,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     ChatMessage message,
     Color color, {
     bool dim = true,
-    bool onAccent = false,
   }) {
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
     final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
@@ -2378,13 +2293,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ),
         if (isMe) ...[
           const SizedBox(width: 4),
-          _buildStatusIcon(message.status, color, onAccent: onAccent),
+          _buildStatusIcon(message.status, color),
         ],
       ],
     );
   }
 
-  Widget _buildStatusIcon(String status, Color color, {bool onAccent = false}) {
+  Widget _buildStatusIcon(String status, Color color) {
     switch (status) {
       case 'pending':
       case 'sending':
@@ -2398,15 +2313,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             if (!AppSettings.instance.readReceiptsEnabled) {
               return Icon(Icons.done, size: 13, color: color.withAlpha(153));
             }
-            return Icon(
+            return const Icon(
               Icons.done_all,
               size: 13,
-              color: onAccent ? CyberColors.readTickOnAccent : const Color(0xFF34B7F1),
+              color: ChatmeColors.readReceipt,
             );
           },
         );
       case 'error':
-        return const Icon(Icons.error_outline, size: 13, color: Colors.redAccent);
+        return const Icon(Icons.error_outline, size: 13, color: ChatmeColors.statusDanger);
       default:
         return Icon(Icons.done, size: 13, color: color.withAlpha(153));
     }
@@ -2480,9 +2395,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   Widget _buildCallMessageBubble(ChatMessage message) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
-    final bool isNostrCyber = AppSettings.instance.roomChatTheme == 'nostr_cyber';
 
     final parts = message.plaintext.split(':');
     final direction = parts.length > 1 ? parts[1] : 'outgoing';
@@ -2507,24 +2420,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
     final durationLabel = DurationUtils.formatCallDuration(durationSeconds);
 
-    final normalTextColor = isNostrCyber
-        ? (isMe ? CyberColors.onAccent : Colors.white)
-        : (isDark ? Colors.white : Colors.black87);
-    final textColor = isMissed
-        ? Colors.red
-        : normalTextColor;
-    final iconColor = isMissed ? Colors.red : textColor;
-    final timeColor = normalTextColor.withAlpha(153);
+    const normalTextColor = ChatmeColors.textPrimary;
+    final textColor = isMissed ? ChatmeColors.statusDanger : (isMe ? ChatmeColors.onAccent : ChatmeColors.textPrimary);
+    final iconColor = isMissed ? ChatmeColors.statusDanger : textColor;
+    final timeColor = (isMe ? ChatmeColors.onAccent : normalTextColor).withAlpha(153);
 
     final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
     final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a')
         .format(DateTime.fromMillisecondsSinceEpoch(message.timestamp));
 
-    final bubbleColor = isNostrCyber
-        ? (isMe ? CyberColors.accent : const Color(0xFF251C33))
-        : (isMe
-        ? (isDark ? const Color(0xFF243542) : const Color(0xFFE3F2FD))
-        : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFFFFF)));
+    final bubbleColor = isMe ? ChatmeColors.bubbleOutgoing : ChatmeColors.bubbleIncoming;
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -2543,9 +2448,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             bottomLeft: Radius.circular(isMe ? 16 : 4),
             bottomRight: Radius.circular(isMe ? 4 : 16),
           ),
-          border: isDark
-              ? Border.all(color: Colors.white10, width: 0.5)
-              : null,
+          border: !isMe ? Border.all(color: ChatmeColors.borderSubtle, width: 0.5) : null,
         ),
         child: IntrinsicWidth(
           child: Column(

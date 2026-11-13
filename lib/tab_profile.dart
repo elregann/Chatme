@@ -11,7 +11,7 @@ import 'core/utils/key_utils.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
 import 'ui/profile/restore_account.dart';
-import 'ui/profile/appearance.dart';
+import 'core/theme/chatme_colors.dart';
 import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
 import 'ui/profile/file_servers.dart';
@@ -27,12 +27,10 @@ import 'widgets/user_avatar.dart';
 import 'widgets/profile_photo_viewer.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final Function(ThemeMode) onThemeToggle;
   final RelayManager relayManager;
 
   const ProfileScreen({
     super.key,
-    required this.onThemeToggle,
     required this.relayManager,
   });
 
@@ -98,18 +96,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickPhoto() async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      backgroundColor: ChatmeColors.surfaceRaised,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-        final textPrimary = isDark ? Colors.white : Colors.black;
-        final textSecondary = isDark ? Colors.white54 : Colors.black45;
+        const borderColor = ChatmeColors.borderSubtle;
+        const textPrimary = ChatmeColors.textPrimary;
+        const textSecondary = ChatmeColors.textSecondary;
 
         return Padding(
           padding: const EdgeInsets.all(20),
@@ -117,17 +113,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Profile photo',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: textPrimary),
               ),
               const SizedBox(height: 4),
-              Text(
+              const Text(
                 'Choose a source',
                 style: TextStyle(fontSize: 12, color: textSecondary),
               ),
               const SizedBox(height: 16),
-              Divider(height: 0.5, thickness: 0.5, color: borderColor),
+              const Divider(height: 0.5, thickness: 0.5, color: borderColor),
               const SizedBox(height: 16),
               GestureDetector(
                 onTap: () async {
@@ -141,11 +137,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: borderColor, width: 0.5),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.camera_alt_outlined, size: 18, color: textPrimary),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       Text('Take a photo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
                     ],
                   ),
@@ -164,11 +160,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: borderColor, width: 0.5),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.photo_library_outlined, size: 18, color: textPrimary),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       Text('Choose from gallery', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
                     ],
                   ),
@@ -380,14 +376,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showThemeDialog(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AppearancePage(onThemeToggle: widget.onThemeToggle),
-      ),
-    );
-  }
 
   void _showPrivacyDialog(BuildContext context, Color bgColor, Color textPrimary, Color textSecondary) {
     Navigator.push(
@@ -451,13 +439,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context, _, __) {
         final settings = AppSettings.instance;
 
-        // Logic Warna sesuai AppearancePage
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-        final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-        final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-        final textPrimary = isDark ? Colors.white : Colors.black;
-        final textSecondary = isDark ? Colors.white54 : Colors.black45;
+        const bgColor = ChatmeColors.backgroundPrimary;
+        const cardColor = ChatmeColors.surfaceRaised;
+        const borderColor = ChatmeColors.borderSubtle;
+        const textPrimary = ChatmeColors.textPrimary;
+        const textSecondary = ChatmeColors.textSecondary;
 
         return Scaffold(
           backgroundColor: bgColor,
@@ -473,7 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             elevation: 0,
             actions: [
               IconButton(
-                icon: Icon(Icons.qr_code_2_rounded, color: textPrimary, size: 26),
+                icon: const Icon(Icons.qr_code_2_rounded, color: textPrimary, size: 26),
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -530,14 +516,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   width: 24,
                                   height: 24,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2196F3),
+                                    color: ChatmeColors.accentPrimary,
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: isDark ? const Color(0xFF121212) : Colors.white,
+                                      color: ChatmeColors.backgroundPrimary,
                                       width: 2,
                                     ),
                                   ),
-                                  child: const Icon(Icons.edit_rounded, size: 12, color: Colors.white),
+                                  child: const Icon(Icons.edit_rounded, size: 12, color: ChatmeColors.onAccent),
                                 ),
                               ),
                             ),
@@ -549,7 +535,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           (!_isEditing && _currentHandle.isNotEmpty)
                               ? _currentHandle.split('@')[0]
                               : settings.myName,
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)
                       ),
                     ],
                   ),
@@ -562,7 +548,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: borderColor, width: 0.5),
+                    side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: ListTile(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -572,9 +558,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     title: Text(
                       AppSettings.instance.myNip05.isNotEmpty ? AppSettings.instance.myNip05 : 'Claim your ID',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
                     ),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                     onTap: () async {
                       await Navigator.push(
                         context,
@@ -594,13 +580,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: borderColor, width: 0.5)
+                      side: const BorderSide(color: borderColor, width: 0.5)
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     title: SelectableText(
                       KeyUtils.toNpub(settings.myPubkey),
-                      style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textSecondary),
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: textSecondary),
                     ),
                     trailing: Material(
                       color: Colors.transparent,
@@ -613,7 +599,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(color: textSecondary.withAlpha(20), shape: BoxShape.circle),
-                          child: Icon(Icons.copy_rounded, color: textSecondary, size: 18),
+                          child: const Icon(Icons.copy_rounded, color: textSecondary, size: 18),
                         ),
                       ),
                     ),
@@ -626,13 +612,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: borderColor, width: 0.5),
+                    side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: ListTile(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: Icon(Icons.swap_horiz_rounded, color: textPrimary, size: 18),
-                    title: Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    leading: const Icon(Icons.swap_horiz_rounded, color: textPrimary, size: 18),
+                    title: const Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const KeyConverterPage()),
@@ -646,26 +632,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: borderColor, width: 0.5),
+                    side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: Column(
                     children: [
                       ListTile(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        leading: Icon(Remix.server_fill, color: textPrimary, size: 18),
-                        title: Text('Relays', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Remix.server_fill, color: textPrimary, size: 18),
+                        title: const Text('Relays', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => RelayStatusPage(relayManager: widget.relayManager)),
                         ),
                       ),
-                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
                       ListTile(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        leading: Icon(Icons.cloud_upload_outlined, color: textPrimary, size: 18),
-                        title: Text('File servers', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Icons.cloud_upload_outlined, color: textPrimary, size: 18),
+                        title: const Text('File servers', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const FileServersPage()),
@@ -682,14 +668,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: borderColor, width: 0.5),
+                    side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: Column(
                     children: [
                       SwitchListTile(
-                        secondary: Icon(Icons.link_rounded, color: textPrimary, size: 18),
-                        title: Text('Link previews', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        subtitle: Text(
+                        secondary: const Icon(Icons.link_rounded, color: textPrimary, size: 18),
+                        title: const Text('Link previews', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        subtitle: const Text(
                           'Loads the linked site to show a preview. The site can see your IP address.',
                           style: TextStyle(fontSize: 12, color: textSecondary),
                         ),
@@ -699,22 +685,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           if (!value) await LinkPreviewService.instance.clear();
                         },
                       ),
-                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
                       SwitchListTile(
-                        secondary: Icon(Icons.done_all_rounded, color: textPrimary, size: 18),
-                        title: Text('Read receipts', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        subtitle: Text(
+                        secondary: const Icon(Icons.done_all_rounded, color: textPrimary, size: 18),
+                        title: const Text('Read receipts', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        subtitle: const Text(
                           "When off, you won't send or see blue ticks.",
                           style: TextStyle(fontSize: 12, color: textSecondary),
                         ),
                         value: settings.readReceiptsEnabled,
                         onChanged: (value) => settings.setReadReceiptsEnabled(value),
                       ),
-                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
                       SwitchListTile(
-                        secondary: Icon(Icons.photo_library_outlined, color: textPrimary, size: 18),
-                        title: Text('Save to Gallery', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        subtitle: Text(
+                        secondary: const Icon(Icons.photo_library_outlined, color: textPrimary, size: 18),
+                        title: const Text('Save to Gallery', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        subtitle: const Text(
                           'Copies photos you receive to a Chatme album. Other apps with photo access can see them.',
                           style: TextStyle(fontSize: 12, color: textSecondary),
                         ),
@@ -732,50 +718,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: borderColor, width: 0.5)
+                      side: const BorderSide(color: borderColor, width: 0.5)
                   ),
                   child: Column(
                     children: [
                       ListTile(
-                        leading: Icon(Remix.eye_fill, color: textPrimary, size: 18),
-                        title: Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Remix.eye_fill, color: textPrimary, size: 18),
+                        title: const Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                         onTap: () => _showMnemonicDialog(context),
                       ),
-                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
                       ListTile(
-                        leading: Icon(Remix.key_fill, color: textPrimary, size: 18),
-                        title: Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Remix.key_fill, color: textPrimary, size: 18),
+                        title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                         onTap: () => _showBackupDialog(context),
                       ),
-                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
                       ListTile(
-                        leading: Icon(Icons.settings_backup_restore_rounded, color: textPrimary, size: 18),
-                        title: Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Icons.settings_backup_restore_rounded, color: textPrimary, size: 18),
+                        title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                         onTap: () => _showRestoreDialog(context),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                _buildSectionTitle('Appearance', textSecondary),
-                Card(
-                  elevation: 0,
-                  color: cardColor,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: borderColor, width: 0.5)
-                  ),
-                  child: ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: Icon(Icons.brightness_6_outlined, color: textPrimary, size: 18),
-                    title: Text('Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
-                    onTap: () => _showThemeDialog(context),
-                  ),
-                ),
+
                 const SizedBox(height: 24),
                 _buildSectionTitle('Information', textSecondary),
                 Card(
@@ -783,7 +753,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: borderColor, width: 0.5)
+                      side: const BorderSide(color: borderColor, width: 0.5)
                   ),
                   child: Column(
                     children: [
@@ -791,19 +761,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         shape: const RoundedRectangleBorder(
                           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                         ),
-                        leading: Icon(Icons.privacy_tip_outlined, color: textPrimary, size: 18),
-                        title: Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Icons.privacy_tip_outlined, color: textPrimary, size: 18),
+                        title: const Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                         onTap: () => _showPrivacyDialog(context, bgColor, textPrimary, textSecondary),
                       ),
-                      Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
                       ListTile(
                         shape: const RoundedRectangleBorder(
                           borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
                         ),
-                        leading: Icon(Icons.article_outlined, color: textPrimary, size: 18),
-                        title: Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Icons.article_outlined, color: textPrimary, size: 18),
+                        title: const Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
                         onTap: () async {
                           final List<LicenseEntry> licenses = await LicenseRegistry.licenses.toList();
                           if (!context.mounted) return;
@@ -817,9 +787,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   elevation: 0,
                                   scrolledUnderElevation: 0,
                                   centerTitle: true,
-                                  title: Text('Licenses', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary)),
+                                  title: const Text('Licenses', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary)),
                                   leading: IconButton(
-                                    icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+                                    icon: const Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
                                     onPressed: () => Navigator.pop(context),
                                   ),
                                 ),
@@ -831,13 +801,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     return Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(entry.packages.join(', '), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary)),
+                                        Text(entry.packages.join(', '), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary)),
                                         const SizedBox(height: 8),
                                         ...entry.paragraphs.map((p) => Padding(
                                           padding: const EdgeInsets.only(bottom: 8),
-                                          child: Text(p.text, style: TextStyle(fontSize: 14, height: 1.6, color: textSecondary)),
+                                          child: Text(p.text, style: const TextStyle(fontSize: 14, height: 1.6, color: textSecondary)),
                                         )),
-                                        if (index < licenses.length - 1) Divider(color: borderColor, height: 48),
+                                        if (index < licenses.length - 1) const Divider(color: borderColor, height: 48),
                                       ],
                                     );
                                   },
@@ -857,7 +827,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: borderColor, width: 0.5)
+                      side: const BorderSide(color: borderColor, width: 0.5)
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -878,13 +848,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: borderColor, width: 0.5),
+                    side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: ListTile(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
-                    title: Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text(_appVersion, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    leading: const Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
+                    title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                    trailing: Text(_appVersion, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),
