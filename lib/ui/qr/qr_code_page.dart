@@ -3,6 +3,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../../core/theme/chatme_buttons.dart';
+import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/key_utils.dart';
 import '../../relay_manager.dart';
 import '../../services/contact_qr.dart';
@@ -36,13 +38,13 @@ class QrCodePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const borderColor = ChatmeColors.borderSubtle;
+    const textPrimary = ChatmeColors.textPrimary;
+    const textSecondary = ChatmeColors.textSecondary;
     final title = name.isNotEmpty ? name : KeyUtils.formatDisplayName(pubkey);
-    final payload = contactQrPayload(pubkey, relays: RelayManager.dmInboxRelays);
+    final payload =
+        contactQrPayload(pubkey, relays: RelayManager.dmInboxRelays);
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -51,7 +53,8 @@ class QrCodePage extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -78,7 +81,7 @@ class QrCodePage extends StatelessWidget {
                           textAlign: TextAlign.center,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w600,
                             color: textPrimary,
@@ -87,7 +90,8 @@ class QrCodePage extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           KeyUtils.formatDisplayName(pubkey),
-                          style: TextStyle(fontSize: 13, color: textSecondary),
+                          style: const TextStyle(
+                              fontSize: 13, color: textSecondary),
                         ),
                         const SizedBox(height: 28),
                         Container(
@@ -132,16 +136,13 @@ class QrCodePage extends StatelessWidget {
                     width: double.infinity,
                     height: 52,
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withAlpha(isDark ? 50 : 35),
-                      borderRadius: BorderRadius.circular(26),
-                    ),
+                    decoration: ChatmeButtonStyles.primaryDecoration(),
                     child: const Text(
                       'Scan QR',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: Colors.blue,
+                        color: ChatmeButtonStyles.primaryForeground,
                       ),
                     ),
                   ),

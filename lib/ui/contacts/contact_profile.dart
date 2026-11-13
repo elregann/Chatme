@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../chat_manager.dart';
+import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/key_utils.dart';
 import '../../models/contact.dart';
 import '../../relay_manager.dart';
@@ -30,7 +31,8 @@ class ContactProfilePage extends StatelessWidget {
     final box = Hive.box<Contact>('contacts');
     return ValueListenableBuilder<Box<Contact>>(
       valueListenable: box.listenable(keys: [contact.pubkey]),
-      builder: (context, box, _) => _buildPage(context, box.get(contact.pubkey) ?? contact),
+      builder: (context, box, _) =>
+          _buildPage(context, box.get(contact.pubkey) ?? contact),
     );
   }
 
@@ -47,16 +49,16 @@ class ContactProfilePage extends StatelessWidget {
   }
 
   Widget _buildPage(BuildContext context, Contact current) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
-    final textPrimary = isDark ? Colors.white : Colors.black;
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const cardColor = ChatmeColors.surfaceMenu;
+    const borderColor = ChatmeColors.borderSubtle;
+    const textSecondary = ChatmeColors.textSecondary;
+    const textPrimary = ChatmeColors.textPrimary;
     final displayName = AppSettings.getContactDisplayName(current);
-    final nprofile = KeyUtils.toNprofile(current.pubkey, relays: RelayManager.dmInboxRelays);
+    final nprofile =
+        KeyUtils.toNprofile(current.pubkey, relays: RelayManager.dmInboxRelays);
 
-    const pillColor = Colors.blue;
+    const pillColor = ChatmeColors.accentPrimary;
     final tabBar = Container(
       height: 44,
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -67,7 +69,7 @@ class ContactProfilePage extends StatelessWidget {
       ),
       child: TabBar(
         indicator: BoxDecoration(
-          color: pillColor.withAlpha(isDark ? 50 : 35),
+          color: pillColor.withAlpha(30),
           borderRadius: BorderRadius.circular(19),
         ),
         indicatorSize: TabBarIndicatorSize.tab,
@@ -78,7 +80,8 @@ class ContactProfilePage extends StatelessWidget {
         labelColor: pillColor,
         unselectedLabelColor: textSecondary,
         labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        unselectedLabelStyle:
+            const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
         tabs: const [
           Tab(text: 'Media'),
           Tab(text: 'Voice'),
@@ -95,12 +98,14 @@ class ContactProfilePage extends StatelessWidget {
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
-            icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+            icon: const Icon(Icons.arrow_back_ios_rounded,
+                color: textPrimary, size: 18),
             onPressed: () => Navigator.pop(context),
           ),
           actions: [
             IconButton(
-              icon: Icon(Icons.qr_code_2_rounded, color: textPrimary, size: 26),
+              icon: const Icon(Icons.qr_code_2_rounded,
+                  color: textPrimary, size: 26),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -137,7 +142,7 @@ class ContactProfilePage extends StatelessWidget {
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w600,
                         color: textPrimary,
@@ -147,7 +152,8 @@ class ContactProfilePage extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         '${current.globalHandle}@chatme',
-                        style: TextStyle(fontSize: 13, color: textSecondary),
+                        style:
+                            const TextStyle(fontSize: 13, color: textSecondary),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -180,7 +186,7 @@ class ContactProfilePage extends StatelessWidget {
           body: TabBarView(
             children: [
               kIsWeb
-                  ? _EmptyMedia(
+                  ? const _EmptyMedia(
                       icon: Icons.photo_library_outlined,
                       label: 'Photos are not available on web yet',
                       color: textSecondary,
@@ -192,18 +198,16 @@ class ContactProfilePage extends StatelessWidget {
                       ),
                       contact: current,
                       relayManager: relayManager,
-                      empty: _EmptyMedia(
+                      empty: const _EmptyMedia(
                         icon: Icons.photo_library_outlined,
                         label: 'No shared images or videos yet',
                         color: textSecondary,
                       ),
-                      placeholderColor: isDark
-                          ? Colors.white.withAlpha(20)
-                          : Colors.black.withAlpha(15),
+                      placeholderColor: ChatmeColors.surfaceRaised,
                       iconColor: textSecondary,
                     ),
               kIsWeb
-                  ? _EmptyMedia(
+                  ? const _EmptyMedia(
                       icon: Icons.mic_none_rounded,
                       label: 'Voice notes are not available on web yet',
                       color: textSecondary,
@@ -214,7 +218,7 @@ class ContactProfilePage extends StatelessWidget {
                         current.pubkey,
                       ),
                       contactName: displayName,
-                      empty: _EmptyMedia(
+                      empty: const _EmptyMedia(
                         icon: Icons.mic_none_rounded,
                         label: 'No voice notes yet',
                         color: textSecondary,
@@ -262,8 +266,11 @@ class _CopyChip extends StatelessWidget {
         HapticFeedback.lightImpact();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message, style: const TextStyle(color: Colors.white)),
-            backgroundColor: Colors.green,
+            content: Text(
+              message,
+              style: const TextStyle(color: ChatmeColors.textPrimary),
+            ),
+            backgroundColor: ChatmeColors.statusPositive,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ),
@@ -294,7 +301,8 @@ class _EmptyMedia extends StatelessWidget {
   final String label;
   final Color color;
 
-  const _EmptyMedia({required this.icon, required this.label, required this.color});
+  const _EmptyMedia(
+      {required this.icon, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -326,7 +334,8 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => _height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       color: color,
       alignment: Alignment.topCenter,

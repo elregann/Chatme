@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../chat_manager.dart';
+import '../core/theme/chatme_colors.dart';
 import '../core/utils/debug_logger.dart';
 import '../models/chat_message.dart';
 import '../services/file_transfer_service.dart';
@@ -38,14 +39,15 @@ class VoiceHistoryList extends StatelessWidget {
       // Filtered listenable: only this chat's messages rebuild the list.
       valueListenable: ChatManager.instance.chatMessagesListenable(chatKey),
       builder: (context, box, _) {
-        final notes =
-            voiceNotesNewestFirst(ChatManager.instance.messagesForChatSync(chatKey));
+        final notes = voiceNotesNewestFirst(
+            ChatManager.instance.messagesForChatSync(chatKey));
         if (notes.isEmpty) return empty;
 
         final children = <Widget>[];
         for (var i = 0; i < notes.length; i++) {
           if (i > 0) {
-            children.add(Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 76));
+            children.add(Divider(
+                height: 0.5, thickness: 0.5, color: borderColor, indent: 76));
           }
           children.add(_VoiceHistoryRow(
             key: ValueKey(notes[i].id),
@@ -136,16 +138,27 @@ class _VoiceHistoryRowState extends State<_VoiceHistoryRow> {
           icon = const SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: ChatmeColors.onAccent,
+            ),
           );
         } else if (failed) {
-          icon = const Icon(Icons.refresh_rounded, color: Colors.white, size: 28);
+          icon = const Icon(
+            Icons.refresh_rounded,
+            color: ChatmeColors.onAccent,
+            size: 28,
+          );
         } else if (!hasPath) {
-          icon = const Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 28);
+          icon = const Icon(
+            Icons.arrow_downward_rounded,
+            color: ChatmeColors.onAccent,
+            size: 28,
+          );
         } else {
           icon = Icon(
             playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            color: Colors.white,
+            color: ChatmeColors.onAccent,
             size: 30,
           );
         }
@@ -173,7 +186,10 @@ class _VoiceHistoryRowState extends State<_VoiceHistoryRow> {
                 Container(
                   width: 48,
                   height: 48,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.blue),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: ChatmeColors.accentPrimary,
+                  ),
                   alignment: Alignment.center,
                   child: icon,
                 ),
@@ -183,7 +199,8 @@ class _VoiceHistoryRowState extends State<_VoiceHistoryRow> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        voiceDateLabel(DateTime.fromMillisecondsSinceEpoch(message.timestamp)),
+                        voiceDateLabel(DateTime.fromMillisecondsSinceEpoch(
+                            message.timestamp)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -197,7 +214,8 @@ class _VoiceHistoryRowState extends State<_VoiceHistoryRow> {
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13, color: widget.textSecondary),
+                        style: TextStyle(
+                            fontSize: 13, color: widget.textSecondary),
                       ),
                     ],
                   ),

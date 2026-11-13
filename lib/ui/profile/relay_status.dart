@@ -2,6 +2,7 @@
 
 import '../../widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../core/theme/chatme_colors.dart';
 import '../../relay_manager.dart';
 import '../../services/app_settings.dart';
 import '../../services/server_lists.dart';
@@ -15,22 +16,25 @@ class RelayStatusPage extends StatelessWidget {
   String _statusLabel(String url) =>
       relayManager.connectionStatus[url] == true ? 'Connected' : 'Connecting';
 
-  Color _statusColor(String url) =>
-      relayManager.connectionStatus[url] == true ? Colors.green : Colors.orange;
+  Color _statusColor(String url) => relayManager.connectionStatus[url] == true
+      ? ChatmeColors.statusPositive
+      : ChatmeColors.statusWarning;
 
   void _remove(BuildContext context, RelayGroup group, String url) async {
     final edit = await relayManager.removeRelay(group, url);
     if (!context.mounted || edit.ok) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(changeMessage(edit.change, fileServer: false))));
+      ..showSnackBar(SnackBar(
+          content: Text(changeMessage(edit.change, fileServer: false))));
   }
 
   Future<void> _reset(BuildContext context) async {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Reset to defaults?',
-      message: 'Your own relays will be removed and the built in ones come back.',
+      message:
+          'Your own relays will be removed and the built in ones come back.',
       confirmLabel: 'Reset',
     );
     if (confirmed) await relayManager.resetRelaysToDefaults();
@@ -38,10 +42,9 @@ class RelayStatusPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const textPrimary = ChatmeColors.textPrimary;
+    const textSecondary = ChatmeColors.textSecondary;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -50,17 +53,20 @@ class RelayStatusPage extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: Text(
+        title: const Text(
           'Relays',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
+          style: TextStyle(
+              fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
         ),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: ListenableBuilder(
-        listenable: Listenable.merge([relayManager.relayListVersion, relayManager.connectedCount]),
+        listenable: Listenable.merge(
+            [relayManager.relayListVersion, relayManager.connectedCount]),
         builder: (context, _) {
           final inbox = AppSettings.instance.inboxRelays;
           final other = AppSettings.instance.otherRelays;
@@ -80,7 +86,8 @@ class RelayStatusPage extends StatelessWidget {
                   hint: 'relay.example.com',
                   fileServer: false,
                   onSubmit: inbox.length < ListLimits.inboxMax
-                      ? (input) => relayManager.addRelay(RelayGroup.inbox, input)
+                      ? (input) =>
+                          relayManager.addRelay(RelayGroup.inbox, input)
                       : null,
                   onRemove: (url) => _remove(context, RelayGroup.inbox, url),
                   statusLabel: _statusLabel,
@@ -92,23 +99,26 @@ class RelayStatusPage extends StatelessWidget {
                 const SizedBox(height: 28),
                 EditableServerList(
                   title: 'OTHER RELAYS',
-                  description: 'Extra relays Chatme also connects to, used for profiles and as more routes.',
+                  description:
+                      'Extra relays Chatme also connects to, used for profiles and as more routes.',
                   servers: other,
                   defaults: RelayDefaults.other,
                   addLabel: 'Add relay',
                   hint: 'relay.example.com',
                   fileServer: false,
                   onSubmit: other.length < ListLimits.otherMax
-                      ? (input) => relayManager.addRelay(RelayGroup.other, input)
+                      ? (input) =>
+                          relayManager.addRelay(RelayGroup.other, input)
                       : null,
                   onRemove: (url) => _remove(context, RelayGroup.other, url),
                   statusLabel: _statusLabel,
                   statusColor: _statusColor,
                 ),
                 const SizedBox(height: 20),
-                Text(
+                const Text(
                   'Relays you add can see your IP address, but not the content of your messages.',
-                  style: TextStyle(fontSize: 12, height: 1.35, color: textSecondary),
+                  style: TextStyle(
+                      fontSize: 12, height: 1.35, color: textSecondary),
                 ),
                 const SizedBox(height: 12),
                 TextButton(

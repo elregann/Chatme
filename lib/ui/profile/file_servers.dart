@@ -2,6 +2,7 @@
 
 import '../../widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../core/theme/chatme_colors.dart';
 import '../../services/app_settings.dart';
 import '../../services/blossom_servers.dart';
 import '../../services/server_lists.dart';
@@ -33,14 +34,16 @@ class _FileServersPageState extends State<FileServersPage> {
     if (!context.mounted || edit.ok) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(changeMessage(edit.change, fileServer: true))));
+      ..showSnackBar(SnackBar(
+          content: Text(changeMessage(edit.change, fileServer: true))));
   }
 
   Future<void> _reset(BuildContext context) async {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Reset to defaults?',
-      message: 'Your own file servers will be removed and the built in ones come back.',
+      message:
+          'Your own file servers will be removed and the built in ones come back.',
       confirmLabel: 'Reset',
     );
     if (confirmed) await BlossomServers.reset();
@@ -48,10 +51,9 @@ class _FileServersPageState extends State<FileServersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const textPrimary = ChatmeColors.textPrimary;
+    const textSecondary = ChatmeColors.textSecondary;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -60,12 +62,14 @@ class _FileServersPageState extends State<FileServersPage> {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: Text(
+        title: const Text(
           'File servers',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
+          style: TextStyle(
+              fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
         ),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -88,13 +92,15 @@ class _FileServersPageState extends State<FileServersPage> {
                   addLabel: 'Add file server',
                   hint: 'files.example.com',
                   fileServer: true,
-                  onSubmit: servers.length < ListLimits.blossomMax ? _add : null,
+                  onSubmit:
+                      servers.length < ListLimits.blossomMax ? _add : null,
                   onRemove: (url) => _remove(context, url),
                 ),
                 const SizedBox(height: 20),
-                Text(
+                const Text(
                   'A new server gets a small test file before it is added. Files are encrypted before they leave your phone, so a server sees only scrambled data, its size, the time and your IP address.',
-                  style: TextStyle(fontSize: 12, height: 1.35, color: textSecondary),
+                  style: TextStyle(
+                      fontSize: 12, height: 1.35, color: textSecondary),
                 ),
                 if (BlossomSuggestions.remaining(servers).isNotEmpty) ...[
                   const SizedBox(height: 28),

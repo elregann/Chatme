@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/time_utils.dart';
 import 'core/utils/duration_utils.dart';
 import 'widgets/user_avatar.dart';
@@ -53,12 +54,13 @@ class _ChatsScreenState extends State<ChatsScreen> {
     super.dispose();
   }
 
-  Widget _buildHighlightedText(String text, String query, bool isDark) {
+  Widget _buildHighlightedText(String text, String query) {
     if (query.isEmpty || !text.toLowerCase().contains(query.toLowerCase())) {
-      return Text(text,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)
+      return Text(
+        text,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: ChatmeColors.textSecondary, fontSize: 14),
       );
     }
 
@@ -69,7 +71,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
     int start = 0;
     int indexOfHighlight;
 
-    while ((indexOfHighlight = lowercaseText.indexOf(lowercaseQuery, start)) != -1) {
+    while ((indexOfHighlight = lowercaseText.indexOf(lowercaseQuery, start)) !=
+        -1) {
       // Text before highlighted segment
       if (indexOfHighlight > start) {
         spans.add(TextSpan(text: text.substring(start, indexOfHighlight)));
@@ -78,8 +81,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
       // Highlighted segment (bold)
       spans.add(TextSpan(
         text: text.substring(indexOfHighlight, indexOfHighlight + query.length),
-        style: TextStyle(
-          color: isDark ? Colors.white : Colors.black,
+        style: const TextStyle(
+          color: ChatmeColors.textPrimary,
           fontWeight: FontWeight.bold,
         ),
       ));
@@ -96,7 +99,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
       text: TextSpan(
-        style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14),
+        style: const TextStyle(color: ChatmeColors.textSecondary, fontSize: 14),
         children: spans,
       ),
     );
@@ -106,21 +109,25 @@ class _ChatsScreenState extends State<ChatsScreen> {
     switch (status) {
       case 'pending':
       case 'sending':
-        return Icon(Icons.access_time_rounded, size: 13, color: color.withAlpha(120));
+        return Icon(Icons.access_time_rounded,
+            size: 13, color: color.withAlpha(120));
       case 'sent':
         return Icon(Icons.done, size: 13, color: color.withAlpha(153));
       case 'read':
         return ValueListenableBuilder(
-          valueListenable: Hive.box('settings').listenable(keys: ['read_receipts_enabled']),
+          valueListenable:
+              Hive.box('settings').listenable(keys: ['read_receipts_enabled']),
           builder: (context, _, __) {
             if (!AppSettings.instance.readReceiptsEnabled) {
               return Icon(Icons.done, size: 13, color: color.withAlpha(153));
             }
-            return const Icon(Icons.done_all, size: 13, color: Color(0xFF34B7F1));
+            return const Icon(Icons.done_all,
+                size: 13, color: ChatmeColors.accentPrimary);
           },
         );
       case 'error':
-        return const Icon(Icons.error_outline, size: 13, color: Colors.redAccent);
+        return const Icon(Icons.error_outline,
+            size: 13, color: ChatmeColors.statusDanger);
       default:
         return Icon(Icons.done, size: 13, color: color.withAlpha(153));
     }
@@ -153,7 +160,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
               },
               onClear: () => setState(() => _searchQuery = ""),
             ),
-
             ValueListenableBuilder<CallState>(
               valueListenable: CallManager.instance.callStateNotifier,
               builder: (context, callState, _) {
@@ -168,7 +174,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 );
               },
             ),
-
             Expanded(
               child: ValueListenableBuilder<Box<Contact>>(
                 valueListenable: Hive.box<Contact>('contacts').listenable(),
@@ -179,14 +184,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
                     valueListenable: Hive.box('chats').listenable(),
                     builder: (context, Box chatRegistry, _) {
                       final myPubkey = AppSettings.instance.myPubkey;
-                      final isDark = Theme.of(context).brightness == Brightness.dark;
                       final contactList = contactBox.values.toList();
 
                       // 1. Filter saved contacts by name (only during search)
                       List<Contact> filteredSavedContacts = [];
                       if (_searchQuery.isNotEmpty) {
                         filteredSavedContacts = contactList.where((c) {
-                          return c.isSaved && c.name.toLowerCase().contains(_searchQuery);
+                          return c.isSaved &&
+                              c.name.toLowerCase().contains(_searchQuery);
                         }).toList();
                       }
 
@@ -197,17 +202,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       List<Map<String, dynamic>> messageResults = [];
 
                       for (var contact in contactList) {
-                        final String displayName = AppSettings.getContactDisplayName(contact);
+                        final String displayName =
+                            AppSettings.getContactDisplayName(contact);
 
                         bool nameMatches = _searchQuery.isNotEmpty &&
                             (displayName.toLowerCase().contains(_searchQuery) ||
-                                contact.pubkey.toLowerCase().contains(_searchQuery));
+                                contact.pubkey
+                                    .toLowerCase()
+                                    .contains(_searchQuery));
 
                         // Only inspect messages when searching message bodies
                         if (_searchQuery.length >= 2) {
-                          final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
-                          for (var m in ChatManager.instance.messagesForChatSync(chatKey)) {
-                            if (m.plaintext.toLowerCase().contains(_searchQuery)) {
+                          final chatKey = ChatManager.instance
+                              .getChatKey(myPubkey, contact.pubkey);
+                          for (var m in ChatManager.instance
+                              .messagesForChatSync(chatKey)) {
+                            if (m.plaintext
+                                .toLowerCase()
+                                .contains(_searchQuery)) {
                               messageResults.add({
                                 'contact': contact,
                                 'message': m,
@@ -216,7 +228,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           }
                         }
 
-                        if ((contact.lastChatTime > 0 || contact.lastMessage.isNotEmpty) &&
+                        if ((contact.lastChatTime > 0 ||
+                                contact.lastMessage.isNotEmpty) &&
                             (_searchQuery.isEmpty || nameMatches)) {
                           chatPreviews.add({
                             'contact': contact,
@@ -227,23 +240,38 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       }
 
                       // Sort chats by most recent
-                      chatPreviews.sort((a, b) => (b['time'] as int).compareTo(a['time'] as int));
+                      chatPreviews.sort((a, b) =>
+                          (b['time'] as int).compareTo(a['time'] as int));
 
-                      if (chatPreviews.isEmpty && filteredSavedContacts.isEmpty && messageResults.isEmpty) {
-                        return _searchQuery.isEmpty ? _buildEmptyState() : _buildNoResultState();
+                      if (chatPreviews.isEmpty &&
+                          filteredSavedContacts.isEmpty &&
+                          messageResults.isEmpty) {
+                        return _searchQuery.isEmpty
+                            ? _buildEmptyState()
+                            : _buildNoResultState();
                       }
 
                       return ListView(
-                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
                         children: [
                           // Contacts section (search only)
-                          if (_searchQuery.isNotEmpty && filteredSavedContacts.isNotEmpty) ...[
+                          if (_searchQuery.isNotEmpty &&
+                              filteredSavedContacts.isNotEmpty) ...[
                             const Padding(
                               padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                              child: Text("CONTACTS", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                              child: Text("CONTACTS",
+                                  style: TextStyle(
+                                      color: ChatmeColors.textMuted,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      letterSpacing: 1.2)),
                             ),
-                            ...filteredSavedContacts.map((contact) => _buildContactItem(contact, null)),
-                            const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
+                            ...filteredSavedContacts.map(
+                                (contact) => _buildContactItem(contact, null)),
+                            const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16),
+                                child: Divider(height: 1, thickness: 0.1)),
                           ],
 
                           // Chats section
@@ -251,54 +279,74 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             if (_searchQuery.isNotEmpty)
                               const Padding(
                                 padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                                child: Text("CHATS", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                                child: Text("CHATS",
+                                    style: TextStyle(
+                                        color: ChatmeColors.textMuted,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                        letterSpacing: 1.2)),
                               ),
                             ...chatPreviews.map((item) => _buildContactItem(
                                 item['contact'] as Contact,
-                                item['lastMsg'] as ChatMessage?
-                            )),
-                            if (_searchQuery.isNotEmpty && messageResults.isNotEmpty)
-                              const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Divider(height: 1, thickness: 0.1)),
+                                item['lastMsg'] as ChatMessage?)),
+                            if (_searchQuery.isNotEmpty &&
+                                messageResults.isNotEmpty)
+                              const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 16),
+                                  child: Divider(height: 1, thickness: 0.1)),
                           ],
 
                           // Messages section (search only)
-                          if (_searchQuery.isNotEmpty && messageResults.isNotEmpty) ...[
+                          if (_searchQuery.isNotEmpty &&
+                              messageResults.isNotEmpty) ...[
                             const Padding(
                               padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                              child: Text("MESSAGES", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                              child: Text("MESSAGES",
+                                  style: TextStyle(
+                                      color: ChatmeColors.textMuted,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      letterSpacing: 1.2)),
                             ),
                             ...messageResults.map((res) {
                               final contact = res['contact'] as Contact;
                               final msg = res['message'] as ChatMessage;
                               return ListTile(
                                 dense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 4),
                                 title: Text(
                                   AppSettings.getContactDisplayName(contact),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: ChatmeColors.textMuted),
                                 ),
                                 subtitle: Row(
                                   children: [
                                     if (msg.senderPubkey == myPubkey)
-                                      Text(
-                                          "You: ",
+                                      const Text("You: ",
                                           style: TextStyle(
-                                              color: Colors.blue.withAlpha(150),
+                                              color: ChatmeColors.accentPrimary,
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 14
-                                          )
-                                      ),
+                                              fontSize: 14)),
                                     Expanded(
-                                      child: _buildHighlightedText(msg.plaintext, _searchQuery, isDark),
+                                      child: _buildHighlightedText(
+                                          msg.plaintext, _searchQuery),
                                     ),
                                   ],
                                 ),
                                 onTap: () {
-                                  Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(
-                                    contact: contact,
-                                    relayManager: widget.relayManager,
-                                    initialMessageId: msg.id,
-                                  )));
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) =>
+                                              ChatDetailScreen(
+                                                contact: contact,
+                                                relayManager:
+                                                    widget.relayManager,
+                                                initialMessageId: msg.id,
+                                              )));
                                 },
                               );
                             }),
@@ -321,11 +369,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off_rounded, size: 70, color: Colors.grey.withAlpha(100)),
+          const Icon(Icons.search_off_rounded,
+              size: 70, color: ChatmeColors.textSubtle),
           const SizedBox(height: 16),
           Text(
             'No results for "$_searchQuery"',
-            style: const TextStyle(color: Colors.grey, fontSize: 15),
+            style: const TextStyle(color: ChatmeColors.textMuted, fontSize: 15),
           ),
         ],
       ),
@@ -337,11 +386,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final String displayName = AppSettings.getContactDisplayName(contact);
 
     final isMe = lastMsg?.senderPubkey == myPubkey;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final String rawMessageText = lastMsg != null
         ? lastMsg.plaintext
-        : (contact.lastMessage.isNotEmpty ? contact.lastMessage : 'Tap to start chatting');
+        : (contact.lastMessage.isNotEmpty
+            ? contact.lastMessage
+            : 'Tap to start chatting');
 
     final bool isCall = rawMessageText.startsWith('[CALL]:');
     IconData? callIcon;
@@ -351,27 +401,29 @@ class _ChatsScreenState extends State<ChatsScreen> {
     if (isCall) {
       final parts = rawMessageText.split(':');
       final direction = parts.length > 1 ? parts[1] : 'outgoing';
-      final durationSeconds = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
+      final durationSeconds =
+          parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
 
       final bool isMissed = direction == 'missed';
       final bool isIncoming = direction == 'incoming';
 
       if (isMissed) {
         callIcon = Icons.call_missed;
-        callIconColor = Colors.red;
+        callIconColor = ChatmeColors.statusDanger;
         callLabel = 'Missed Call';
       } else if (isIncoming) {
         callIcon = Icons.call_received;
-        callIconColor = isDark ? Colors.white70 : Colors.black87;
+        callIconColor = ChatmeColors.textSecondary;
         callLabel = 'Incoming Call';
       } else {
         callIcon = Icons.call_made;
-        callIconColor = isDark ? Colors.white70 : Colors.black87;
+        callIconColor = ChatmeColors.textSecondary;
         callLabel = 'Outgoing Call';
       }
 
       if (durationSeconds > 0) {
-        callLabel = '$callLabel (${DurationUtils.formatCallDuration(durationSeconds)})';
+        callLabel =
+            '$callLabel (${DurationUtils.formatCallDuration(durationSeconds)})';
       }
     }
 
@@ -410,7 +462,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         child: Row(
           children: [
             if (lastMsg != null && isMe && !isCall) ...[
-              _buildStatusIcon(lastMsg.status, isDark ? Colors.white70 : Colors.black54),
+              _buildStatusIcon(lastMsg.status, ChatmeColors.textSecondary),
               const SizedBox(width: 4),
             ],
             if (isCall && callIcon != null) ...[
@@ -425,8 +477,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   color: isCall && rawMessageText.contains(':missed:')
-                      ? Colors.red
-                      : (isDark ? Colors.white70 : Colors.black87),
+                      ? ChatmeColors.statusDanger
+                      : ChatmeColors.textSecondary,
                 ),
               ),
             ),
@@ -439,18 +491,16 @@ class _ChatsScreenState extends State<ChatsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            TimeUtils.formatTimeHumanized(lastMsg?.timestamp ?? contact.lastChatTime),
-            style: TextStyle(
-                fontSize: 11,
-                color: contact.unreadCount > 0 ? Colors.grey : Colors.grey
-            ),
+            TimeUtils.formatTimeHumanized(
+                lastMsg?.timestamp ?? contact.lastChatTime),
+            style: const TextStyle(fontSize: 11, color: ChatmeColors.textMuted),
           ),
           const SizedBox(height: 4),
           if (contact.unreadCount > 0)
             Badge.count(
               count: contact.unreadCount,
-              backgroundColor: Colors.red,
-              textColor: Colors.white,
+              backgroundColor: ChatmeColors.statusDanger,
+              textColor: ChatmeColors.textPrimary,
             )
           else
             const SizedBox(height: 18),
@@ -472,13 +522,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Remix.chat_3_line, size: 80, color: Colors.grey.withAlpha(50)),
-          const SizedBox(height: 20),
-          const Text('No conversations yet', style: TextStyle(color: Colors.grey)),
+          Icon(Remix.chat_3_line, size: 80, color: ChatmeColors.textSubtle),
+          SizedBox(height: 20),
+          Text('No conversations yet',
+              style: TextStyle(color: ChatmeColors.textMuted)),
         ],
       ),
     );
@@ -488,7 +539,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Clear chat history?',
-      message: 'All messages with ${contact.name} will be permanently deleted. This action cannot be undone.',
+      message:
+          'All messages with ${contact.name} will be permanently deleted. This action cannot be undone.',
       confirmLabel: 'Delete all',
     );
 
@@ -496,7 +548,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
       final myPubkey = AppSettings.instance.myPubkey;
       final chatKey = ChatManager.instance.getChatKey(myPubkey, contact.pubkey);
       await ChatManager.instance.deleteChatHistory(chatKey);
-      if (!contact.isSaved) await Hive.box<Contact>('contacts').delete(contact.pubkey);
+      if (!contact.isSaved) {
+        await Hive.box<Contact>('contacts').delete(contact.pubkey);
+      }
       HapticFeedback.vibrate();
     }
 

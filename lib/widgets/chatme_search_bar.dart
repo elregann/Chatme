@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../core/theme/chatme_colors.dart';
+
 /// The one search bar used on the Chats and Contacts tabs. Icons are plain
 /// Row children and the field is centered by the Row, so the text position
 /// does not depend on the font metrics of the device.
@@ -32,8 +34,6 @@ class ChatmeSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: GestureDetector(
@@ -43,14 +43,18 @@ class ChatmeSearchBar extends StatelessWidget {
           key: const Key('chatme-search-bar'),
           height: height,
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10),
+            color: ChatmeColors.surfaceMenu,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Row(
             children: [
               const SizedBox(
                 width: _sideWidth,
-                child: Icon(Icons.search_rounded, color: Colors.grey, size: 20),
+                child: Icon(
+                  Icons.search_rounded,
+                  color: ChatmeColors.textMuted,
+                  size: 20,
+                ),
               ),
               Expanded(
                 child: TextField(
@@ -59,7 +63,10 @@ class ChatmeSearchBar extends StatelessWidget {
                   onChanged: onChanged,
                   decoration: InputDecoration(
                     hintText: hintText,
-                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                    hintStyle: const TextStyle(
+                      color: ChatmeColors.textMuted,
+                      fontSize: 14,
+                    ),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,

@@ -5,9 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../models/contact.dart';
+import '../../core/theme/chatme_buttons.dart';
+import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/debug_logger.dart';
 import '../../core/utils/key_utils.dart';
 import '../../core/utils/shortcut_helper.dart';
+import '../../widgets/chatme_notice.dart';
 
 class AddContactPage extends StatefulWidget {
   /// Public key (hex) to fill in, for example from a scanned QR code.
@@ -46,12 +49,11 @@ class _AddContactPageState extends State<AddContactPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
-    final textPrimary = isDark ? Colors.white : Colors.black;
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const cardColor = ChatmeColors.surfaceMenu;
+    const borderColor = ChatmeColors.borderSubtle;
+    const textSecondary = ChatmeColors.textSecondary;
+    const textPrimary = ChatmeColors.textPrimary;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -60,12 +62,14 @@ class _AddContactPageState extends State<AddContactPage> {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: Text(
+        title: const Text(
           'Add contact',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
+          style: TextStyle(
+              fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
         ),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -76,56 +80,58 @@ class _AddContactPageState extends State<AddContactPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
-              // Info
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withAlpha(10),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.withAlpha(30), width: 0.5),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline_rounded, color: Colors.blue.withAlpha(200), size: 14),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Add a new friend using their Nostr public key, npub or nprofile.',
-                        style: TextStyle(fontSize: 13, color: Colors.blue.withAlpha(200), height: 1.5),
-                      ),
-                    ),
-                  ],
-                ),
+              const ChatmeNotice(
+                icon: Icons.info_outline_rounded,
+                message:
+                    'Add a new friend using their Nostr public key, npub or nprofile.',
               ),
 
               const SizedBox(height: 28),
 
               // Name field
-              Text(
+              const Text(
                 'NAME',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 1.2,
+                    color: textSecondary),
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nameController,
                 autofocus: widget.initialPubkey != null,
-                style: TextStyle(fontSize: 14, color: textPrimary),
+                style: const TextStyle(fontSize: 14, color: textPrimary),
                 onTap: _resetSubmitted,
                 onChanged: (_) => _resetSubmitted(),
                 decoration: InputDecoration(
                   hintText: 'Enter name',
-                  hintStyle: TextStyle(fontSize: 13, color: textSecondary),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  hintStyle:
+                      const TextStyle(fontSize: 13, color: textSecondary),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   filled: true,
                   fillColor: cardColor,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
                   errorStyle: const TextStyle(fontSize: 11, height: 1.2),
                 ),
                 validator: (value) {
@@ -137,29 +143,53 @@ class _AddContactPageState extends State<AddContactPage> {
               const SizedBox(height: 20),
 
               // Pubkey field
-              Text(
+              const Text(
                 'NPUB, NPROFILE, PUBKEY',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 1.2,
+                    color: textSecondary),
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _pubkeyController,
                 minLines: 1,
                 maxLines: 3,
-                style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textPrimary),
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 13, color: textPrimary),
                 onTap: _resetSubmitted,
                 onChanged: (_) => _resetSubmitted(),
                 decoration: InputDecoration(
                   hintText: 'Paste here',
-                  hintStyle: TextStyle(fontSize: 13, color: textSecondary, fontFamily: 'sans-serif'),
-                  contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
+                  hintStyle: const TextStyle(
+                      fontSize: 13,
+                      color: textSecondary,
+                      fontFamily: 'sans-serif'),
+                  contentPadding: const EdgeInsets.only(
+                      left: 16, right: 8, top: 14, bottom: 14),
                   filled: true,
                   fillColor: cardColor,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
-                  focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor, width: 0.5)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
+                  focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: borderColor, width: 0.5)),
                   errorStyle: const TextStyle(fontSize: 11, height: 1.2),
                   suffixIcon: GestureDetector(
                     onTap: () async {
@@ -169,17 +199,22 @@ class _AddContactPageState extends State<AddContactPage> {
                         HapticFeedback.lightImpact();
                       }
                     },
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Icon(Icons.content_paste_rounded, size: 18, color: textSecondary),
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Icon(Icons.content_paste_rounded,
+                          size: 18, color: textSecondary),
                     ),
                   ),
                 ),
                 validator: (value) {
                   if (!_submitted) return null;
-                  if (value == null || value.isEmpty) return 'Public key is required';
+                  if (value == null || value.isEmpty) {
+                    return 'Public key is required';
+                  }
                   final normalized = KeyUtils.normalizeToHex(value);
-                  if (normalized.length != 64) return 'Must be 64-character hex, a valid npub or nprofile';
+                  if (normalized.length != 64) {
+                    return 'Must be 64-character hex, a valid npub or nprofile';
+                  }
                   return null;
                 },
               ),
@@ -187,74 +222,92 @@ class _AddContactPageState extends State<AddContactPage> {
 
               // Add button
               GestureDetector(
-                onTap: _isLoading ? null : () async {
-                  final navigator = Navigator.of(context);
-                  final messenger = ScaffoldMessenger.of(context);
+                onTap: _isLoading
+                    ? null
+                    : () async {
+                        final navigator = Navigator.of(context);
+                        final messenger = ScaffoldMessenger.of(context);
 
-                  setState(() => _submitted = true);
-                  await Future.microtask(() {});
-                  if (!_formKey.currentState!.validate()) return;
+                        setState(() => _submitted = true);
+                        await Future.microtask(() {});
+                        if (!_formKey.currentState!.validate()) return;
 
-                  setState(() => _isLoading = true);
+                        setState(() => _isLoading = true);
 
-                  try {
-                    final name = _nameController.text.trim();
-                    final pubkeyInput = _pubkeyController.text.trim();
-                    final pubkey = KeyUtils.normalizeToHex(pubkeyInput);
+                        try {
+                          final name = _nameController.text.trim();
+                          final pubkeyInput = _pubkeyController.text.trim();
+                          final pubkey = KeyUtils.normalizeToHex(pubkeyInput);
 
-                    final contactsBox = Hive.box<Contact>('contacts');
-                    final existing = contactsBox.get(pubkey);
+                          final contactsBox = Hive.box<Contact>('contacts');
+                          final existing = contactsBox.get(pubkey);
 
-                    final contact = Contact(
-                      pubkey: pubkey,
-                      name: name,
-                      isSaved: true,
-                      lastChatTime: existing?.lastChatTime ?? 0,
-                      lastMessage: existing?.lastMessage ?? '',
-                      unreadCount: existing?.unreadCount ?? 0,
-                    );
+                          final contact = Contact(
+                            pubkey: pubkey,
+                            name: name,
+                            isSaved: true,
+                            lastChatTime: existing?.lastChatTime ?? 0,
+                            lastMessage: existing?.lastMessage ?? '',
+                            unreadCount: existing?.unreadCount ?? 0,
+                          );
 
-                    await contactsBox.put(pubkey, contact);
+                          await contactsBox.put(pubkey, contact);
 
-                    await ShortcutHelper.pushConversationShortcut(
-                      id: pubkey,
-                      name: contact.displayName,
-                      avatarBytes: null,
-                    );
+                          await ShortcutHelper.pushConversationShortcut(
+                            id: pubkey,
+                            name: contact.displayName,
+                            avatarBytes: null,
+                          );
 
-                    HapticFeedback.mediumImpact();
-                    navigator.pop(true);
-                  } catch (e) {
-                    DebugLogger.log('❌ Error: $e', type: 'ERROR');
-                    messenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('Failed to add contact', style: TextStyle(color: Colors.white)),
-                        backgroundColor: Colors.red,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  } finally {
-                    if (mounted) setState(() => _isLoading = false);
-                  }
-                },
+                          HapticFeedback.mediumImpact();
+                          navigator.pop(true);
+                        } catch (e) {
+                          DebugLogger.log('❌ Error: $e', type: 'ERROR');
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Failed to add contact',
+                                style:
+                                    TextStyle(color: ChatmeColors.textPrimary),
+                              ),
+                              backgroundColor: ChatmeColors.statusDanger,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        } finally {
+                          if (mounted) setState(() => _isLoading = false);
+                        }
+                      },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: borderColor, width: 0.5),
-                  ),
+                  padding: ChatmeButtonStyles.padding,
+                  decoration: ChatmeButtonStyles.primaryDecoration(),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (_isLoading)
-                        SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: textPrimary))
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: ChatmeButtonStyles.primaryForeground,
+                          ),
+                        )
                       else
-                        Icon(Remix.user_add_fill, size: 16, color: textPrimary),
+                        const Icon(
+                          Remix.user_add_fill,
+                          size: 16,
+                          color: ChatmeButtonStyles.primaryForeground,
+                        ),
                       const SizedBox(width: 8),
                       Text(
                         _isLoading ? 'Adding...' : 'Add contact',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: ChatmeButtonStyles.primaryForeground,
+                        ),
                       ),
                     ],
                   ),

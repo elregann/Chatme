@@ -1127,7 +1127,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final textPrimary = isDark ? Colors.white : Colors.black;
     final textSecondary = isDark ? Colors.white54 : Colors.black45;
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    const accentColor = Color(0xFF2196F3);
+    const accentColor = ChatmeColors.accentPrimary;
 
     final screenHeight = MediaQuery.sizeOf(context).height;
     final screenWidth = MediaQuery.sizeOf(context).width;

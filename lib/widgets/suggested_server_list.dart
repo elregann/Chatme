@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/theme/chatme_colors.dart';
 import '../services/server_lists.dart';
 
 /// A card of server addresses that can only be copied, one icon per row.
@@ -19,16 +20,18 @@ class SuggestedServerList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    const cardColor = ChatmeColors.surfaceMenu;
+    const borderColor = ChatmeColors.borderSubtle;
+    const textPrimary = ChatmeColors.textPrimary;
+    const textSecondary = ChatmeColors.textSecondary;
 
     final rows = <Widget>[];
     for (var i = 0; i < servers.length; i++) {
       final url = servers[i];
-      if (i > 0) rows.add(Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 16));
+      if (i > 0) {
+        rows.add(const Divider(
+            height: 0.5, thickness: 0.5, color: borderColor, indent: 16));
+      }
       rows.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
         child: Row(
@@ -38,7 +41,7 @@ class SuggestedServerList extends StatelessWidget {
                 ServerAddress.displayHost(url),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 14, color: textPrimary),
+                style: const TextStyle(fontSize: 14, color: textPrimary),
               ),
             ),
             GestureDetector(
@@ -47,8 +50,8 @@ class SuggestedServerList extends StatelessWidget {
                 HapticFeedback.selectionClick();
               },
               behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
+              child: const Padding(
+                padding: EdgeInsets.all(8),
                 child: Icon(Icons.copy_rounded, size: 18, color: textSecondary),
               ),
             ),
@@ -62,11 +65,17 @@ class SuggestedServerList extends StatelessWidget {
       children: [
         Text(
           title,
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+          style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 1.2,
+              color: textSecondary),
         ),
         if (description.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Text(description, style: TextStyle(fontSize: 13, height: 1.35, color: textSecondary)),
+          Text(description,
+              style: const TextStyle(
+                  fontSize: 13, height: 1.35, color: textSecondary)),
         ],
         const SizedBox(height: 10),
         Container(

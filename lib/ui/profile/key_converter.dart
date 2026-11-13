@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/theme/chatme_buttons.dart';
+import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/key_utils.dart';
+import '../../widgets/chatme_notice.dart';
 
 class KeyConverterPage extends StatefulWidget {
   const KeyConverterPage({super.key});
@@ -59,12 +62,11 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
-    final textPrimary = isDark ? Colors.white : Colors.black;
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const cardColor = ChatmeColors.surfaceMenu;
+    const borderColor = ChatmeColors.borderSubtle;
+    const textSecondary = ChatmeColors.textSecondary;
+    const textPrimary = ChatmeColors.textPrimary;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -73,12 +75,14 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: Text(
+        title: const Text(
           'Key Converter',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
+          style: TextStyle(
+              fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
         ),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -87,37 +91,22 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // Info
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.purpleAccent.withAlpha(10),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.purpleAccent.withAlpha(30), width: 0.5),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline_rounded, color: Colors.purpleAccent.withAlpha(200), size: 14),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Convert between hex and npub/nsec format. Each section works independently.',
-                      style: TextStyle(fontSize: 13, color: Colors.purpleAccent.withAlpha(200), height: 1.5),
-                    ),
-                  ),
-                ],
-              ),
+            const ChatmeNotice(
+              icon: Icons.info_outline_rounded,
+              message:
+                  'Convert between hex and npub/nsec format. Each section works independently.',
             ),
 
             const SizedBox(height: 28),
 
             // ===== PUBLIC KEY SECTION =====
-            Text(
+            const Text(
               'PUBLIC KEY',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1.2,
+                  color: textSecondary),
             ),
             const SizedBox(height: 8),
             Container(
@@ -130,15 +119,20 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                 controller: _pubkeyController,
                 minLines: 1,
                 maxLines: 3,
-                style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textPrimary),
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 13, color: textPrimary),
                 onChanged: (_) => setState(() {
                   _hasNpub = false;
                   _npubResult = '';
                 }),
                 decoration: InputDecoration(
                   hintText: 'Paste hex or npub',
-                  hintStyle: TextStyle(fontSize: 13, color: textSecondary, fontFamily: 'sans-serif'),
-                  contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
+                  hintStyle: const TextStyle(
+                      fontSize: 13,
+                      color: textSecondary,
+                      fontFamily: 'sans-serif'),
+                  contentPadding: const EdgeInsets.only(
+                      left: 16, right: 8, top: 14, bottom: 14),
                   border: InputBorder.none,
                   suffixIcon: GestureDetector(
                     onTap: () async {
@@ -146,12 +140,16 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                       if (data?.text != null) {
                         _pubkeyController.text = data!.text!.trim();
                         HapticFeedback.lightImpact();
-                        setState(() { _hasNpub = false; _npubResult = ''; });
+                        setState(() {
+                          _hasNpub = false;
+                          _npubResult = '';
+                        });
                       }
                     },
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Icon(Icons.content_paste_rounded, size: 18, color: textSecondary),
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Icon(Icons.content_paste_rounded,
+                          size: 18, color: textSecondary),
                     ),
                   ),
                 ),
@@ -163,16 +161,24 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: borderColor, width: 0.5),
-                ),
-                child: Row(
+                decoration: ChatmeButtonStyles.primaryDecoration(),
+                child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.swap_horiz_rounded, size: 16, color: textPrimary),
-                    const SizedBox(width: 8),
-                    Text('Convert', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: textPrimary)),
+                    Icon(
+                      Icons.swap_horiz_rounded,
+                      size: 16,
+                      color: ChatmeButtonStyles.primaryForeground,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Convert',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: ChatmeButtonStyles.primaryForeground,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -191,8 +197,14 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _pubkeyController.text.trim().startsWith('npub') ? 'HEX PUBLIC KEY' : 'NPUB',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+                      _pubkeyController.text.trim().startsWith('npub')
+                          ? 'HEX PUBLIC KEY'
+                          : 'NPUB',
+                      style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 1.2,
+                          color: textSecondary),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -200,7 +212,9 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                       style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 12,
-                        color: _npubResult == 'Invalid input' ? Colors.red.withAlpha(200) : textSecondary,
+                        color: _npubResult == 'Invalid input'
+                            ? ChatmeColors.statusDanger
+                            : textSecondary,
                         height: 1.6,
                       ),
                     ),
@@ -221,17 +235,25 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                             );
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: borderColor, width: 0.5),
-                            ),
-                            child: Row(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: ChatmeButtonStyles.chipDecoration(),
+                            child: const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.copy_rounded, size: 13, color: textSecondary),
-                                const SizedBox(width: 6),
-                                Text('Copy', style: TextStyle(fontSize: 13, color: textSecondary)),
+                                Icon(
+                                  Icons.copy_rounded,
+                                  size: 13,
+                                  color: ChatmeColors.textSecondary,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Copy',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: ChatmeColors.textSecondary,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -244,13 +266,17 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
             ],
 
             const SizedBox(height: 28),
-            Divider(height: 0.5, thickness: 0.5, color: borderColor),
+            const Divider(height: 0.5, thickness: 0.5, color: borderColor),
             const SizedBox(height: 28),
 
             // ===== PRIVATE KEY SECTION =====
-            Text(
+            const Text(
               'PRIVATE KEY',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1.2,
+                  color: textSecondary),
             ),
             const SizedBox(height: 8),
             Container(
@@ -263,15 +289,20 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                 controller: _privkeyController,
                 minLines: 1,
                 maxLines: 3,
-                style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textPrimary),
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 13, color: textPrimary),
                 onChanged: (_) => setState(() {
                   _hasNsec = false;
                   _nsecResult = '';
                 }),
                 decoration: InputDecoration(
                   hintText: 'Paste hex or nsec',
-                  hintStyle: TextStyle(fontSize: 13, color: textSecondary, fontFamily: 'sans-serif'),
-                  contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
+                  hintStyle: const TextStyle(
+                      fontSize: 13,
+                      color: textSecondary,
+                      fontFamily: 'sans-serif'),
+                  contentPadding: const EdgeInsets.only(
+                      left: 16, right: 8, top: 14, bottom: 14),
                   border: InputBorder.none,
                   suffixIcon: GestureDetector(
                     onTap: () async {
@@ -279,12 +310,16 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                       if (data?.text != null) {
                         _privkeyController.text = data!.text!.trim();
                         HapticFeedback.lightImpact();
-                        setState(() { _hasNsec = false; _nsecResult = ''; });
+                        setState(() {
+                          _hasNsec = false;
+                          _nsecResult = '';
+                        });
                       }
                     },
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Icon(Icons.content_paste_rounded, size: 18, color: textSecondary),
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Icon(Icons.content_paste_rounded,
+                          size: 18, color: textSecondary),
                     ),
                   ),
                 ),
@@ -296,16 +331,24 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: borderColor, width: 0.5),
-                ),
-                child: Row(
+                decoration: ChatmeButtonStyles.primaryDecoration(),
+                child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.swap_horiz_rounded, size: 16, color: textPrimary),
-                    const SizedBox(width: 8),
-                    Text('Convert', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: textPrimary)),
+                    Icon(
+                      Icons.swap_horiz_rounded,
+                      size: 16,
+                      color: ChatmeButtonStyles.primaryForeground,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Convert',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: ChatmeButtonStyles.primaryForeground,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -324,8 +367,14 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _privkeyController.text.trim().startsWith('nsec') ? 'HEX PRIVATE KEY' : 'NSEC',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+                      _privkeyController.text.trim().startsWith('nsec')
+                          ? 'HEX PRIVATE KEY'
+                          : 'NSEC',
+                      style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 1.2,
+                          color: textSecondary),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -333,7 +382,9 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                       style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 12,
-                        color: _nsecResult == 'Invalid input' ? Colors.red.withAlpha(200) : textSecondary,
+                        color: _nsecResult == 'Invalid input'
+                            ? ChatmeColors.statusDanger
+                            : textSecondary,
                         height: 1.6,
                       ),
                     ),
@@ -354,17 +405,25 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                             );
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: borderColor, width: 0.5),
-                            ),
-                            child: Row(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: ChatmeButtonStyles.chipDecoration(),
+                            child: const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.copy_rounded, size: 13, color: textSecondary),
-                                const SizedBox(width: 6),
-                                Text('Copy', style: TextStyle(fontSize: 13, color: textSecondary)),
+                                Icon(
+                                  Icons.copy_rounded,
+                                  size: 13,
+                                  color: ChatmeColors.textSecondary,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Copy',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: ChatmeColors.textSecondary,
+                                  ),
+                                ),
                               ],
                             ),
                           ),

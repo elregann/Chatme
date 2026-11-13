@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../services/app_settings.dart';
 import '../../services/contact_qr.dart';
+import '../../core/theme/chatme_colors.dart';
 
 /// Camera view that closes with the public key (hex) of the first contact code it reads.
 class QrScanPage extends StatefulWidget {
@@ -87,7 +88,8 @@ class _QrScanPageState extends State<QrScanPage> {
               child: Padding(
                 padding: const EdgeInsets.only(left: 10, top: 10),
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white, size: 20),
+                  icon: const Icon(Icons.arrow_back_ios_rounded,
+                      color: Colors.white, size: 20),
                   onPressed: () => Navigator.pop(context),
                 ),
               ),
@@ -104,7 +106,9 @@ class _QrScanPageState extends State<QrScanPage> {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: _hint == null ? Colors.white : Colors.redAccent,
+                    color: _hint == null
+                        ? Colors.white
+                        : ChatmeColors.statusDanger,
                   ),
                 ),
               ),

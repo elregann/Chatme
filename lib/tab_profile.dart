@@ -11,6 +11,7 @@ import 'core/utils/key_utils.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
 import 'ui/profile/restore_account.dart';
+import 'core/theme/chatme_buttons.dart';
 import 'core/theme/chatme_colors.dart';
 import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
@@ -115,7 +116,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               const Text(
                 'Profile photo',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: textPrimary),
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: textPrimary),
               ),
               const SizedBox(height: 4),
               const Text(
@@ -140,9 +144,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.camera_alt_outlined, size: 18, color: textPrimary),
+                      Icon(Icons.camera_alt_outlined,
+                          size: 18, color: textPrimary),
                       SizedBox(width: 8),
-                      Text('Take a photo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                      Text('Take a photo',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: textPrimary)),
                     ],
                   ),
                 ),
@@ -163,9 +172,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.photo_library_outlined, size: 18, color: textPrimary),
+                      Icon(Icons.photo_library_outlined,
+                          size: 18, color: textPrimary),
                       SizedBox(width: 8),
-                      Text('Choose from gallery', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                      Text('Choose from gallery',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: textPrimary)),
                     ],
                   ),
                 ),
@@ -182,21 +196,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     AppSettings.instance.savePhotoPath('');
                     AppSettings.instance.savePhotoUrl('');
                     // Broadcast to the relay that the photo has been deleted
-                    widget.relayManager.broadcastProfileKind0(removePhoto: true);
+                    widget.relayManager
+                        .broadcastProfileKind0(removePhoto: true);
                   },
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.withAlpha(40), width: 0.5),
-                    ),
-                    child: Row(
+                    decoration: ChatmeButtonStyles.dangerDecoration(),
+                    child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red.withAlpha(200)),
-                        const SizedBox(width: 8),
-                        Text('Remove photo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.red.withAlpha(200))),
+                        Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: ChatmeButtonStyles.dangerForeground,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Remove photo',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: ChatmeButtonStyles.dangerForeground,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -210,7 +233,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _processImage(ImageSource source, RelayManager relayManager) async {
+  Future<void> _processImage(
+      ImageSource source, RelayManager relayManager) async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: source,
@@ -247,7 +271,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await AppSettings.instance.savePhotoPath(croppedFile.path);
 
       // Upload dan broadcast ke relay
-      final url = await widget.relayManager.uploadPhotoToNostrBuild(croppedFile.path);
+      final url =
+          await widget.relayManager.uploadPhotoToNostrBuild(croppedFile.path);
       if (url != null) {
         await widget.relayManager.broadcastProfileKind0(photoUrl: url);
         await AppSettings.instance.savePhotoUrl(url);
@@ -278,7 +303,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       return Color(int.parse(pubkey.substring(0, 8), radix: 16) | 0xFF000000);
     } catch (e) {
-      return Colors.blue;
+      return ChatmeColors.accentDeep;
     }
   }
 
@@ -288,13 +313,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Text(
         title.toUpperCase(),
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: color),
+        style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+            color: color),
       ),
     );
   }
 
   // Widget step guide
-  Widget _buildGuideStep(BuildContext context, int step, String text, Color textStyleColor) {
+  Widget _buildGuideStep(
+      BuildContext context, int step, String text, Color textStyleColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -347,7 +377,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => RestoreAccountPage(relayManager: widget.relayManager),
+        builder: (context) =>
+            RestoreAccountPage(relayManager: widget.relayManager),
       ),
     );
 
@@ -376,8 +407,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-
-  void _showPrivacyDialog(BuildContext context, Color bgColor, Color textPrimary, Color textSecondary) {
+  void _showPrivacyDialog(BuildContext context, Color bgColor,
+      Color textPrimary, Color textSecondary) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -390,10 +421,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             centerTitle: true,
             title: Text(
               'Privacy Policy',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
+              style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 16,
+                  color: textPrimary),
             ),
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+              icon: Icon(Icons.arrow_back_ios_rounded,
+                  color: textPrimary, size: 18),
               onPressed: () => Navigator.pop(context),
             ),
           ),
@@ -404,12 +439,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Text(
                   'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data. However, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.\n\n'
-                      'To safeguard your conversations, Chatme implements an encryption framework based on the NIP-17 and NIP-44 standards. Every direct message is wrapped in a three layer privacy scheme: an unsigned Rumor, an encrypted and signed Seal, and a Gift Wrap signed by a single use ephemeral key. This ensures that relay operators cannot determine who is talking to whom. The inner payload is secured with NIP-44 v2, which uses ChaCha20 for symmetric encryption, HMAC-SHA256 for message authentication, and HKDF-SHA256 for key derivation on top of the secp256k1 ECDH shared secret. Message timestamps are also randomised within a two day window to prevent timing correlation attacks. By cryptographically binding the identities of the sender and receiver to each encrypted packet, we ensure absolute message privacy and prevent unauthorized manipulation.\n\n'
-                      'Voice calls in Chatme are protected at two independent layers. Call signaling, which negotiates the connection between peers, is transmitted using the same NIP-17 and NIP-44 framework that secures your messages: every offer, answer, and connection candidate is wrapped in a three layer privacy scheme, so relay operators cannot observe who is calling whom or inspect the negotiation details. The audio stream itself is protected by WebRTC\'s built in DTLS-SRTP encryption, establishing a direct peer to peer secure channel that never passes through any relay. Together, these two layers ensure that both the setup phase and the conversation contents remain private end to end.\n\n'
-                      'As a user, you are responsible for the safety of your Private Key. We do not store, collect, or have any access to your personal data, messages, or keys. By using Chatme, you acknowledge that your data security rests entirely in your hands through the cryptographic power of the Nostr network.\n\n'
-                      'To enhance global discoverability, Chatme maintains a public search index where you can voluntarily link a username to your Public Key. This registry acts solely as a directory to help others find you and does not grant us any access to your private communications or encrypted data. Your sovereignty remains intact as this index is mathematically decoupled from your message content, ensuring that even with a public handle, your privacy remains unbreachable.\n\n'
-                      'Should you prefer not to use our global discovery system, you may still use Chatme freely by adding contacts manually. In this case, your username and Public Key will not be indexed, ensuring your identity remains invisible to the public search according to your chosen level of privacy.',
-                  style: TextStyle(fontSize: 14, height: 1.6, color: textSecondary),
+                  'To safeguard your conversations, Chatme implements an encryption framework based on the NIP-17 and NIP-44 standards. Every direct message is wrapped in a three layer privacy scheme: an unsigned Rumor, an encrypted and signed Seal, and a Gift Wrap signed by a single use ephemeral key. This ensures that relay operators cannot determine who is talking to whom. The inner payload is secured with NIP-44 v2, which uses ChaCha20 for symmetric encryption, HMAC-SHA256 for message authentication, and HKDF-SHA256 for key derivation on top of the secp256k1 ECDH shared secret. Message timestamps are also randomised within a two day window to prevent timing correlation attacks. By cryptographically binding the identities of the sender and receiver to each encrypted packet, we ensure absolute message privacy and prevent unauthorized manipulation.\n\n'
+                  'Voice calls in Chatme are protected at two independent layers. Call signaling, which negotiates the connection between peers, is transmitted using the same NIP-17 and NIP-44 framework that secures your messages: every offer, answer, and connection candidate is wrapped in a three layer privacy scheme, so relay operators cannot observe who is calling whom or inspect the negotiation details. The audio stream itself is protected by WebRTC\'s built in DTLS-SRTP encryption, establishing a direct peer to peer secure channel that never passes through any relay. Together, these two layers ensure that both the setup phase and the conversation contents remain private end to end.\n\n'
+                  'As a user, you are responsible for the safety of your Private Key. We do not store, collect, or have any access to your personal data, messages, or keys. By using Chatme, you acknowledge that your data security rests entirely in your hands through the cryptographic power of the Nostr network.\n\n'
+                  'To enhance global discoverability, Chatme maintains a public search index where you can voluntarily link a username to your Public Key. This registry acts solely as a directory to help others find you and does not grant us any access to your private communications or encrypted data. Your sovereignty remains intact as this index is mathematically decoupled from your message content, ensuring that even with a public handle, your privacy remains unbreachable.\n\n'
+                  'Should you prefer not to use our global discovery system, you may still use Chatme freely by adding contacts manually. In this case, your username and Public Key will not be indexed, ensuring your identity remains invisible to the public search according to your chosen level of privacy.',
+                  style: TextStyle(
+                      fontSize: 14, height: 1.6, color: textSecondary),
                   textAlign: TextAlign.left,
                 ),
                 const SizedBox(height: 32),
@@ -417,7 +453,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 16),
                 Text(
                   'End of Privacy Policy',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w300, color: textSecondary),
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w300,
+                      color: textSecondary),
                 ),
               ],
             ),
@@ -459,7 +498,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             elevation: 0,
             actions: [
               IconButton(
-                icon: const Icon(Icons.qr_code_2_rounded, color: textPrimary, size: 26),
+                icon: const Icon(Icons.qr_code_2_rounded,
+                    color: textPrimary, size: 26),
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -489,20 +529,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             (_localPhotoPath != null && !kIsWeb)
                                 ? CircleAvatar(
                                     radius: 40,
-                                    backgroundColor: _getAvatarColor(settings.myPubkey),
-                                    backgroundImage: FileImage(File(_localPhotoPath!)),
+                                    backgroundColor:
+                                        _getAvatarColor(settings.myPubkey),
+                                    backgroundImage:
+                                        FileImage(File(_localPhotoPath!)),
                                   )
                                 : (settings.myPhotoPath.isNotEmpty && !kIsWeb)
                                     ? CircleAvatar(
                                         radius: 40,
-                                        backgroundColor: _getAvatarColor(settings.myPubkey),
-                                        backgroundImage: FileImage(File(settings.myPhotoPath)),
+                                        backgroundColor:
+                                            _getAvatarColor(settings.myPubkey),
+                                        backgroundImage: FileImage(
+                                            File(settings.myPhotoPath)),
                                       )
                                     : UserAvatar(
                                         pubkey: settings.myPubkey,
                                         name: settings.myName.isNotEmpty
                                             ? settings.myName
-                                            : (_currentHandle.isNotEmpty ? _currentHandle : null),
+                                            : (_currentHandle.isNotEmpty
+                                                ? _currentHandle
+                                                : null),
                                         radius: 40,
                                         relayManager: widget.relayManager,
                                       ),
@@ -523,7 +569,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       width: 2,
                                     ),
                                   ),
-                                  child: const Icon(Icons.edit_rounded, size: 12, color: ChatmeColors.onAccent),
+                                  child: const Icon(Icons.edit_rounded,
+                                      size: 12, color: ChatmeColors.onAccent),
                                 ),
                               ),
                             ),
@@ -535,12 +582,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           (!_isEditing && _currentHandle.isNotEmpty)
                               ? _currentHandle.split('@')[0]
                               : settings.myName,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)
-                      ),
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: textPrimary)),
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 24),
                 _buildSectionTitle('Global ID', textSecondary),
                 Card(
@@ -551,20 +599,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: Icon(
-                      AppSettings.instance.isNip05Verified ? Icons.verified_rounded : Icons.verified_user_rounded,
-                      color: AppSettings.instance.isNip05Verified ? Colors.blue : textPrimary,
-                    ),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                     title: Text(
-                      AppSettings.instance.myNip05.isNotEmpty ? AppSettings.instance.myNip05 : 'Claim your ID',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
+                      AppSettings.instance.myNip05.isNotEmpty
+                          ? AppSettings.instance.myNip05
+                          : 'Claim your ID',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: textPrimary),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        color: textSecondary),
                     onTap: () async {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => GlobalIdPage(relayManager: widget.relayManager)),
+                        MaterialPageRoute(
+                            builder: (context) => GlobalIdPage(
+                                relayManager: widget.relayManager)),
                       );
                       setState(() {
                         _currentHandle = AppSettings.instance.myNip05;
@@ -580,26 +633,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: borderColor, width: 0.5)
-                  ),
+                      side: const BorderSide(color: borderColor, width: 0.5)),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     title: SelectableText(
                       KeyUtils.toNpub(settings.myPubkey),
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: textSecondary),
+                      style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                          color: textSecondary),
                     ),
                     trailing: Material(
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () {
-                          Clipboard.setData(ClipboardData(text: KeyUtils.toNpub(settings.myPubkey)));
+                          Clipboard.setData(ClipboardData(
+                              text: KeyUtils.toNpub(settings.myPubkey)));
                           HapticFeedback.lightImpact();
                         },
                         borderRadius: BorderRadius.circular(50),
                         child: Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: textSecondary.withAlpha(20), shape: BoxShape.circle),
-                          child: const Icon(Icons.copy_rounded, color: textSecondary, size: 18),
+                          decoration: BoxDecoration(
+                              color: textSecondary.withAlpha(20),
+                              shape: BoxShape.circle),
+                          child: const Icon(Icons.copy_rounded,
+                              color: textSecondary, size: 18),
                         ),
                       ),
                     ),
@@ -615,13 +675,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: const Icon(Icons.swap_horiz_rounded, color: textPrimary, size: 18),
-                    title: const Text('Key Converter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    leading: const Icon(Icons.swap_horiz_rounded,
+                        color: textPrimary, size: 18),
+                    title: const Text('Key Converter',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: textPrimary)),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        color: textSecondary),
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const KeyConverterPage()),
+                      MaterialPageRoute(
+                          builder: (context) => const KeyConverterPage()),
                     ),
                   ),
                 ),
@@ -637,24 +705,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     children: [
                       ListTile(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        leading: const Icon(Remix.server_fill, color: textPrimary, size: 18),
-                        title: const Text('Relays', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        leading: const Icon(Remix.server_fill,
+                            color: textPrimary, size: 18),
+                        title: const Text('Relays',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded,
+                            color: textSecondary),
                         onTap: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => RelayStatusPage(relayManager: widget.relayManager)),
+                          MaterialPageRoute(
+                              builder: (context) => RelayStatusPage(
+                                  relayManager: widget.relayManager)),
                         ),
                       ),
-                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: borderColor,
+                          indent: 56),
                       ListTile(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        leading: const Icon(Icons.cloud_upload_outlined, color: textPrimary, size: 18),
-                        title: const Text('File servers', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        leading: const Icon(Icons.cloud_upload_outlined,
+                            color: textPrimary, size: 18),
+                        title: const Text('File servers',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded,
+                            color: textSecondary),
                         onTap: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const FileServersPage()),
+                          MaterialPageRoute(
+                              builder: (context) => const FileServersPage()),
                         ),
                       ),
                     ],
@@ -673,8 +762,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     children: [
                       SwitchListTile(
-                        secondary: const Icon(Icons.link_rounded, color: textPrimary, size: 18),
-                        title: const Text('Link previews', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        secondary: const Icon(Icons.link_rounded,
+                            color: textPrimary, size: 18),
+                        title: const Text('Link previews',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
                         subtitle: const Text(
                           'Loads the linked site to show a preview. The site can see your IP address.',
                           style: TextStyle(fontSize: 12, color: textSecondary),
@@ -685,27 +779,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           if (!value) await LinkPreviewService.instance.clear();
                         },
                       ),
-                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: borderColor,
+                          indent: 56),
                       SwitchListTile(
-                        secondary: const Icon(Icons.done_all_rounded, color: textPrimary, size: 18),
-                        title: const Text('Read receipts', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        secondary: const Icon(Icons.done_all_rounded,
+                            color: textPrimary, size: 18),
+                        title: const Text('Read receipts',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
                         subtitle: const Text(
                           "When off, you won't send or see blue ticks.",
                           style: TextStyle(fontSize: 12, color: textSecondary),
                         ),
                         value: settings.readReceiptsEnabled,
-                        onChanged: (value) => settings.setReadReceiptsEnabled(value),
+                        onChanged: (value) =>
+                            settings.setReadReceiptsEnabled(value),
                       ),
-                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: borderColor,
+                          indent: 56),
                       SwitchListTile(
-                        secondary: const Icon(Icons.photo_library_outlined, color: textPrimary, size: 18),
-                        title: const Text('Save to Gallery', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
+                        secondary: const Icon(Icons.photo_library_outlined,
+                            color: textPrimary, size: 18),
+                        title: const Text('Save to Gallery',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
                         subtitle: const Text(
                           'Copies photos you receive to a Chatme album. Other apps with photo access can see them.',
                           style: TextStyle(fontSize: 12, color: textSecondary),
                         ),
                         value: settings.saveToGalleryEnabled,
-                        onChanged: (value) => settings.setSaveToGalleryEnabled(value),
+                        onChanged: (value) =>
+                            settings.setSaveToGalleryEnabled(value),
                       ),
                     ],
                   ),
@@ -718,34 +832,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: borderColor, width: 0.5)
-                  ),
+                      side: const BorderSide(color: borderColor, width: 0.5)),
                   child: Column(
                     children: [
                       ListTile(
-                        leading: const Icon(Remix.eye_fill, color: textPrimary, size: 18),
-                        title: const Text('Recovery Phrase', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Remix.eye_fill,
+                            color: textPrimary, size: 18),
+                        title: const Text('Recovery Phrase',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded,
+                            color: textSecondary),
                         onTap: () => _showMnemonicDialog(context),
                       ),
-                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: borderColor,
+                          indent: 56),
                       ListTile(
-                        leading: const Icon(Remix.key_fill, color: textPrimary, size: 18),
-                        title: const Text('Security Vault', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Remix.key_fill,
+                            color: textPrimary, size: 18),
+                        title: const Text('Security Vault',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded,
+                            color: textSecondary),
                         onTap: () => _showBackupDialog(context),
                       ),
-                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: borderColor,
+                          indent: 56),
                       ListTile(
-                        leading: const Icon(Icons.settings_backup_restore_rounded, color: textPrimary, size: 18),
-                        title: const Text('Restore Account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(
+                            Icons.settings_backup_restore_rounded,
+                            color: textPrimary,
+                            size: 18),
+                        title: const Text('Restore Account',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded,
+                            color: textSecondary),
                         onTap: () => _showRestoreDialog(context),
                       ),
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 24),
                 _buildSectionTitle('Information', textSecondary),
                 Card(
@@ -753,29 +893,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: borderColor, width: 0.5)
-                  ),
+                      side: const BorderSide(color: borderColor, width: 0.5)),
                   child: Column(
                     children: [
                       ListTile(
                         shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(12)),
                         ),
-                        leading: const Icon(Icons.privacy_tip_outlined, color: textPrimary, size: 18),
-                        title: const Text('Privacy Policy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
-                        onTap: () => _showPrivacyDialog(context, bgColor, textPrimary, textSecondary),
+                        leading: const Icon(Icons.privacy_tip_outlined,
+                            color: textPrimary, size: 18),
+                        title: const Text('Privacy Policy',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded,
+                            color: textSecondary),
+                        onTap: () => _showPrivacyDialog(
+                            context, bgColor, textPrimary, textSecondary),
                       ),
-                      const Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 56),
+                      const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: borderColor,
+                          indent: 56),
                       ListTile(
                         shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+                          borderRadius: BorderRadius.vertical(
+                              bottom: Radius.circular(12)),
                         ),
-                        leading: const Icon(Icons.article_outlined, color: textPrimary, size: 18),
-                        title: const Text('Licenses', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: textSecondary),
+                        leading: const Icon(Icons.article_outlined,
+                            color: textPrimary, size: 18),
+                        title: const Text('Licenses',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textPrimary)),
+                        trailing: const Icon(Icons.chevron_right_rounded,
+                            color: textSecondary),
                         onTap: () async {
-                          final List<LicenseEntry> licenses = await LicenseRegistry.licenses.toList();
+                          final List<LicenseEntry> licenses =
+                              await LicenseRegistry.licenses.toList();
                           if (!context.mounted) return;
                           Navigator.push(
                             context,
@@ -787,9 +946,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   elevation: 0,
                                   scrolledUnderElevation: 0,
                                   centerTitle: true,
-                                  title: const Text('Licenses', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary)),
+                                  title: const Text('Licenses',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                          color: textPrimary)),
                                   leading: IconButton(
-                                    icon: const Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+                                    icon: const Icon(
+                                        Icons.arrow_back_ios_rounded,
+                                        color: textPrimary,
+                                        size: 18),
                                     onPressed: () => Navigator.pop(context),
                                   ),
                                 ),
@@ -799,15 +965,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   itemBuilder: (context, index) {
                                     final entry = licenses[index];
                                     return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(entry.packages.join(', '), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary)),
+                                        Text(entry.packages.join(', '),
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                                color: textPrimary)),
                                         const SizedBox(height: 8),
                                         ...entry.paragraphs.map((p) => Padding(
-                                          padding: const EdgeInsets.only(bottom: 8),
-                                          child: Text(p.text, style: const TextStyle(fontSize: 14, height: 1.6, color: textSecondary)),
-                                        )),
-                                        if (index < licenses.length - 1) const Divider(color: borderColor, height: 48),
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 8),
+                                              child: Text(p.text,
+                                                  style: const TextStyle(
+                                                      fontSize: 14,
+                                                      height: 1.6,
+                                                      color: textSecondary)),
+                                            )),
+                                        if (index < licenses.length - 1)
+                                          const Divider(
+                                              color: borderColor, height: 48),
                                       ],
                                     );
                                   },
@@ -827,17 +1005,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: cardColor,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: borderColor, width: 0.5)
-                  ),
+                      side: const BorderSide(color: borderColor, width: 0.5)),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
-                        _buildGuideStep(context, 1, 'Set your handle in Global ID to be searchable', textPrimary),
-                        _buildGuideStep(context, 2, 'Or copy your Npub to share privately', textPrimary),
-                        _buildGuideStep(context, 3, 'Go to Contacts to search name or paste key', textPrimary),
-                        _buildGuideStep(context, 4, 'Add them to your verified contact list', textPrimary),
-                        _buildGuideStep(context, 5, 'Start chatting securely in Chats tab', textPrimary),
+                        _buildGuideStep(
+                            context,
+                            1,
+                            'Set your handle in Global ID to be searchable',
+                            textPrimary),
+                        _buildGuideStep(
+                            context,
+                            2,
+                            'Or copy your Npub to share privately',
+                            textPrimary),
+                        _buildGuideStep(
+                            context,
+                            3,
+                            'Go to Contacts to search name or paste key',
+                            textPrimary),
+                        _buildGuideStep(
+                            context,
+                            4,
+                            'Add them to your verified contact list',
+                            textPrimary),
+                        _buildGuideStep(
+                            context,
+                            5,
+                            'Start chatting securely in Chats tab',
+                            textPrimary),
                       ],
                     ),
                   ),
@@ -851,10 +1048,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: const BorderSide(color: borderColor, width: 0.5),
                   ),
                   child: ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: const Icon(Icons.info_outline_rounded, color: textPrimary, size: 18),
-                    title: const Text('Version', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary)),
-                    trailing: Text(_appVersion, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    leading: const Icon(Icons.info_outline_rounded,
+                        color: textPrimary, size: 18),
+                    title: const Text('Version',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: textPrimary)),
+                    trailing: Text(_appVersion,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: textSecondary)),
                   ),
                 ),
                 const SizedBox(height: 20),

@@ -9,7 +9,7 @@ class ChatmeColors {
   static const Color surfaceBase = Color(0xFF0A0D16);
   static const Color surfaceRaised = Color(0xFF121622);
   static const Color surfaceOverlay = Color(0xFF1A1F2E);
-  static const Color surfaceMenu = Color(0xFF132020);
+  static const Color surfaceMenu = Color(0xFF0B0E15);
   static const Color surfaceAction = Color(0xFF0E3333);
 
   // Accent mint
@@ -22,6 +22,14 @@ class ChatmeColors {
   static const Color statusPositive = Color(0xFF3FD68B);
   static const Color statusDanger = Color(0xFFFF5470);
   static const Color statusWarning = Color(0xFFFFD25F);
+
+  // Buttons
+  static const Color buttonPrimary = accentPrimary;
+  static const Color buttonOnPrimary = onAccent;
+  static const Color buttonDanger = statusDanger;
+  static const Color buttonOnDanger = Color(0xEBFFFFFF);
+  static const Color buttonNeutral = surfaceRaised;
+  static const Color buttonOnNeutral = textPrimary;
 
   // Text on dark surfaces
   static const Color textPrimary = Color(0xEBFFFFFF);

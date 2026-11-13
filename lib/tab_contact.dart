@@ -58,7 +58,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     setState(() => _isSearchingGlobal = true);
 
     try {
-      final url = Uri.parse('https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app/usernames.json');
+      final url = Uri.parse(
+          'https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app/usernames.json');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
@@ -115,9 +116,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
           SnackBar(
             content: Text(
               '$name added to contacts',
-              style: const TextStyle(color: Colors.white),
+              style: const TextStyle(color: ChatmeColors.textPrimary),
             ),
-            backgroundColor: Colors.green,
+            backgroundColor: ChatmeColors.statusPositive,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -140,7 +141,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Remove contact?',
-      message: '${contact.name} will be removed from your contacts. Chat history will remain.',
+      message:
+          '${contact.name} will be removed from your contacts. Chat history will remain.',
       confirmLabel: 'Remove',
     );
 
@@ -150,7 +152,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       // Check if user has a registered global username
       String? globalName;
       try {
-        globalName = await AppSettings.instance.fetchGlobalUsername(contact.pubkey);
+        globalName =
+            await AppSettings.instance.fetchGlobalUsername(contact.pubkey);
       } catch (_) {}
 
       final newName = globalName ?? '';
@@ -211,7 +214,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
               },
               onClear: () => setState(() => _searchQuery = ""),
             ),
-
             ValueListenableBuilder<CallState>(
               valueListenable: CallManager.instance.callStateNotifier,
               builder: (context, callState, _) {
@@ -226,7 +228,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 );
               },
             ),
-
             Expanded(
               child: ValueListenableBuilder<Box<Contact>>(
                 valueListenable: Hive.box<Contact>('contacts').listenable(),
@@ -234,82 +235,105 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   // Local filter by search query
                   final contacts = box.values
                       .where((c) => c.isSaved == true)
-                      .where((c) => _searchQuery.isEmpty || c.displayName.toLowerCase().contains(_searchQuery))
+                      .where((c) =>
+                          _searchQuery.isEmpty ||
+                          c.displayName.toLowerCase().contains(_searchQuery))
                       .toList();
 
-                  contacts.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+                  contacts.sort((a, b) => a.displayName
+                      .toLowerCase()
+                      .compareTo(b.displayName.toLowerCase()));
 
                   if (contacts.isEmpty && _searchQuery.isEmpty) {
                     return _buildEmptyState();
                   }
 
                   return ListView(
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
                       // Global search results from Firebase
                       if (_searchQuery.length >= 2) ...[
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                          child: Text("GLOBAL SEARCH", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                          child: Text("GLOBAL SEARCH",
+                              style: TextStyle(
+                                  color: ChatmeColors.textMuted,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                  letterSpacing: 1.2)),
                         ),
-
                         if (_isSearchingGlobal)
                           const Center(
                             child: Padding(
                               padding: EdgeInsets.all(12.0),
-                              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                              child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2)),
                             ),
                           )
                         else if (_globalSearchResults.isNotEmpty)
                           ..._globalSearchResults.map((res) => ListTile(
-                            leading: UserAvatar(
-                              pubkey: res['pubkey'] ?? '',
-                              name: res['username'],
-                              relayManager: widget.relayManager,
-                            ),
-                            title: Text(res['username'] ?? ''),
-                            subtitle: Text(
-                              AppSettings.formatDisplayName(res['pubkey'] ?? ''),
-                              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-                            ),
-                            trailing: IconButton(
-                              icon: Icon(Remix.user_add_line, color: Theme.of(context).iconTheme.color),
-                              onPressed: () {
-                                _quickAddFromGlobal(res['username']!, res['pubkey']!);
-                              },
-                            ),
-                            onTap: () {
-                              _searchFocusNode.unfocus();
-
-                              final normalizedPubkey = KeyUtils.normalizeToHex(res['pubkey']!);
-                              final tempContact = Contact(
-                                pubkey: normalizedPubkey,
-                                name: res['username']!,
-                                isSaved: false,
-                                lastChatTime: 0,
-                                lastMessage: '',
-                                unreadCount: 0,
-                                globalId: res['username'],
-                              );
-
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => ChatDetailScreen(
-                                    contact: tempContact,
-                                    relayManager: widget.relayManager,
-                                  ),
+                                leading: UserAvatar(
+                                  pubkey: res['pubkey'] ?? '',
+                                  name: res['username'],
+                                  relayManager: widget.relayManager,
                                 ),
-                              );
-                            },
-                          ))
-                        else if (!_isSearchingGlobal && _globalSearchResults.isEmpty && _searchQuery.length > 1)
-                            const Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: Text("No global user found", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                            )
-                          else
-                            const SizedBox.shrink(),
+                                title: Text(res['username'] ?? ''),
+                                subtitle: Text(
+                                  AppSettings.formatDisplayName(
+                                      res['pubkey'] ?? ''),
+                                  style: const TextStyle(
+                                      fontFamily: 'monospace', fontSize: 11),
+                                ),
+                                trailing: IconButton(
+                                  icon: Icon(Remix.user_add_line,
+                                      color: Theme.of(context).iconTheme.color),
+                                  onPressed: () {
+                                    _quickAddFromGlobal(
+                                        res['username']!, res['pubkey']!);
+                                  },
+                                ),
+                                onTap: () {
+                                  _searchFocusNode.unfocus();
+
+                                  final normalizedPubkey =
+                                      KeyUtils.normalizeToHex(res['pubkey']!);
+                                  final tempContact = Contact(
+                                    pubkey: normalizedPubkey,
+                                    name: res['username']!,
+                                    isSaved: false,
+                                    lastChatTime: 0,
+                                    lastMessage: '',
+                                    unreadCount: 0,
+                                    globalId: res['username'],
+                                  );
+
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ChatDetailScreen(
+                                        contact: tempContact,
+                                        relayManager: widget.relayManager,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ))
+                        else if (!_isSearchingGlobal &&
+                            _globalSearchResults.isEmpty &&
+                            _searchQuery.length > 1)
+                          const Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: Text("No global user found",
+                                style: TextStyle(
+                                    color: ChatmeColors.textMuted,
+                                    fontSize: 13)),
+                          )
+                        else
+                          const SizedBox.shrink(),
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 16),
                           child: Divider(height: 1, thickness: 0.1),
@@ -318,7 +342,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
                       const Padding(
                         padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Text("MY CONTACTS", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
+                        child: Text("MY CONTACTS",
+                            style: TextStyle(
+                                color: ChatmeColors.textMuted,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                letterSpacing: 1.2)),
                       ),
                       ...contacts.map((contact) => _buildContactTile(contact)),
                     ],
@@ -380,13 +409,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Remix.contacts_line, size: 80, color: Colors.grey.withAlpha(50)),
-          const SizedBox(height: 20),
-          const Text('No saved contacts yet', style: TextStyle(color: Colors.grey)),
+          Icon(Remix.contacts_line, size: 80, color: ChatmeColors.textSubtle),
+          SizedBox(height: 20),
+          Text('No saved contacts yet',
+              style: TextStyle(color: ChatmeColors.textMuted)),
         ],
       ),
     );

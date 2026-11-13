@@ -1,6 +1,7 @@
 // editable_server_list.dart
 
 import 'package:flutter/material.dart';
+import '../core/theme/chatme_colors.dart';
 import '../services/server_lists.dart';
 
 /// A titled card of servers with a cross on each row and an add row at the end.
@@ -98,7 +99,8 @@ class _EditableServerListState extends State<EditableServerList> {
           child: Row(
             children: [
               Expanded(
-                child: Text(widget.addLabel, style: TextStyle(fontSize: 14, color: textSecondary)),
+                child: Text(widget.addLabel,
+                    style: TextStyle(fontSize: 14, color: textSecondary)),
               ),
               Padding(
                 padding: const EdgeInsets.all(8),
@@ -146,9 +148,11 @@ class _EditableServerListState extends State<EditableServerList> {
                       ? SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: textSecondary),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: textSecondary),
                         )
-                      : Icon(Icons.check_rounded, size: 20, color: textSecondary),
+                      : Icon(Icons.check_rounded,
+                          size: 20, color: textSecondary),
                 ),
               ),
             ],
@@ -157,7 +161,11 @@ class _EditableServerListState extends State<EditableServerList> {
         if (_error != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Text(_error!, style: const TextStyle(fontSize: 12, color: Colors.redAccent)),
+            child: Text(
+              _error!,
+              style: const TextStyle(
+                  fontSize: 12, color: ChatmeColors.statusDanger),
+            ),
           ),
       ],
     );
@@ -165,21 +173,24 @@ class _EditableServerListState extends State<EditableServerList> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
+    const cardColor = ChatmeColors.surfaceMenu;
+    const borderColor = ChatmeColors.borderSubtle;
+    const textPrimary = ChatmeColors.textPrimary;
+    const textSecondary = ChatmeColors.textSecondary;
 
     final rows = <Widget>[];
     for (var i = 0; i < widget.servers.length; i++) {
       final url = widget.servers[i];
-      if (i > 0) rows.add(Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 16));
+      if (i > 0) {
+        rows.add(const Divider(
+            height: 0.5, thickness: 0.5, color: borderColor, indent: 16));
+      }
       rows.add(_row(url, textPrimary, textSecondary));
     }
     if (widget.onSubmit != null) {
       if (rows.isNotEmpty) {
-        rows.add(Divider(height: 0.5, thickness: 0.5, color: borderColor, indent: 16));
+        rows.add(const Divider(
+            height: 0.5, thickness: 0.5, color: borderColor, indent: 16));
       }
       rows.add(_addRow(textSecondary));
     }
@@ -189,11 +200,17 @@ class _EditableServerListState extends State<EditableServerList> {
       children: [
         Text(
           widget.title,
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+          style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 1.2,
+              color: textSecondary),
         ),
         if (widget.description.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Text(widget.description, style: TextStyle(fontSize: 13, height: 1.35, color: textSecondary)),
+          Text(widget.description,
+              style: const TextStyle(
+                  fontSize: 13, height: 1.35, color: textSecondary)),
         ],
         const SizedBox(height: 10),
         Container(
@@ -206,7 +223,14 @@ class _EditableServerListState extends State<EditableServerList> {
         ),
         if (widget.warning != null) ...[
           const SizedBox(height: 8),
-          Text(widget.warning!, style: const TextStyle(fontSize: 12, height: 1.35, color: Colors.orange)),
+          Text(
+            widget.warning!,
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: ChatmeColors.statusWarning,
+            ),
+          ),
         ],
       ],
     );
@@ -219,10 +243,13 @@ class _EditableServerListState extends State<EditableServerList> {
 
     final subtitle = <Widget>[
       if (status != null)
-        Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color)),
+        Text(status,
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w500, color: color)),
       if (status != null && isDefault)
         Text(' · ', style: TextStyle(fontSize: 11, color: textSecondary)),
-      if (isDefault) Text('Default', style: TextStyle(fontSize: 11, color: textSecondary)),
+      if (isDefault)
+        Text('Default', style: TextStyle(fontSize: 11, color: textSecondary)),
     ];
 
     return Padding(

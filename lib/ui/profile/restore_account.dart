@@ -1,9 +1,12 @@
 // restore_account.dart
 
 import 'package:flutter/material.dart';
+import '../../core/theme/chatme_buttons.dart';
+import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/sync_gate.dart';
 import '../../services/app_settings.dart';
 import '../../relay_manager.dart';
+import '../../widgets/chatme_notice.dart';
 
 class RestoreAccountPage extends StatefulWidget {
   final RelayManager relayManager;
@@ -26,12 +29,11 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8);
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
-    final textPrimary = isDark ? Colors.white : Colors.black;
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const cardColor = ChatmeColors.surfaceMenu;
+    const borderColor = ChatmeColors.borderSubtle;
+    const textSecondary = ChatmeColors.textSecondary;
+    const textPrimary = ChatmeColors.textPrimary;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -40,12 +42,14 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: Text(
+        title: const Text(
           'Restore Account',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
+          style: TextStyle(
+              fontWeight: FontWeight.w500, fontSize: 16, color: textPrimary),
         ),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded, color: textPrimary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -54,39 +58,22 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // Warning
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.deepOrange.withAlpha(15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.deepOrange.withAlpha(40), width: 0.5),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline_rounded, color: Colors.deepOrange.withAlpha(200), size: 14),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'This will replace your current account. Make sure you have backed up your keys first.',
-                      style: TextStyle(fontSize: 13, color: Colors.deepOrange.withAlpha(200), height: 1.5),
-                    ),
-                  ),
-                ],
-              ),
+            const ChatmeNotice(
+              icon: Icons.info_outline_rounded,
+              message:
+                  'This will replace your current account. Make sure you have backed up your keys first.',
+              iconColor: ChatmeColors.statusWarning,
             ),
-
             const SizedBox(height: 28),
-
-            Text(
+            const Text(
               'NSEC, PRIVATE KEY OR RECOVERY PHRASE',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: textSecondary),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1.2,
+                  color: textSecondary),
             ),
             const SizedBox(height: 8),
-
             Container(
               decoration: BoxDecoration(
                 color: cardColor,
@@ -96,73 +83,89 @@ class _RestoreAccountPageState extends State<RestoreAccountPage> {
               child: TextField(
                 controller: _controller,
                 maxLines: 5,
-                style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: textPrimary),
-                decoration: InputDecoration(
-                  hintText: 'Paste your nsec, hex private key or 12-word phrase...',
-                  hintStyle: TextStyle(fontSize: 12, color: textSecondary, fontFamily: 'sans-serif'),
-                  contentPadding: const EdgeInsets.all(16),
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 13, color: textPrimary),
+                decoration: const InputDecoration(
+                  hintText:
+                      'Paste your nsec, hex private key or 12-word phrase...',
+                  hintStyle: TextStyle(
+                      fontSize: 12,
+                      color: textSecondary,
+                      fontFamily: 'sans-serif'),
+                  contentPadding: EdgeInsets.all(16),
                   border: InputBorder.none,
                 ),
               ),
             ),
-
             const SizedBox(height: 28),
-
             GestureDetector(
-              onTap: _isLoading ? null : () async {
-                final input = _controller.text.trim();
-                if (input.isEmpty) return;
+              onTap: _isLoading
+                  ? null
+                  : () async {
+                      final input = _controller.text.trim();
+                      if (input.isEmpty) return;
 
-                final navigator = Navigator.of(context);
-                final messenger = ScaffoldMessenger.of(context);
+                      final navigator = Navigator.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
 
-                setState(() => _isLoading = true);
-                try {
-                  await AppSettings.instance.importAccount(input);
-                  // Open the initial-sync gate BEFORE connecting: the
-                  // relays will replay this account's whole backlog, and
-                  // that history must arrive silently (no notification
-                  // spam, no unread badges) until every relay sends EOSE.
-                  SyncGate.start('account restore');
-                  widget.relayManager.disconnect();
-                  widget.relayManager.connect();
-                  if (mounted) navigator.pop();
-                } catch (e) {
-                  if (mounted) {
-                    messenger.showSnackBar(SnackBar(
-                      content: Text('Error: $e'),
-                      backgroundColor: Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                    ));
-                  }
-                } finally {
-                  if (mounted) setState(() => _isLoading = false);
-                }
-              },
+                      setState(() => _isLoading = true);
+                      try {
+                        await AppSettings.instance.importAccount(input);
+                        // Open the initial-sync gate BEFORE connecting: the
+                        // relays will replay this account's whole backlog, and
+                        // that history must arrive silently (no notification
+                        // spam, no unread badges) until every relay sends EOSE.
+                        SyncGate.start('account restore');
+                        widget.relayManager.disconnect();
+                        widget.relayManager.connect();
+                        if (mounted) navigator.pop();
+                      } catch (e) {
+                        if (mounted) {
+                          messenger.showSnackBar(SnackBar(
+                            content: Text('Error: $e'),
+                            backgroundColor: ChatmeColors.statusDanger,
+                            behavior: SnackBarBehavior.floating,
+                          ));
+                        }
+                      } finally {
+                        if (mounted) setState(() => _isLoading = false);
+                      }
+                    },
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: borderColor, width: 0.5),
-                ),
+                decoration: ChatmeButtonStyles.primaryDecoration(),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (_isLoading)
-                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: textPrimary))
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: ChatmeButtonStyles.primaryForeground,
+                        ),
+                      )
                     else
-                      Icon(Icons.settings_backup_restore_rounded, size: 16, color: textPrimary),
+                      const Icon(
+                        Icons.settings_backup_restore_rounded,
+                        size: 16,
+                        color: ChatmeButtonStyles.primaryForeground,
+                      ),
                     const SizedBox(width: 8),
                     Text(
                       _isLoading ? 'Restoring...' : 'Restore account',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: ChatmeButtonStyles.primaryForeground,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-
             const SizedBox(height: 40),
           ],
         ),
