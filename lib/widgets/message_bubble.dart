@@ -383,7 +383,7 @@ class MessageBubble extends StatelessWidget {
     final backgroundColor = isMe
         ? ChatmeColors.accentDeep.withAlpha(90)
         : ChatmeColors.surfaceOverlay;
-    final contentColor = isMe ? ChatmeColors.onAccent.withAlpha(178) : ChatmeColors.textSecondary;
+    final contentColor = isMe ? ChatmeColors.textPrimary.withAlpha(178) : ChatmeColors.textSecondary;
 
     return GestureDetector(
       onTap: onReplyTap,

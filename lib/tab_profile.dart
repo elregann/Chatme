@@ -440,7 +440,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final settings = AppSettings.instance;
 
         const bgColor = ChatmeColors.backgroundPrimary;
-        const cardColor = ChatmeColors.surfaceRaised;
+        const cardColor = ChatmeColors.surfaceMenu;
         const borderColor = ChatmeColors.borderSubtle;
         const textPrimary = ChatmeColors.textPrimary;
         const textSecondary = ChatmeColors.textSecondary;

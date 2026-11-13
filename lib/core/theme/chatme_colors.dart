@@ -9,6 +9,7 @@ class ChatmeColors {
   static const Color surfaceBase = Color(0xFF0A0D16);
   static const Color surfaceRaised = Color(0xFF121622);
   static const Color surfaceOverlay = Color(0xFF1A1F2E);
+  static const Color surfaceMenu = Color(0xFF0E3333);
 
   // Accent mint
   static const Color accentPrimary = Color(0xFF97FCE4);
@@ -28,7 +29,7 @@ class ChatmeColors {
   static const Color textSubtle = Color(0x73FFFFFF);
 
   // Chat bubbles
-  static const Color bubbleOutgoing = Color(0xFF1E5A52);
+  static const Color bubbleOutgoing = Color(0xFF0E3333);
   static const Color bubbleIncoming = Color(0xFF121622);
 
   // Call actions

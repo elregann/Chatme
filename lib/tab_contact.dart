@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'models/contact.dart';
+import 'core/theme/chatme_colors.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/key_utils.dart';
 import 'services/app_settings.dart';
@@ -179,8 +180,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return GestureDetector(
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
@@ -330,18 +329,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ],
         ),
         floatingActionButton: Material(
-          color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-          borderRadius: BorderRadius.circular(16),
+          color: ChatmeColors.surfaceMenu,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: _addContact,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
+            child: const SizedBox(
               width: 56,
               height: 56,
-              alignment: Alignment.center,
-              child: const Icon(
+              child: Icon(
                 Remix.user_add_fill,
-                size: 28,
+                size: 20,
+                color: ChatmeColors.accentPrimary,
               ),
             ),
           ),

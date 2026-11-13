@@ -2243,7 +2243,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
     final bubbleColor = isMe ? ChatmeColors.bubbleOutgoing : ChatmeColors.bubbleIncoming;
-    final textColor = isMe ? ChatmeColors.onAccent : ChatmeColors.textPrimary;
+    const textColor = ChatmeColors.textPrimary;
 
     final previewUrl = AppSettings.instance.linkPreviewsEnabled
         ? LinkPreviewService.extractFirstUrl(message.plaintext)
@@ -2255,7 +2255,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       isMe: isMe,
       bubbleColor: bubbleColor,
       textColor: textColor,
-      footer: _buildBubbleFooter(message, textColor),
+      footer: _buildBubbleFooter(
+        message,
+        textColor,
+        statusColor: isMe ? ChatmeColors.onAccent : null,
+      ),
       imageFooter: _buildBubbleFooter(message, ChatmeColors.textPrimary, dim: false),
       previewUrl: previewUrl,
       replySenderName: hasReply
@@ -2273,6 +2277,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   Widget _buildBubbleFooter(
     ChatMessage message,
     Color color, {
+    Color? statusColor,
     bool dim = true,
   }) {
     final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
@@ -2293,7 +2298,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ),
         if (isMe) ...[
           const SizedBox(width: 4),
-          _buildStatusIcon(message.status, color),
+          _buildStatusIcon(message.status, statusColor ?? color),
         ],
       ],
     );
@@ -2421,9 +2426,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final durationLabel = DurationUtils.formatCallDuration(durationSeconds);
 
     const normalTextColor = ChatmeColors.textPrimary;
-    final textColor = isMissed ? ChatmeColors.statusDanger : (isMe ? ChatmeColors.onAccent : ChatmeColors.textPrimary);
+    final textColor = isMissed ? ChatmeColors.statusDanger : normalTextColor;
     final iconColor = isMissed ? ChatmeColors.statusDanger : textColor;
-    final timeColor = (isMe ? ChatmeColors.onAccent : normalTextColor).withAlpha(153);
+    final timeColor = normalTextColor.withAlpha(153);
 
     final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
     final timeStr = DateFormat(is24Hour ? 'HH:mm' : 'h:mm a')

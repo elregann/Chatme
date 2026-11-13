@@ -804,9 +804,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   ),
                   backgroundColor: ChatmeColors.badgeDanger,
                   isLabelVisible: totalUnread > 0,
-                  child: Icon(
+                  child: const Icon(
                     Remix.chat_3_line,
-                    color: Theme.of(context).iconTheme.color,
+                    color: ChatmeColors.accentPrimary,
                   )),
               selectedIcon: Badge(
                   label: Text(
@@ -815,25 +815,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   ),
                   backgroundColor: ChatmeColors.badgeDanger,
                   isLabelVisible: totalUnread > 0,
-                  child: Icon(
+                  child: const Icon(
                     Remix.chat_3_fill,
-                    color: Theme.of(context).iconTheme.color,
+                    color: ChatmeColors.accentPrimary,
                   )),
               label: 'Chats',
             ),
-            NavigationDestination(
-              icon: Icon(Remix.contacts_line, color: Theme.of(context).iconTheme.color),
-              selectedIcon: Icon(Remix.contacts_fill, color: Theme.of(context).iconTheme.color),
+            const NavigationDestination(
+              icon: Icon(Remix.contacts_line, color: ChatmeColors.accentPrimary),
+              selectedIcon: Icon(Remix.contacts_fill, color: ChatmeColors.accentPrimary),
               label: 'Contacts',
             ),
-            NavigationDestination(
-              icon: Icon(Icons.phone_outlined, color: Theme.of(context).iconTheme.color),
-              selectedIcon: Icon(Icons.phone, color: Theme.of(context).iconTheme.color),
+            const NavigationDestination(
+              icon: Icon(Icons.phone_outlined, color: ChatmeColors.accentPrimary),
+              selectedIcon: Icon(Icons.phone, color: ChatmeColors.accentPrimary),
               label: 'Calls',
             ),
             NavigationDestination(
-              icon: _buildMeIcon(selected: false),
-              selectedIcon: _buildMeIcon(selected: true),
+              icon: _buildMeIcon(),
+              selectedIcon: _buildMeIcon(),
               label: 'Me',
             ),
           ],
@@ -842,36 +842,25 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildMeIcon({required bool selected}) {
+  Widget _buildMeIcon() {
     return ValueListenableBuilder(
       valueListenable: Hive.box('settings').listenable(),
       builder: (context, _, __) {
         final settings = AppSettings.instance;
         final hasLocalPhoto = settings.myPhotoPath.isNotEmpty && !kIsWeb;
-        final ringColor = Theme.of(context).iconTheme.color ?? Colors.white;
 
-        final Widget avatar = hasLocalPhoto
-            ? CircleAvatar(
-                radius: 11,
-                backgroundImage: FileImage(File(settings.myPhotoPath)),
-              )
-            : UserAvatar(
-                pubkey: settings.myPubkey,
-                name: settings.myName.isNotEmpty ? settings.myName : null,
-                radius: 11,
-                relayManager: widget.relayManager,
-              );
+        if (hasLocalPhoto) {
+          return CircleAvatar(
+            radius: 11,
+            backgroundImage: FileImage(File(settings.myPhotoPath)),
+          );
+        }
 
-        return Container(
-          padding: const EdgeInsets.all(1.5),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected ? ringColor : Colors.transparent,
-              width: 1.5,
-            ),
-          ),
-          child: avatar,
+        return UserAvatar(
+          pubkey: settings.myPubkey,
+          name: settings.myName.isNotEmpty ? settings.myName : null,
+          radius: 11,
+          relayManager: widget.relayManager,
         );
       },
     );
