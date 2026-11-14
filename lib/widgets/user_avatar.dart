@@ -20,6 +20,10 @@ class UserAvatar extends StatelessWidget {
   /// In-memory cache of resolved ImageProviders for zero-flicker instant rendering.
   static final Map<String, ImageProvider?> _imageProviderCache = {};
 
+  /// URL that each cached provider belongs to, so a provider is only reused
+  /// when it still matches the current profile picture.
+  static final Map<String, String> _imageProviderUrlCache = {};
+
   /// Per-pubkey notifiers to ensure invalidating one user's avatar only
   /// triggers a rebuild for widgets representing that specific user.
   static final Map<String, ValueNotifier<int>> _pubkeyNotifiers = {};
@@ -28,24 +32,46 @@ class UserAvatar extends StatelessWidget {
     return _pubkeyNotifiers.putIfAbsent(pubkey, () => ValueNotifier<int>(0));
   }
 
-  /// Pre-caches an ImageProvider into RAM memory for instant zero-flicker renders.
+  /// Seeds the RAM caches for [pubkey]. A resolved provider from an older URL
+  /// is kept so it can act as the placeholder until the new URL loads.
   static void precacheProvider(String pubkey, String url) {
     if (url.isEmpty) {
       _avatarMemCache[pubkey] = '';
       _imageProviderCache[pubkey] = null;
+      _imageProviderUrlCache[pubkey] = '';
       return;
     }
     _avatarMemCache[pubkey] = url;
+    // Keep the last resolved provider around. It is reused as the placeholder
+    // while a newly announced URL loads, so the avatar never falls back to the
+    // initials circle in between two photos.
+    if (_imageProviderCache[pubkey] != null) return;
     _imageProviderCache[pubkey] = CachedNetworkImageProvider(url);
+    _imageProviderUrlCache[pubkey] = url;
   }
 
-  /// Clears the cached URL & ImageProvider for [pubkey] and forces only the visible
+  /// Stores an already-resolved provider for [url], replacing any older one.
+  /// Used after a local upload has been preloaded so the switch from the
+  /// temporary file to the permanent URL happens in a single frame.
+  static void setResolvedProvider(
+    String pubkey,
+    String url,
+    ImageProvider provider,
+  ) {
+    _avatarMemCache[pubkey] = url;
+    _imageProviderCache[pubkey] = provider;
+    _imageProviderUrlCache[pubkey] = url;
+  }
+
+  /// Clears the cached URL for [pubkey] and forces only the visible
   /// UserAvatars for that pubkey to rebuild. Call this whenever a profile
-  /// picture is updated — for the local user after `broadcastProfileKind0`,
+  /// picture is updated - for the local user after `broadcastProfileKind0`,
   /// or for a peer when a Kind 0 metadata event arrives from a relay with a new URL.
+  ///
+  /// The resolved ImageProvider is intentionally kept so the previous avatar
+  /// stays visible until the new URL has loaded.
   static void invalidate(String pubkey) {
     _avatarMemCache.remove(pubkey);
-    _imageProviderCache.remove(pubkey);
     if (_pubkeyNotifiers.containsKey(pubkey)) {
       _pubkeyNotifiers[pubkey]!.value++;
     }
@@ -56,6 +82,7 @@ class UserAvatar extends StatelessWidget {
   static void invalidateAll() {
     _avatarMemCache.clear();
     _imageProviderCache.clear();
+    _imageProviderUrlCache.clear();
     for (final notifier in _pubkeyNotifiers.values) {
       notifier.value++;
     }
@@ -84,35 +111,46 @@ class UserAvatar extends StatelessWidget {
     );
   }
 
+  Widget _buildProviderAvatar(ImageProvider provider) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: UIUtils.getAvatarColor(pubkey),
+      backgroundImage: provider,
+    );
+  }
+
   Widget _buildAvatar(BuildContext context, String? photoUrl) {
-    // 1. Instant zero-flicker render if ImageProvider is already resolved in RAM
+    final hasPhotoUrl = photoUrl != null && photoUrl.isNotEmpty;
     final cachedProvider = _imageProviderCache[pubkey];
-    if (cachedProvider != null) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: UIUtils.getAvatarColor(pubkey),
-        backgroundImage: cachedProvider,
-      );
+
+    // 1. Instant zero-flicker render if the resolved provider matches the URL.
+    if (hasPhotoUrl &&
+        cachedProvider != null &&
+        _imageProviderUrlCache[pubkey] == photoUrl) {
+      return _buildProviderAvatar(cachedProvider);
     }
 
-    // 2. Photo URL exists but provider not yet in RAM cache -> render with CachedNetworkImage
-    if (photoUrl != null && photoUrl.isNotEmpty) {
+    // 2. Photo URL exists but its provider is not ready yet -> load it while
+    // keeping the last successful avatar visible as the placeholder.
+    if (hasPhotoUrl) {
+      final placeholderProvider = cachedProvider;
+
       return CachedNetworkImage(
         imageUrl: photoUrl,
         fadeInDuration: Duration.zero,
         fadeOutDuration: Duration.zero,
         imageBuilder: (context, imageProvider) {
           _imageProviderCache[pubkey] = imageProvider;
-          return CircleAvatar(
-            radius: radius,
-            backgroundColor: UIUtils.getAvatarColor(pubkey),
-            backgroundImage: imageProvider,
-          );
+          _imageProviderUrlCache[pubkey] = photoUrl;
+          return _buildProviderAvatar(imageProvider);
         },
-        placeholder: (context, url) => _buildFallback(),
+        placeholder: (context, url) => placeholderProvider != null
+            ? _buildProviderAvatar(placeholderProvider)
+            : _buildFallback(),
         errorWidget: (context, url, error) {
           _avatarMemCache[pubkey] = '';
           _imageProviderCache[pubkey] = null;
+          _imageProviderUrlCache[pubkey] = '';
           return _buildFallback();
         },
       );
@@ -137,6 +175,7 @@ class UserAvatar extends StatelessWidget {
       } else {
         _avatarMemCache[pubkey] = '';
         _imageProviderCache[pubkey] = null;
+        _imageProviderUrlCache[pubkey] = '';
         return _buildFallback();
       }
     }
@@ -152,6 +191,7 @@ class UserAvatar extends StatelessWidget {
           } else {
             _avatarMemCache[pubkey] = '';
             _imageProviderCache[pubkey] = null;
+            _imageProviderUrlCache[pubkey] = '';
           }
         }
 

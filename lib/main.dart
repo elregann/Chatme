@@ -19,6 +19,7 @@ import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'models/call_log.dart';
 import 'services/app_settings.dart';
+import 'services/profile_meta_store.dart';
 import 'notification_handler.dart';
 import 'services/network_manager.dart';
 import 'services/background_service.dart';
@@ -69,9 +70,11 @@ void main() async {
 
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
+    ProfileMetaStore.watchContactDeletions(Hive.box<Contact>('contacts'));
     await Hive.openBox('chats');
     await Hive.openBox<ChatMessage>('chat_msgs');
     await Hive.openBox<String>('profile_pictures');
+    await Hive.openBox('profile_meta');
     await Hive.openBox<CallLog>('call_logs');
     await Hive.openBox('processed_events');
     await LinkPreviewService.instance.init();
@@ -843,16 +846,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildMeIcon() {
+    // Only identity and photo changes affect this icon. Listening to the
+    // whole settings box rebuilt it on every unrelated write.
     return ValueListenableBuilder(
-      valueListenable: Hive.box('settings').listenable(),
+      valueListenable: Hive.box('settings').listenable(
+        keys: const ['my_pubkey', 'my_name', 'my_photo_path'],
+      ),
       builder: (context, _, __) {
         final settings = AppSettings.instance;
-        final hasLocalPhoto = settings.myPhotoPath.isNotEmpty && !kIsWeb;
+        final photoPath = settings.myPhotoPath;
+        final hasLocalPhoto = !kIsWeb &&
+            photoPath.isNotEmpty &&
+            File(photoPath).existsSync();
 
         if (hasLocalPhoto) {
           return CircleAvatar(
             radius: 11,
-            backgroundImage: FileImage(File(settings.myPhotoPath)),
+            backgroundImage: FileImage(File(photoPath)),
           );
         }
 

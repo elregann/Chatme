@@ -14,6 +14,7 @@ import 'core/theme/chatme_colors.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/key_utils.dart';
 import 'services/app_settings.dart';
+import 'services/profile_meta_store.dart';
 import 'ui/contacts/add_contact.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/chatme_search_bar.dart';
@@ -168,6 +169,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       if (contact.lastMessage.isNotEmpty || newName.isNotEmpty) {
         await contactsBox.put(contact.pubkey, contact);
+
+        if (newName.isEmpty) {
+          await ProfileMetaStore.forget(contact.pubkey);
+          widget.relayManager.refreshProfileSubscription();
+        }
 
         await ShortcutHelper.pushConversationShortcut(
           id: contact.pubkey,

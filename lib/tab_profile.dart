@@ -1,5 +1,6 @@
 // tab_profile.dart
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'relay_manager.dart';
@@ -52,7 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
 
     _currentHandle = AppSettings.instance.myNip05;
-    _localPhotoPath = AppSettings.instance.myPhotoPath.isNotEmpty
+    _localPhotoPath = _hasUsablePhotoFile(AppSettings.instance.myPhotoPath)
         ? AppSettings.instance.myPhotoPath
         : null;
     _remotePhotoUrl = AppSettings.instance.myPhotoUrl.isNotEmpty
@@ -88,7 +89,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           name: settings.myName.isNotEmpty
               ? settings.myName
               : (_currentHandle.isNotEmpty ? _currentHandle : null),
-          localPhotoPath: _localPhotoPath ?? settings.myPhotoPath,
+          localPhotoPath: _hasUsablePhotoFile(_localPhotoPath)
+              ? _localPhotoPath
+              : (_hasUsablePhotoFile(settings.myPhotoPath)
+                  ? settings.myPhotoPath
+                  : null),
           photoUrl: _remotePhotoUrl ?? settings.myPhotoUrl,
           relayManager: widget.relayManager,
         ),
@@ -276,14 +281,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (url != null) {
         await widget.relayManager.broadcastProfileKind0(photoUrl: url);
         await AppSettings.instance.savePhotoUrl(url);
+
+        // Preload the permanent URL before dropping the local file, so the
+        // avatar moves straight from the new local photo to the new remote
+        // photo without showing the previous remote photo in between.
+        if (mounted) {
+          final provider = CachedNetworkImageProvider(url);
+          var failed = false;
+          try {
+            await precacheImage(
+              provider,
+              context,
+              onError: (_, __) => failed = true,
+            ).timeout(
+              const Duration(seconds: 5),
+              onTimeout: () => failed = true,
+            );
+          } catch (_) {
+            failed = true;
+          }
+          if (!failed && mounted) {
+            UserAvatar.setResolvedProvider(
+              AppSettings.instance.myPubkey,
+              url,
+              provider,
+            );
+          }
+        }
+
+        // The URL is now the permanent source. Drop the temporary local
+        // copy so a later launch never renders a file that may be gone.
+        await AppSettings.instance.savePhotoPath('');
         if (mounted) {
           setState(() {
             _remotePhotoUrl = url;
             _localPhotoPath = null;
           });
         }
+        await _deleteTempPhoto(croppedFile);
       }
     }
+  }
+
+  Future<void> _deleteTempPhoto(File file) async {
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // The OS may already have cleaned the temporary directory.
+    }
+  }
+
+  bool _hasUsablePhotoFile(String? path) {
+    if (kIsWeb || path == null || path.isEmpty) return false;
+    return File(path).existsSync();
   }
 
   /// The file extension that matches the bytes of a cropped image.
@@ -468,13 +518,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wrap the entire screen in a ValueListenableBuilder that listens
-    // to the settings Hive box. Whenever AppSettings.savePhotoUrl() is
-    // called — e.g. after a restore, when the relay delivers our own
-    // kind-0 event — the Profile tab rebuilds automatically without
-    // any manual setState or fetch retry.
+    // Rebuild only when a setting this screen actually reads changes, e.g.
+    // after a restore or when the relay delivers our own kind-0 event.
+    // Listening to the whole settings box made every unrelated write, such
+    // as keyboard height or cut-off timestamps, rebuild the Profile tab.
     return ValueListenableBuilder(
-      valueListenable: Hive.box('settings').listenable(),
+      valueListenable: Hive.box('settings').listenable(
+        keys: const [
+          'my_pubkey',
+          'my_name',
+          'my_photo_path',
+          'my_photo_url',
+          'link_previews_enabled',
+          'read_receipts_enabled',
+          'save_to_gallery',
+        ],
+      ),
       builder: (context, _, __) {
         final settings = AppSettings.instance;
 
@@ -526,7 +585,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onTap: _openMyPhotoPreview,
                         child: Stack(
                           children: [
-                            (_localPhotoPath != null && !kIsWeb)
+                            _hasUsablePhotoFile(_localPhotoPath)
                                 ? CircleAvatar(
                                     radius: 40,
                                     backgroundColor:
@@ -534,7 +593,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     backgroundImage:
                                         FileImage(File(_localPhotoPath!)),
                                   )
-                                : (settings.myPhotoPath.isNotEmpty && !kIsWeb)
+                                : _hasUsablePhotoFile(settings.myPhotoPath)
                                     ? CircleAvatar(
                                         radius: 40,
                                         backgroundColor:

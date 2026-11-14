@@ -13,6 +13,7 @@ import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
 import '../core/utils/sync_gate.dart';
 import '../models/contact.dart';
+import 'profile_meta_store.dart';
 import 'server_lists.dart';
 
 class AppSettings {
@@ -219,11 +220,13 @@ class AppSettings {
   }
 
   Future<void> savePhotoPath(String path) async {
+    if (myPhotoPath == path) return;
     myPhotoPath = path;
     await Hive.box('settings').put('my_photo_path', path);
   }
 
   Future<void> savePhotoUrl(String url) async {
+    if (myPhotoUrl == url) return;
     myPhotoUrl = url;
     await Hive.box('settings').put('my_photo_url', url);
   }
@@ -233,10 +236,19 @@ class AppSettings {
   }
 
   Future<void> updateNip05(String newNip05, bool verified) async {
+    final nip05Changed = myNip05 != newNip05;
+    final verifiedChanged = isNip05Verified != verified;
+    if (!nip05Changed && !verifiedChanged) return;
+
     myNip05 = newNip05;
     isNip05Verified = verified;
-    await Hive.box('settings').put('my_nip05', newNip05);
-    await Hive.box('settings').put('is_nip05_verified', verified);
+    final settingsBox = Hive.box('settings');
+    if (nip05Changed) {
+      await settingsBox.put('my_nip05', newNip05);
+    }
+    if (verifiedChanged) {
+      await settingsBox.put('is_nip05_verified', verified);
+    }
     DebugLogger.log('[Settings] Identity updated: $newNip05 (verified: $verified)', type: 'SETUP');
   }
 
@@ -299,37 +311,49 @@ Backup Date: ${DateTime.now().toString()}
   static Future<void> hydrateSingleContact(String pubkey) async {
     if (pubkey.isEmpty) return;
 
+    // A kind-0 profile is authoritative. Firebase only fills contacts that
+    // have never received metadata, so a released ID cannot be revived.
+    if (ProfileMetaStore.hasProfile(pubkey)) return;
+
     final settingsBox = Hive.box('settings');
     final flagKey = 'hydrated_$pubkey';
     if (settingsBox.get(flagKey, defaultValue: false) == true) return;
 
     try {
       final name = await AppSettings.instance._fetchNameFromFirebase(pubkey);
+      // A kind-0 may have arrived while the fetch was in flight; it wins.
+      if (ProfileMetaStore.hasProfile(pubkey)) return;
       if (name != null && name.isNotEmpty) {
         final contactsBox = Hive.box<Contact>('contacts');
         final contact = contactsBox.get(pubkey);
         if (contact != null) {
-          // The claimed global ID is the contact's remote identity — always
+          // The claimed global ID is the contact's remote identity: always
           // recorded, and never clobbered by a locally saved nickname.
-          contact.globalId = name;
+          final globalIdChanged = contact.globalId != name;
           // The display name only follows the claimed ID while the user
           // hasn't saved their own nickname for this contact.
-          if (!contact.isSaved) {
+          final nameChanged = !contact.isSaved && contact.name != name;
+          if (globalIdChanged) {
+            contact.globalId = name;
+          }
+          if (nameChanged) {
             contact.name = name;
           }
-          await contactsBox.put(pubkey, contact);
+          if (globalIdChanged || nameChanged) {
+            await contactsBox.put(pubkey, contact);
 
-          // Keep Android conversation shortcut label in sync with the new global ID
-          await ShortcutHelper.pushConversationShortcut(
-            id: pubkey,
-            name: contact.displayName,
-            avatarBytes: null,
-          );
+            // Keep Android conversation shortcut label in sync with the new global ID
+            await ShortcutHelper.pushConversationShortcut(
+              id: pubkey,
+              name: contact.displayName,
+              avatarBytes: null,
+            );
+          }
         }
       }
       await settingsBox.put(flagKey, true);
     } catch (_) {
-      // fetch failed — do not set flag, retry next time
+      // fetch failed, do not set flag, retry next time
     }
   }
 

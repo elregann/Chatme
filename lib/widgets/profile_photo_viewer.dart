@@ -30,10 +30,12 @@ class ProfilePhotoViewer extends StatefulWidget {
 class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
   String? _photoUrl;
 
-  bool get _hasLocalPhoto =>
-      !kIsWeb &&
-      widget.localPhotoPath != null &&
-      widget.localPhotoPath!.isNotEmpty;
+  bool get _hasLocalPhoto {
+    if (kIsWeb) return false;
+    final path = widget.localPhotoPath;
+    if (path == null || path.isEmpty) return false;
+    return File(path).existsSync();
+  }
 
   @override
   void initState() {

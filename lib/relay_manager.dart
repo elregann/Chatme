@@ -26,6 +26,7 @@ import 'core/utils/sync_gate.dart';
 import 'services/app_settings.dart';
 import 'services/file_send_service.dart';
 import 'services/nostr_service.dart';
+import 'services/profile_meta_store.dart';
 import 'models/chat_message.dart';
 import 'models/contact.dart';
 import 'services/server_lists.dart';
@@ -91,7 +92,6 @@ class RelayManager {
   final Map<String, int> _reactionTimestamps = {};
   Timer? _reactionRetryTimer;
   int _reactionRetryCount = 0;
-  final Map<String, int> _lastKind0Timestamp = {};
 
   /// Timestamp (ms) of the last re-send attempt per message ID.
   /// Prevents the offline queue from hammering the same message every tick.
@@ -623,9 +623,14 @@ class RelayManager {
             if (content is Map<String, dynamic>) {
               final picture = content['picture'] is String ? content['picture'] as String : null;
 
-              final lastProcessed = _lastKind0Timestamp[pubkey] ?? 0;
-              if (createdAt >= lastProcessed) {
-                _lastKind0Timestamp[pubkey] = createdAt;
+              if (ProfileMetaStore.shouldAccept(
+                pubkey,
+                createdAt,
+                eventId,
+              )) {
+                unawaited(
+                  ProfileMetaStore.remember(pubkey, createdAt, eventId),
+                );
 
                 final oldPicture = _profilePics.containsKey(pubkey) ? _profilePics.get(pubkey) : null;
                 final hasPictureChanged = oldPicture != picture;
@@ -652,57 +657,13 @@ class RelayManager {
 
                 final name = content['name'] is String ? content['name'] as String : null;
                 final nip05 = content['nip05'] is String ? content['nip05'] as String : null;
-                final hasValidName = name != null &&
-                    name.isNotEmpty &&
-                    !Contact.isPlaceholderName(name, pubkey);
-
-                // Placeholder names (npub stubs etc., published by older
-                // clients while their global ID was disconnected) are not a
-                // real identity — never let them pollute the contact row.
-                if (hasValidName) {
-                  try {
-                    final contactsBox = Hive.box<Contact>('contacts');
-                    final contact = contactsBox.get(pubkey);
-                    if (contact != null) {
-                      var changed = false;
-
-                      // The global ID is the contact's remote identity —
-                      // always keep it fresh, but never let a locally saved
-                      // nickname clobber it (it lives in its own field).
-                      if (contact.globalId != name) {
-                        contact.globalId = name;
-                        changed = true;
-                      }
-
-                      // The display name only follows remote metadata while
-                      // the user hasn't saved their own nickname yet.
-                      if (!contact.isSaved && contact.name != name) {
-                        contact.name = name;
-                        changed = true;
-                      }
-
-                      if (changed) {
-                        await contactsBox.put(pubkey, contact);
-
-                        // Keep Android conversation shortcut label in sync with profile name
-                        await ShortcutHelper.pushConversationShortcut(
-                          id: pubkey,
-                          name: contact.displayName,
-                          avatarBytes: null,
-                        );
-                      }
-                    }
-                  } catch (_) {}
-                }
-
-                if (!hasValidName && (nip05 == null || nip05.isEmpty)) {
-                  // A newer kind-0 with neither a name nor a nip05 is the
-                  // signature of a released global ID (ChatMe's disconnect
-                  // broadcast; old app versions published an npub stub in
-                  // its place). Drop the cached identity so the row falls
-                  // back to npub instead of showing a stale handle.
-                  await AppSettings.clearContactIdentity(pubkey);
-                }
+                await _applyProfileIdentity(
+                  pubkey,
+                  name: name,
+                  nip05: nip05,
+                  createdAt: createdAt,
+                  eventId: eventId,
+                );
 
                 // Note: no manual onMessageReceived here. The UI already
                 // rebuilds via Hive listeners (contacts box, profile_pics
@@ -779,6 +740,73 @@ class RelayManager {
       }
     } finally {
       if (!queued) _inFlightEventIds.remove(eventId);
+    }
+  }
+
+  /// Applies a kind-0 identity (name and nip05) to the local contact row.
+  ///
+  /// Placeholder names (npub stubs etc., published by older clients while
+  /// their global ID was disconnected) are not a real identity, so they never
+  /// pollute the contact row. A profile with neither a name nor a nip05 is the
+  /// signature of a released global ID: the cached identity is dropped so the
+  /// row falls back to npub instead of showing a stale handle.
+  Future<void> _applyProfileIdentity(
+    String pubkey, {
+    required String? name,
+    required String? nip05,
+    int? createdAt,
+    String? eventId,
+  }) async {
+    // A newer kind-0 may have arrived while this one was waiting. Only the
+    // current winner may touch the contact row.
+    if (createdAt != null &&
+        eventId != null &&
+        !ProfileMetaStore.isCurrent(pubkey, createdAt, eventId)) {
+      return;
+    }
+
+    final hasValidName = name != null &&
+        name.isNotEmpty &&
+        !Contact.isPlaceholderName(name, pubkey);
+
+    if (hasValidName) {
+      try {
+        final contactsBox = Hive.box<Contact>('contacts');
+        final contact = contactsBox.get(pubkey);
+        if (contact != null) {
+          var changed = false;
+
+          // The global ID is the contact's remote identity: always keep it
+          // fresh, but never let a locally saved nickname clobber it (it
+          // lives in its own field).
+          if (contact.globalId != name) {
+            contact.globalId = name;
+            changed = true;
+          }
+
+          // The display name only follows remote metadata while the user
+          // hasn't saved their own nickname yet.
+          if (!contact.isSaved && contact.name != name) {
+            contact.name = name;
+            changed = true;
+          }
+
+          if (changed) {
+            await contactsBox.put(pubkey, contact);
+
+            // Keep Android conversation shortcut label in sync with profile name
+            await ShortcutHelper.pushConversationShortcut(
+              id: pubkey,
+              name: contact.displayName,
+              avatarBytes: null,
+            );
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!hasValidName && (nip05 == null || nip05.isEmpty)) {
+      await AppSettings.clearContactIdentity(pubkey);
     }
   }
 
@@ -1707,9 +1735,10 @@ class RelayManager {
         if (effectivePhotoUrl != null && effectivePhotoUrl.isNotEmpty) 'picture': effectivePhotoUrl,
       });
 
+      final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final unsignedEvent = {
         'pubkey': myPubkey,
-        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'created_at': createdAt,
         'kind': 0,
         'tags': [],
         'content': content,
@@ -1718,6 +1747,22 @@ class RelayManager {
       final eventId = NostrHelpers.generateEventId(unsignedEvent);
       final signature = NostrSigner.sign(eventId, myPrivkey);
       final signedEvent = {...unsignedEvent, 'id': eventId, 'sig': signature};
+
+      // Persist the new watermark before anything else, so an event that
+      // arrives while the local identity update runs cannot win.
+      await ProfileMetaStore.remember(myPubkey, createdAt, eventId);
+
+      // Local-first identity update: the watermark above makes the receiver
+      // ignore the echo of this event, so our own contact row is updated here.
+      await _applyProfileIdentity(
+        myPubkey,
+        name: myName,
+        nip05: AppSettings.instance.myNip05.isNotEmpty
+            ? AppSettings.instance.myNip05
+            : null,
+        createdAt: createdAt,
+        eventId: eventId,
+      );
 
       for (final entry in _connections.entries) {
         if (_connectionStatus[entry.key] == true) {
