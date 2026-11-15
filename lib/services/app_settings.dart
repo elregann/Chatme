@@ -43,6 +43,10 @@ class AppSettings {
   /// Extra relays Chatme also connects to.
   List<String> otherRelays = List.of(RelayDefaults.other);
 
+  /// Relays used for NIP-50 profile search. They are only connected while a
+  /// search runs, never kept open with the message relays.
+  List<String> searchRelays = List.of(RelayDefaults.search);
+
   /// File servers (Blossom) for uploads, tried from top to bottom.
   List<String> blossomServers = List.of(BlossomDefaults.servers);
 
@@ -92,9 +96,11 @@ class AppSettings {
       final relayLists = RelayLists.fromStored(
         settingsBox.get('relays_inbox'),
         settingsBox.get('relays_other'),
+        settingsBox.get('relays_search'),
       );
       inboxRelays = relayLists.inbox;
       otherRelays = relayLists.other;
+      searchRelays = relayLists.search;
 
       blossomServers = BlossomLists.fromStored(settingsBox.get('blossom_servers'));
 
@@ -114,12 +120,15 @@ class AppSettings {
   Future<void> setRelayLists({
     required List<String> inbox,
     required List<String> other,
+    required List<String> search,
   }) async {
     inboxRelays = List.of(inbox);
     otherRelays = List.of(other);
+    searchRelays = List.of(search);
     final settingsBox = Hive.box('settings');
     await settingsBox.put('relays_inbox', inboxRelays);
     await settingsBox.put('relays_other', otherRelays);
+    await settingsBox.put('relays_search', searchRelays);
   }
 
   Future<void> setBlossomServers(List<String> servers) async {

@@ -15,6 +15,7 @@ import 'core/utils/debug_logger.dart';
 import 'core/utils/key_utils.dart';
 import 'services/app_settings.dart';
 import 'services/profile_meta_store.dart';
+import 'services/profile_search_service.dart';
 import 'ui/contacts/add_contact.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/chatme_search_bar.dart';
@@ -40,15 +41,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
   bool _isSearchingGlobal = false;
   Timer? _debounce;
 
+  final ProfileSearchService _profileSearch = ProfileSearchService();
+  int _searchGeneration = 0;
+
   @override
   void dispose() {
+    _debounce?.cancel();
+    _profileSearch.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
   }
 
   Future<void> _searchGlobalUser(String query) async {
-    if (query.length < 2) {
+    final text = query.trim();
+    final generation = ++_searchGeneration;
+    _profileSearch.cancel();
+
+    if (text.length < 2) {
       setState(() {
         _globalSearchResults = [];
         _isSearchingGlobal = false;
@@ -56,36 +66,91 @@ class _ContactsScreenState extends State<ContactsScreen> {
       return;
     }
 
-    setState(() => _isSearchingGlobal = true);
+    setState(() {
+      _isSearchingGlobal = true;
+      _globalSearchResults = [];
+    });
 
+    var chatmeRows = <Map<String, String>>[];
+    var nostrRows = <Map<String, String>>[];
+
+    // Chatme names come first, then the wider ecosystem without duplicates.
+    void publish() {
+      if (!mounted || generation != _searchGeneration) return;
+      final seen = <String>{};
+      final merged = <Map<String, String>>[];
+      for (final row in [...chatmeRows, ...nostrRows]) {
+        final pubkey = KeyUtils.normalizeToHex(row['pubkey'] ?? '');
+        if (pubkey.isEmpty || !seen.add(pubkey)) continue;
+        merged.add(row);
+      }
+      setState(() => _globalSearchResults = merged);
+    }
+
+    Future<void> fromChatme() async {
+      final rows = await _searchChatmeDirectory(text);
+      if (generation != _searchGeneration) return;
+      chatmeRows = rows;
+      publish();
+    }
+
+    Future<void> fromNostr() async {
+      List<ProfileSearchResult> results;
+      try {
+        results = await _profileSearch.search(text);
+      } catch (e) {
+        DebugLogger.log('[Search] Nostr search failed | $e', type: 'ERROR');
+        return;
+      }
+      if (generation != _searchGeneration) return;
+      nostrRows = [
+        for (final result in results)
+          {
+            'username': result.label,
+            'pubkey': result.pubkey,
+            'source': 'Nostr',
+            if (result.nip05 != null) 'nip05': result.nip05!,
+          }
+      ];
+      publish();
+    }
+
+    await Future.wait([fromChatme(), fromNostr()]);
+
+    if (!mounted || generation != _searchGeneration) return;
+    setState(() => _isSearchingGlobal = false);
+  }
+
+  /// The names registered in Chatme's own directory, which is the only place
+  /// the `username@chatme` handles live.
+  Future<List<Map<String, String>>> _searchChatmeDirectory(String query) async {
     try {
       final url = Uri.parse(
           'https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app/usernames.json');
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 6));
+      if (response.statusCode != 200) return [];
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic>? data = jsonDecode(response.body);
-        List<Map<String, String>> results = [];
+      final data = jsonDecode(response.body);
+      if (data is! Map) return [];
 
-        if (data != null) {
-          data.forEach((username, pubkey) {
-            if (username.toLowerCase().contains(query.toLowerCase())) {
-              results.add({
-                'username': username,
-                'pubkey': pubkey.toString(),
-              });
-            }
-          });
-        }
-
-        setState(() {
-          _globalSearchResults = results;
-          _isSearchingGlobal = false;
+      final results = <Map<String, String>>[];
+      data.forEach((username, pubkey) {
+        if (username is! String) return;
+        if (!username.toLowerCase().contains(query.toLowerCase())) return;
+        results.add({
+          'username': username,
+          'pubkey': pubkey.toString(),
+          'source': 'Chatme',
         });
-      }
+      });
+      results.sort((a, b) => (a['username'] ?? '')
+          .toLowerCase()
+          .compareTo((b['username'] ?? '').toLowerCase()));
+      return results;
     } catch (e) {
-      DebugLogger.log('[Search] Global search failed | $e', type: 'ERROR');
-      setState(() => _isSearchingGlobal = false);
+      DebugLogger.log('[Search] Chatme directory search failed | $e',
+          type: 'ERROR');
+      return [];
     }
   }
 
@@ -258,7 +323,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
-                      // Global search results from Firebase
+                      // Global search results: Chatme first, then Nostr.
                       if (_searchQuery.length >= 2) ...[
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -269,7 +334,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   fontSize: 11,
                                   letterSpacing: 1.2)),
                         ),
-                        if (_isSearchingGlobal)
+                        if (_isSearchingGlobal && _globalSearchResults.isEmpty)
                           const Center(
                             child: Padding(
                               padding: EdgeInsets.all(12.0),
@@ -280,7 +345,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                       strokeWidth: 2)),
                             ),
                           )
-                        else if (_globalSearchResults.isNotEmpty)
+                        else if (_globalSearchResults.isNotEmpty) ...[
                           ..._globalSearchResults.map((res) => ListTile(
                                 leading: UserAvatar(
                                   pubkey: res['pubkey'] ?? '',
@@ -289,8 +354,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                 ),
                                 title: Text(res['username'] ?? ''),
                                 subtitle: Text(
-                                  AppSettings.formatDisplayName(
-                                      res['pubkey'] ?? ''),
+                                  '${res['source'] ?? 'Chatme'} · '
+                                  '${AppSettings.formatDisplayName(res['pubkey'] ?? '')}',
                                   style: const TextStyle(
                                       fontFamily: 'monospace', fontSize: 11),
                                 ),
@@ -327,13 +392,31 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                     ),
                                   );
                                 },
-                              ))
-                        else if (!_isSearchingGlobal &&
-                            _globalSearchResults.isEmpty &&
+                              )),
+                          if (_isSearchingGlobal)
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 1.5),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text('Searching more relays...',
+                                      style: TextStyle(
+                                          color: ChatmeColors.textMuted,
+                                          fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                        ] else if (!_isSearchingGlobal &&
                             _searchQuery.length > 1)
                           const Padding(
                             padding: EdgeInsets.all(16.0),
-                            child: Text("No global user found",
+                            child: Text("No users found on Chatme or Nostr",
                                 style: TextStyle(
                                     color: ChatmeColors.textMuted,
                                     fontSize: 13)),

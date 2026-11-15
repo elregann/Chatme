@@ -70,6 +70,7 @@ class RelayStatusPage extends StatelessWidget {
         builder: (context, _) {
           final inbox = AppSettings.instance.inboxRelays;
           final other = AppSettings.instance.otherRelays;
+          final search = AppSettings.instance.searchRelays;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -94,6 +95,25 @@ class RelayStatusPage extends StatelessWidget {
                   statusColor: _statusColor,
                   warning: inbox.length > ListLimits.inboxRecommended
                       ? 'Three inbox relays are enough. More use extra data and battery.'
+                      : null,
+                ),
+                const SizedBox(height: 28),
+                EditableServerList(
+                  title: 'SEARCH RELAYS',
+                  description:
+                      'Relays that index profiles across Nostr. Global search asks them for matching names, so you can find people who use other apps. Your search words are sent to these relays.',
+                  servers: search,
+                  defaults: RelayDefaults.search,
+                  addLabel: 'Add search relay',
+                  hint: 'relay.example.com',
+                  fileServer: false,
+                  onSubmit: search.length < ListLimits.searchMax
+                      ? (input) =>
+                          relayManager.addRelay(RelayGroup.search, input)
+                      : null,
+                  onRemove: (url) => _remove(context, RelayGroup.search, url),
+                  warning: search.isEmpty
+                      ? 'With no search relays, global search only finds Chatme usernames.'
                       : null,
                 ),
                 const SizedBox(height: 28),

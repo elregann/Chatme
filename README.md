@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/design/chatme.svg" alt="Chatme logo" width="120" height="120">
+<img src="docs/design/icon/chatme.svg" alt="Chatme logo" width="120" height="120">
 
 # Chatme
 
@@ -42,6 +42,7 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - Add a contact with an `npub`, an `nprofile`, a `nostr:` link or a QR code.
 - Your own QR code is one tap away from the Me tab, and each contact profile has one too. Scanning a code fills in the add contact form.
 - Contact profile with a Media tab (images and videos are not supported yet) and a Voice tab.
+- Global search finds people in two places at once: the Chatme directory of `username@chatme` handles, and the wider Nostr ecosystem through **NIP-50** profile search on the Search relays. Chatme names appear first, results are matched by public key, and the relay a result came from is shown under the name. Searching an `npub` or a hex public key looks that profile up directly instead of using full text search.
 
 ### Voice calls
 - Peer-to-peer voice calls with WebRTC.
@@ -67,7 +68,8 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - Simultaneous connections to multiple relays with live status.
 - Automatic reconnection with exponential backoff.
 - NIP-42 authentication for relays that require it.
-- The relay list is yours to edit in Me, Network, Relays. Inbox relays are where people send you messages and are announced to other clients. Other relays are extra connections. Built in relays are marked Default, any relay can be removed or added, and Reset to defaults brings the originals back. Changes connect or disconnect relays right away, without restarting the app.
+- The relay list is yours to edit in Me, Network, Relays. Inbox relays are where people send you messages and are announced to other clients. Search relays answer NIP-50 profile searches for the global search box, and are only connected while a search is running. Other relays are extra connections. Built in relays are marked Default, any relay can be removed or added, and Reset to defaults brings the originals back. Changes connect or disconnect relays right away, without restarting the app.
+- Search relays are kept separate from message relays on purpose. Results are never written to your contact list or profile cache; a profile is saved only when you tap Add. Removing every search relay turns off relay search, so global search then only finds Chatme handles.
 - File servers are edited the same way in Me, Network, File servers. Voice notes are uploaded to the servers from top to bottom, up to five, and the next one is used when a server fails. A new server gets a small test upload before it is added.
 
 ---
@@ -88,6 +90,7 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 | [25](https://github.com/nostr-protocol/nips/blob/master/25.md) | Reactions | Yes | Kind `7`, sent inside a gift wrap. |
 | [42](https://github.com/nostr-protocol/nips/blob/master/42.md) | Authentication of clients to relays | Yes | Answers `AUTH` challenges (kind `22242`) for relays that require it. |
 | [44](https://github.com/nostr-protocol/nips/blob/master/44.md) | Versioned encryption | Yes | Encrypts both the seal and the gift wrap. |
+| [50](https://github.com/nostr-protocol/nips/blob/master/50.md) | Search capability | Partial | Global search sends kind `0` filters with a `search` term to the relays listed under Search relays. Results are signature checked, deduplicated by public key, and the newest kind `0` wins. An `npub` or hex key is looked up with an `authors` filter instead. Only profile search is used, not note search. |
 | [59](https://github.com/nostr-protocol/nips/blob/master/59.md) | Gift wrap | Yes | Wraps every private message, reaction, receipt and call signal. |
 | [98](https://github.com/nostr-protocol/nips/blob/master/98.md) | HTTP auth | Yes | Kind `27235`, used to authorize profile photo uploads and Global ID requests. |
 
@@ -103,7 +106,7 @@ Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
 
 | Kind | Name | Where | Used for |
 | ---: | --- | --- | --- |
-| `0` | Profile metadata | Public | Display name, picture, `nip05`. |
+| `0` | Profile metadata | Public | Display name, picture, `nip05`. Also read from search relays through NIP-50. |
 | `1` | Short text note | Public | Read only, legacy fallback for plain messages. |
 | `4` | Encrypted direct message (NIP-04) | Public | Read only, legacy fallback. |
 | `7` | Reaction | Inside gift wrap | Emoji reactions to a message. |
@@ -174,6 +177,7 @@ flutter run
 - A QR code holds only your public key and two relay hints. Read receipts can be turned off.
 - The push pipeline (Cloudflare Worker and FCM) never receives plaintext or private keys, but it does carry metadata such as public keys, event IDs, and timing, plus the encrypted payload.
 - Relays can still observe connection metadata such as IP addresses. A relay or file server you add yourself can see your IP address too, but never the content of your messages or files.
+- Global search sends your search words to the Search relays you selected. Those relays can see the words and your IP address, so you can remove any of them or turn relay search off completely.
 - This project has not been independently audited.
 
 ---

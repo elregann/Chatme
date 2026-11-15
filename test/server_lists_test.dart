@@ -156,7 +156,7 @@ void main() {
 
   group('defaults', () {
     test('are all valid addresses already in normal form', () {
-      for (final url in [...RelayDefaults.inbox, ...RelayDefaults.other]) {
+      for (final url in [...RelayDefaults.inbox, ...RelayDefaults.other, ...RelayDefaults.search]) {
         expect(ServerAddress.relay(url), url);
       }
       for (final url in BlossomService.defaultServers) {
@@ -164,8 +164,9 @@ void main() {
       }
     });
 
-    test('the two relay lists do not share a relay', () {
-      expect(RelayDefaults.inbox.toSet().intersection(RelayDefaults.other.toSet()), isEmpty);
+    test('the relay lists do not share a relay', () {
+      final all = [...RelayDefaults.inbox, ...RelayDefaults.other, ...RelayDefaults.search];
+      expect(all.toSet(), hasLength(all.length));
     });
 
     test('together they are the relays Chatme has always used', () {
@@ -189,6 +190,7 @@ void main() {
       expect(RelayDefaults.inbox.length, lessThanOrEqualTo(ListLimits.inboxRecommended));
       expect(RelayDefaults.inbox.length, greaterThanOrEqualTo(ListLimits.inboxMin));
       expect(RelayDefaults.other.length, lessThanOrEqualTo(ListLimits.otherMax));
+      expect(RelayDefaults.search.length, lessThanOrEqualTo(ListLimits.searchMax));
       expect(BlossomService.defaultServers.length, lessThanOrEqualTo(ListLimits.blossomMax));
     });
   });

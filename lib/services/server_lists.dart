@@ -1,6 +1,6 @@
 // server_lists.dart
 
-/// Built in relays. The two lists never share a relay.
+/// Built in relays. The three lists never share a relay.
 class RelayDefaults {
   RelayDefaults._();
 
@@ -16,6 +16,16 @@ class RelayDefaults {
     'wss://relay.damus.io',
     'wss://relay.primal.net',
   ];
+
+  /// Relays that index profiles from the wider Nostr ecosystem (NIP-50).
+  /// Global search opens its own short lived connection to these, they are
+  /// not part of the connections used for messages.
+  static const List<String> search = [
+    'wss://relay.ditto.pub',
+    'wss://search.nos.today',
+    'wss://relay.noswhere.com',
+    'wss://filter.nostr.wine',
+  ];
 }
 
 class ListLimits {
@@ -28,6 +38,10 @@ class ListLimits {
   static const int inboxRecommended = 3;
   static const int inboxMax = 5;
   static const int otherMax = 8;
+
+  /// Search relays are only used one query at a time, so a short list is
+  /// enough. An empty list turns off relay search.
+  static const int searchMax = 5;
   static const int blossomMin = 1;
   static const int blossomMax = 5;
 }
@@ -63,7 +77,7 @@ class BlossomSuggestions {
   }
 }
 
-enum RelayGroup { inbox, other }
+enum RelayGroup { inbox, other, search }
 
 enum ListChange { ok, invalid, duplicate, full, missing, tooFew, unreachable }
 
@@ -166,32 +180,46 @@ class ServerAddress {
   }
 }
 
-/// The two relay lists as the user has them.
+/// The three relay lists as the user has them.
 class RelayLists {
   final List<String> inbox;
   final List<String> other;
+  final List<String> search;
 
-  const RelayLists({required this.inbox, required this.other});
+  const RelayLists({
+    required this.inbox,
+    required this.other,
+    required this.search,
+  });
 
   factory RelayLists.defaults() => const RelayLists(
         inbox: RelayDefaults.inbox,
         other: RelayDefaults.other,
+        search: RelayDefaults.search,
       );
 
-  /// Every relay Chatme connects to, inbox relays first.
+  /// Every relay Chatme keeps connected, inbox relays first. Search relays
+  /// are not included: they are opened only while a search is running.
   List<String> get all => [...inbox, ...other];
 
   /// Rebuilds the lists from what was saved, which may be missing or damaged.
   /// Nothing saved gives the defaults. The inbox list is never empty, the
-  /// other list may be, and a relay is never in both.
-  factory RelayLists.fromStored(Object? rawInbox, Object? rawOther) {
+  /// other and search lists may be, and a relay is never in two lists.
+  factory RelayLists.fromStored(
+    Object? rawInbox,
+    Object? rawOther,
+    Object? rawSearch,
+  ) {
     var inbox = _clean(rawInbox, RelayDefaults.inbox, ListLimits.inboxMax);
     if (inbox.isEmpty) inbox = List.of(RelayDefaults.inbox);
 
     final other = _clean(rawOther, RelayDefaults.other, ListLimits.otherMax)
         .where((url) => !inbox.contains(url))
         .toList();
-    return RelayLists(inbox: inbox, other: other);
+    final search = _clean(rawSearch, RelayDefaults.search, ListLimits.searchMax)
+        .where((url) => !inbox.contains(url) && !other.contains(url))
+        .toList();
+    return RelayLists(inbox: inbox, other: other, search: search);
   }
 
   static List<String> _clean(Object? raw, List<String> fallback, int max) {

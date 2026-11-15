@@ -2242,50 +2242,88 @@ class RelayManager {
 
   Future<ListEdit> addRelay(RelayGroup group, String input) async {
     final settings = AppSettings.instance;
-    final isInbox = group == RelayGroup.inbox;
+    final current = _relaysFor(settings, group);
     final edit = ServerLists.add(
-      isInbox ? settings.inboxRelays : settings.otherRelays,
+      current,
       input,
       normalize: ServerAddress.relay,
-      max: isInbox ? ListLimits.inboxMax : ListLimits.otherMax,
-      taken: isInbox ? settings.otherRelays : settings.inboxRelays,
+      max: _relayLimit(group),
+      taken: _otherRelaysFor(settings, group),
     );
     if (!edit.ok) return edit;
 
     await _applyRelayLists(
-      inbox: isInbox ? edit.list : settings.inboxRelays,
-      other: isInbox ? settings.otherRelays : edit.list,
+      inbox: group == RelayGroup.inbox ? edit.list : settings.inboxRelays,
+      other: group == RelayGroup.other ? edit.list : settings.otherRelays,
+      search: group == RelayGroup.search ? edit.list : settings.searchRelays,
     );
     return edit;
   }
 
   Future<ListEdit> removeRelay(RelayGroup group, String url) async {
     final settings = AppSettings.instance;
-    final isInbox = group == RelayGroup.inbox;
     final edit = ServerLists.remove(
-      isInbox ? settings.inboxRelays : settings.otherRelays,
+      _relaysFor(settings, group),
       url,
-      minimum: isInbox ? ListLimits.inboxMin : 0,
+      minimum: group == RelayGroup.inbox ? ListLimits.inboxMin : 0,
     );
     if (!edit.ok) return edit;
 
     await _applyRelayLists(
-      inbox: isInbox ? edit.list : settings.inboxRelays,
-      other: isInbox ? settings.otherRelays : edit.list,
+      inbox: group == RelayGroup.inbox ? edit.list : settings.inboxRelays,
+      other: group == RelayGroup.other ? edit.list : settings.otherRelays,
+      search: group == RelayGroup.search ? edit.list : settings.searchRelays,
     );
     return edit;
   }
 
+  List<String> _relaysFor(AppSettings settings, RelayGroup group) {
+    switch (group) {
+      case RelayGroup.inbox:
+        return settings.inboxRelays;
+      case RelayGroup.other:
+        return settings.otherRelays;
+      case RelayGroup.search:
+        return settings.searchRelays;
+    }
+  }
+
+  /// The lists a relay may not be added to, so it stays in only one place.
+  List<String> _otherRelaysFor(AppSettings settings, RelayGroup group) {
+    return [
+      if (group != RelayGroup.inbox) ...settings.inboxRelays,
+      if (group != RelayGroup.other) ...settings.otherRelays,
+      if (group != RelayGroup.search) ...settings.searchRelays,
+    ];
+  }
+
+  int _relayLimit(RelayGroup group) {
+    switch (group) {
+      case RelayGroup.inbox:
+        return ListLimits.inboxMax;
+      case RelayGroup.other:
+        return ListLimits.otherMax;
+      case RelayGroup.search:
+        return ListLimits.searchMax;
+    }
+  }
+
   Future<void> resetRelaysToDefaults() {
     final defaults = RelayLists.defaults();
-    return _applyRelayLists(inbox: defaults.inbox, other: defaults.other);
+    return _applyRelayLists(
+      inbox: defaults.inbox,
+      other: defaults.other,
+      search: defaults.search,
+    );
   }
 
   /// Saves the lists, opens the new connections, closes the removed ones and
-  /// announces the inbox list again when it changed.
+  /// announces the inbox list again when it changed. Search relays are only
+  /// saved here: their connections belong to [ProfileSearchService].
   Future<void> _applyRelayLists({
     required List<String> inbox,
     required List<String> other,
+    required List<String> search,
   }) async {
     final settings = AppSettings.instance;
     final beforeInbox = List.of(settings.inboxRelays);
@@ -2294,7 +2332,7 @@ class RelayManager {
       [...inbox, ...other],
     );
 
-    await settings.setRelayLists(inbox: inbox, other: other);
+    await settings.setRelayLists(inbox: inbox, other: other, search: search);
 
     for (final url in diff.removed) {
       _closeConnection(url);
