@@ -9,6 +9,7 @@ import '../core/utils/emoji_utils.dart';
 import '../models/chat_message.dart';
 import 'image_bubble.dart';
 import 'link_preview_card.dart';
+import 'video_bubble.dart';
 import 'voice_note_bubble.dart';
 
 /// One chat message bubble.
@@ -75,7 +76,7 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasReactions = message.reactions.isNotEmpty;
-    final emojiCount = (!message.isImage && !message.isVoiceNote)
+    final emojiCount = (!message.isImage && !message.isVideo && !message.isVoiceNote)
         ? emojiOnlyCount(message.plaintext)
         : null;
     final hasReply = replyPreview != null;
@@ -268,6 +269,18 @@ class MessageBubble extends StatelessWidget {
         alignment: AlignmentDirectional.centerStart,
         child: ImageBubble(
           key: ValueKey('img_${message.id}'),
+          message: message,
+          footer: imageFooter,
+          maxWidth: maxContentWidth,
+        ),
+      );
+    }
+
+    if (message.isVideo) {
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: VideoBubble(
+          key: ValueKey('vid_${message.id}'),
           message: message,
           footer: imageFooter,
           maxWidth: maxContentWidth,

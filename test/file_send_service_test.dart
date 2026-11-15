@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:chatme/core/crypto/file_crypto.dart';
 import 'package:chatme/core/crypto/nip17_file.dart';
+import 'package:chatme/core/crypto/stream_crypto.dart';
 import 'package:chatme/services/blossom_service.dart';
 import 'package:chatme/services/file_send_service.dart';
 
@@ -155,6 +156,96 @@ void main() {
         ),
         throwsA(isA<BlossomException>()),
       );
+    });
+  });
+
+  group('encryptAndUploadStreaming', () {
+    late File video;
+    late Uint8List videoBytes;
+
+    setUp(() {
+      videoBytes = Uint8List.fromList(
+        List<int>.generate(600 * 1024 + 17, (i) => (i * 37 + 11) % 256),
+      );
+      video = File('${dir.path}/v.mp4')..writeAsBytesSync(videoBytes);
+    });
+
+    test('uploads a chunked file the receiver can open', () async {
+      final stored = <Uint8List>[];
+
+      final file = await FileSendService.encryptAndUploadStreaming(
+        source: video,
+        mimeType: 'video/mp4',
+        durationSeconds: 42,
+        width: 1280,
+        height: 720,
+        servers: ['https://files.example'],
+        client: storingServer(stored: stored),
+      );
+
+      expect(stored, hasLength(1));
+      expect(stored.single, isNot(videoBytes));
+      expect(file.algorithm, FileMessage.chunkedAlgorithm);
+      expect(file.isStreamed, isTrue);
+      expect(file.isVideo, isTrue);
+      expect(file.mimeType, 'video/mp4');
+      expect(file.durationSeconds, 42);
+      expect(file.width, 1280);
+      expect(file.height, 720);
+      expect(file.plainSize, videoBytes.length);
+      expect(file.size, stored.single.length);
+      expect(file.hash, FileCrypto.sha256Hex(stored.single));
+      expect(file.originalHash, FileCrypto.sha256Hex(videoBytes));
+
+      final opened = File('${dir.path}/opened.mp4');
+      await StreamFileCrypto.decryptToFile(
+        ciphertext: Stream.value(stored.single),
+        target: opened,
+        key: file.key,
+        nonce: file.nonce,
+        hash: file.hash,
+        originalHash: file.originalHash,
+        encryptedSize: file.size,
+      );
+      expect(opened.readAsBytesSync(), videoBytes);
+    });
+
+    test('every upload of the same video uses a fresh key', () async {
+      Future<FileMessage> run() => FileSendService.encryptAndUploadStreaming(
+            source: video,
+            mimeType: 'video/mp4',
+            servers: ['https://files.example'],
+            client: storingServer(),
+          );
+
+      final a = await run();
+      final b = await run();
+
+      expect(a.key, isNot(b.key));
+      expect(a.nonce, isNot(b.nonce));
+      // The nonce lives in the header, so the ciphertext differs too; only the
+      // hash of the original file is the same.
+      expect(a.originalHash, b.originalHash);
+      expect(a.hash, isNot(b.hash));
+    });
+
+    test('moves on to the next server when the first refuses', () async {
+      final hosts = <String>[];
+      final client = MockClient((request) async {
+        hosts.add(request.url.host);
+        if (request.url.host == 'first.example') return http.Response('', 415);
+        return stored200(request);
+      });
+
+      final file = await FileSendService.encryptAndUploadStreaming(
+        source: video,
+        mimeType: 'video/mp4',
+        servers: ['https://first.example', 'https://second.example'],
+        client: client,
+      );
+
+      expect(hosts, ['first.example', 'second.example']);
+      expect(file.url, startsWith('https://files.example/'));
     });
   });
 

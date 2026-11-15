@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:chatme/core/crypto/file_crypto.dart';
 import 'package:chatme/core/crypto/nip17_file.dart';
+import 'package:chatme/core/crypto/stream_crypto.dart';
 import 'package:chatme/services/file_transfer_service.dart';
 
 void main() {
@@ -123,6 +124,157 @@ void main() {
     expect(FileTransferService.extensionFor('audio/mp4'), 'm4a');
     expect(FileTransferService.extensionFor('audio/mp4; codecs=mp4a.40.2'), 'm4a');
     expect(FileTransferService.extensionFor('image/jpeg'), 'jpg');
+    expect(FileTransferService.extensionFor('video/mp4'), 'mp4');
+    expect(FileTransferService.extensionFor('video/quicktime'), 'mov');
+    expect(FileTransferService.extensionFor('video/x-matroska'), 'mkv');
+    expect(FileTransferService.extensionFor('video/x-msvideo'), 'avi');
     expect(FileTransferService.extensionFor('application/x-weird'), 'bin');
+  });
+
+  group('streamed video download', () {
+    late Uint8List videoBytes;
+    late File videoFile;
+    late StreamKey key;
+    late Uint8List encryptedBytes;
+    late FileMessage video;
+
+    setUp(() async {
+      videoBytes = Uint8List.fromList(
+        List<int>.generate(700 * 1024 + 5, (i) => (i * 13 + 3) % 256),
+      );
+      videoFile = File('${dir.path}/src.mp4')..writeAsBytesSync(videoBytes);
+      key = await StreamKey.prepare(videoFile);
+
+      final builder = BytesBuilder(copy: false);
+      await for (final piece in key.openEncrypted(videoFile)) {
+        builder.add(piece);
+      }
+      encryptedBytes = builder.takeBytes();
+
+      video = FileMessage(
+        url: 'https://files.example/${key.ciphertextHash}.bin',
+        mimeType: 'video/mp4',
+        key: key.keyHex,
+        nonce: key.nonceHex,
+        hash: key.ciphertextHash,
+        algorithm: FileMessage.chunkedAlgorithm,
+        originalHash: key.plaintextHash,
+        size: key.encryptedSize,
+        plainSize: videoBytes.length,
+        durationSeconds: 12,
+      );
+    });
+
+    test('writes the file once it is verified, with no part file left', () async {
+      final client = MockClient(
+        (_) async => http.Response.bytes(encryptedBytes, 200),
+      );
+
+      final path = await FileTransferService.downloadAndSave(
+        video,
+        directory: dir,
+        client: client,
+      );
+
+      expect(path, endsWith('${key.plaintextHash}.mp4'));
+      expect(File(path).readAsBytesSync(), videoBytes);
+      expect(
+        dir.listSync().where((e) => e.path.endsWith('.part')),
+        isEmpty,
+      );
+    });
+
+    test('reports progress up to the whole file', () async {
+      final client = MockClient(
+        (_) async => http.Response.bytes(encryptedBytes, 200),
+      );
+      final seen = <int>[];
+      var lastTotal = 0;
+
+      await FileTransferService.downloadAndSave(
+        video,
+        directory: dir,
+        client: client,
+        onProgress: (received, total) {
+          seen.add(received);
+          lastTotal = total;
+        },
+      );
+
+      expect(seen, isNotEmpty);
+      expect(seen.last, encryptedBytes.length);
+      expect(lastTotal, encryptedBytes.length);
+      expect(seen, orderedEquals([...seen]..sort()));
+    });
+
+    test('a changed byte is refused and the part file is removed', () async {
+      final damaged = Uint8List.fromList(encryptedBytes);
+      damaged[damaged.length ~/ 2] ^= 0xff;
+      final client = MockClient((_) async => http.Response.bytes(damaged, 200));
+
+      await expectLater(
+        FileTransferService.downloadAndSave(video, directory: dir, client: client),
+        throwsA(isA<FileTransferException>()),
+      );
+      expect(
+        dir.listSync().where((e) => e.path.contains(key.plaintextHash)),
+        isEmpty,
+      );
+    });
+
+    test('a truncated download is refused and nothing is saved', () async {
+      final client = MockClient(
+        (_) async => http.Response.bytes(
+          encryptedBytes.sublist(0, encryptedBytes.length - 100),
+          200,
+        ),
+      );
+
+      await expectLater(
+        FileTransferService.downloadAndSave(video, directory: dir, client: client),
+        throwsA(isA<FileTransferException>()),
+      );
+      expect(
+        dir.listSync().where(
+              (e) => e.path.endsWith('${key.plaintextHash}.mp4'),
+            ),
+        isEmpty,
+      );
+    });
+
+    test('a server error becomes a transfer error', () async {
+      final client = MockClient((_) async => http.Response('', 500));
+
+      await expectLater(
+        FileTransferService.downloadAndSave(video, directory: dir, client: client),
+        throwsA(isA<FileTransferException>()),
+      );
+    });
+
+    test('a plain http video address is refused', () async {
+      final insecure = FileMessage(
+        url: 'http://files.example/a.bin',
+        mimeType: video.mimeType,
+        key: video.key,
+        nonce: video.nonce,
+        hash: video.hash,
+        algorithm: video.algorithm,
+        originalHash: video.originalHash,
+        size: video.size,
+        plainSize: video.plainSize,
+      );
+      final client = MockClient(
+        (_) async => http.Response.bytes(encryptedBytes, 200),
+      );
+
+      await expectLater(
+        FileTransferService.downloadAndSave(
+          insecure,
+          directory: dir,
+          client: client,
+        ),
+        throwsA(isA<FileTransferException>()),
+      );
+    });
   });
 }

@@ -119,6 +119,12 @@ class ChatMessage {
 
   bool get isImage => (file['type'] ?? '').startsWith('image/');
 
+  bool get isVideo => (file['type'] ?? '').startsWith('video/');
+
+  /// True when this file has to be opened with the chunked reader.
+  bool get isStreamedFile =>
+      (file['alg'] ?? FileMessage.plainAlgorithm) == FileMessage.chunkedAlgorithm;
+
   /// Width over height of a picture, kept inside a range that keeps the chat
   /// readable. A square when the sender gave no size.
   double get imageAspectRatio {
@@ -131,7 +137,13 @@ class ChatMessage {
 
   int? get fileDurationSeconds => int.tryParse(file['duration'] ?? '');
 
-  int? get fileSize => int.tryParse(file['size'] ?? '');
+  int? get fileSize {
+    // A streamed file carries the size before encryption in psize, which is
+    // what the receiver actually writes to disk.
+    final plain = int.tryParse(file['psize'] ?? '');
+    if (plain != null) return plain;
+    return int.tryParse(file['size'] ?? '');
+  }
 
   /// A file message that is still on this phone only: it has no address yet.
   bool get needsUpload => hasFile && fileMessage == null;

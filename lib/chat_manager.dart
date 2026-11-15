@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'notification_handler.dart';
 import 'services/app_settings.dart';
 import 'services/file_send_service.dart';
+import 'services/file_transfer_service.dart';
 import 'services/image_prepare.dart';
 import 'services/media_storage.dart';
 import 'services/voice_storage.dart';
@@ -956,6 +957,89 @@ class ChatManager {
       );
     } catch (e) {
       DebugLogger.log('[Image] Send failed, queued for later | $e', type: 'WARN');
+      final latest = await ChatManager.instance.getMessageById(tempId, chatKey) ?? tempMessage;
+      final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+      await ChatManager.instance.saveMessage(latest.copyWith(id: offlineId, status: 'pending'));
+      await ChatManager.instance.deleteMessage(tempId, chatKey);
+    }
+  }
+
+  /// Saves a picked video in the chat right away, then encrypts and uploads it
+  /// in pieces. Like a picture, it stays pending and is retried when sending
+  /// fails; the offline queue uploads it again later.
+  static Future<void> sendVideo({
+    required String pickedPath,
+    required String mimeType,
+    required int seconds,
+    int? width,
+    int? height,
+    required String receiverPubkey,
+    required RelayManager relayManager,
+    String? replyToId,
+    String? replyToContent,
+    String? replyToSenderPubkey,
+  }) async {
+    final myPubkey = AppSettings.instance.myPubkey;
+    final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
+    final messageTs = DateTime.now().millisecondsSinceEpoch;
+    final tempId = 'temp_$messageTs';
+
+    final stored = await FileSendService.moveIntoFolder(
+      File(pickedPath),
+      await mediaDirectory(),
+      'out_$messageTs.${FileTransferService.extensionFor(mimeType)}',
+    );
+
+    final tempMessage = ChatMessage(
+      id: tempId,
+      senderPubkey: myPubkey,
+      receiverPubkey: receiverPubkey,
+      content: '',
+      plaintext: 'Video',
+      timestamp: messageTs,
+      status: 'sending',
+      chatKey: chatKey,
+      replyToId: replyToId,
+      replyToContent: replyToContent,
+      replyToSenderPubkey: replyToSenderPubkey,
+      file: {
+        'type': mimeType,
+        if (width != null && height != null) 'dim': '${width}x$height',
+        if (seconds > 0) 'duration': '$seconds',
+      },
+      localPath: stored.path,
+    );
+    await ChatManager.instance.saveMessage(tempMessage);
+
+    try {
+      final file = await FileSendService.encryptAndUploadStreaming(
+        source: stored,
+        mimeType: mimeType,
+        durationSeconds: seconds > 0 ? seconds : null,
+        width: width,
+        height: height,
+        servers: AppSettings.instance.blossomServers,
+      );
+      await ChatManager.instance.setFile(tempId, chatKey, file.toMap());
+
+      final event = await relayManager.sendMessage(
+        receiverPubkey: receiverPubkey,
+        plaintext: file.url,
+        file: file,
+        replyToId: replyToId,
+        messageTimestampMs: messageTs,
+      );
+
+      await ChatManager.instance.updateMessageIdAndStatus(
+        tempId,
+        event['rumorId'].toString(),
+        'sending',
+        chatKey,
+        newContent: (event['giftWrap'] as Map<String, dynamic>)['content'].toString(),
+        newGiftWrapId: event['giftWrapId'].toString(),
+      );
+    } catch (e) {
+      DebugLogger.log('[Video] Send failed, queued for later | $e', type: 'WARN');
       final latest = await ChatManager.instance.getMessageById(tempId, chatKey) ?? tempMessage;
       final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
       await ChatManager.instance.saveMessage(latest.copyWith(id: offlineId, status: 'pending'));

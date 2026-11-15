@@ -11,6 +11,12 @@ class FakeGallery implements GalleryBackend {
     calls.add('$album:$path');
     if (error != null) throw error!;
   }
+
+  @override
+  Future<void> saveVideo(String path, {required String album}) async {
+    calls.add('video:$album:$path');
+    if (error != null) throw error!;
+  }
 }
 
 void main() {
@@ -31,6 +37,22 @@ void main() {
     test('sends the file to the Chatme album', () async {
       await GallerySaver.save(picture.path);
       expect(gallery.calls, ['Chatme:${picture.path}']);
+    });
+
+    test('sends a video through the video channel', () async {
+      final video = File('${dir.path}/a.mp4')..writeAsBytesSync([4, 5, 6]);
+      await GallerySaver.save(video.path, video: true);
+      expect(gallery.calls, ['video:Chatme:${video.path}']);
+    });
+
+    test('a video with a plain failure is reported as a video', () async {
+      final video = File('${dir.path}/a.mp4')..writeAsBytesSync([4, 5, 6]);
+      gallery.error = StateError('boom');
+      await expectLater(
+        GallerySaver.save(video.path, video: true),
+        throwsA(isA<GallerySaveException>()
+            .having((e) => e.message, 'message', 'Could not save the video')),
+      );
     });
 
     test('a missing file never reaches the gallery', () async {
@@ -80,6 +102,18 @@ void main() {
       final saved = await GallerySaver.saveIfWanted(enabled: true, received: true, path: picture.path);
       expect(saved, isTrue);
       expect(gallery.calls, ['Chatme:${picture.path}']);
+    });
+
+    test('saves a received video when the setting is on', () async {
+      final video = File('${dir.path}/a.mp4')..writeAsBytesSync([4, 5, 6]);
+      final saved = await GallerySaver.saveIfWanted(
+        enabled: true,
+        received: true,
+        path: video.path,
+        video: true,
+      );
+      expect(saved, isTrue);
+      expect(gallery.calls, ['video:Chatme:${video.path}']);
     });
 
     test('a failure is swallowed and reported as not saved', () async {

@@ -8,6 +8,12 @@ List<ChatMessage> imagesNewestFirst(Iterable<ChatMessage> messages) {
     ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 }
 
+/// Pictures and videos of one chat, newest first, for the media grid.
+List<ChatMessage> mediaNewestFirst(Iterable<ChatMessage> messages) {
+  return messages.where((m) => m.isImage || m.isVideo).toList()
+    ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+}
+
 /// The pictures the viewer can swipe through and where it starts.
 class ViewerSet {
   final List<String> paths;
@@ -24,6 +30,7 @@ ViewerSet? viewerSetFor(List<ChatMessage> images, String tappedId) {
   final messages = <ChatMessage>[];
   var index = -1;
   for (final m in images) {
+    if (!m.isImage) continue;
     if (m.localPath.isEmpty) continue;
     if (m.id == tappedId) index = paths.length;
     paths.add(m.localPath);

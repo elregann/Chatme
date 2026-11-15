@@ -2524,14 +2524,24 @@ class RelayManager {
           FileMessage? file = msg.fileMessage;
           if (msg.needsUpload) {
             if (msg.localPath.isEmpty) continue;
-            file = await FileSendService.encryptAndUpload(
-              source: File(msg.localPath),
-              mimeType: msg.file['type'] ?? FileSendService.voiceMimeType,
-              durationSeconds: msg.fileDurationSeconds,
-              width: msg.imageSize?.width,
-              height: msg.imageSize?.height,
-              servers: AppSettings.instance.blossomServers,
-            );
+            final servers = AppSettings.instance.blossomServers;
+            file = msg.isVideo
+                ? await FileSendService.encryptAndUploadStreaming(
+                    source: File(msg.localPath),
+                    mimeType: msg.file['type'] ?? 'video/mp4',
+                    durationSeconds: msg.fileDurationSeconds,
+                    width: msg.imageSize?.width,
+                    height: msg.imageSize?.height,
+                    servers: servers,
+                  )
+                : await FileSendService.encryptAndUpload(
+                    source: File(msg.localPath),
+                    mimeType: msg.file['type'] ?? FileSendService.voiceMimeType,
+                    durationSeconds: msg.fileDurationSeconds,
+                    width: msg.imageSize?.width,
+                    height: msg.imageSize?.height,
+                    servers: servers,
+                  );
             await ChatManager.instance.setFile(msg.id, msg.chatKey, file.toMap());
           }
 

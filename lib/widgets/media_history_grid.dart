@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../chat_manager.dart';
 import '../core/utils/debug_logger.dart';
+import '../core/utils/duration_utils.dart';
 import '../models/chat_message.dart';
 import '../models/contact.dart';
 import '../relay_manager.dart';
@@ -13,8 +14,9 @@ import '../services/file_transfer_service.dart';
 import '../services/media_download.dart';
 import '../services/media_history.dart';
 import '../ui/media/image_viewer.dart';
+import '../ui/media/video_viewer.dart';
 
-/// All pictures of one chat as a grid of square tiles, newest first.
+/// All pictures and videos of one chat as a grid of square tiles, newest first.
 class MediaHistoryGrid extends StatelessWidget {
   static const int columns = 3;
   static const double gap = 6;
@@ -43,9 +45,9 @@ class MediaHistoryGrid extends StatelessWidget {
       // Filtered listenable: only this chat's messages rebuild the grid.
       valueListenable: ChatManager.instance.chatMessagesListenable(chatKey),
       builder: (context, box, _) {
-        final images =
-            imagesNewestFirst(ChatManager.instance.messagesForChatSync(chatKey));
-        if (images.isEmpty) return empty;
+        final media =
+            mediaNewestFirst(ChatManager.instance.messagesForChatSync(chatKey));
+        if (media.isEmpty) return empty;
 
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -54,11 +56,11 @@ class MediaHistoryGrid extends StatelessWidget {
             mainAxisSpacing: gap,
             crossAxisSpacing: gap,
           ),
-          itemCount: images.length,
+          itemCount: media.length,
           itemBuilder: (context, i) => _MediaTile(
-            key: ValueKey(images[i].id),
-            message: images[i],
-            all: images,
+            key: ValueKey(media[i].id),
+            message: media[i],
+            all: media,
             contact: contact,
             relayManager: relayManager,
             placeholderColor: placeholderColor,
@@ -103,7 +105,11 @@ class _MediaTileState extends State<_MediaTile> {
       _failed = false;
     });
     try {
-      await downloadImage(widget.message);
+      if (widget.message.isVideo) {
+        await downloadVideo(widget.message);
+      } else {
+        await downloadImage(widget.message);
+      }
       if (!mounted) return;
       setState(() => _downloading = false);
     } catch (e) {
@@ -120,6 +126,25 @@ class _MediaTileState extends State<_MediaTile> {
   }
 
   void _open() {
+    if (widget.message.isVideo) {
+      final message = widget.message;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VideoViewerPage(
+            path: message.localPath,
+            message: message,
+            onReply: (message) => ChatReplyNavigator.instance.openReply(
+              context,
+              message,
+              contact: widget.contact,
+              relayManager: widget.relayManager,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
     final set = viewerSetFor(widget.all, widget.message.id);
     if (set == null) return;
     Navigator.of(context).push(
@@ -167,25 +192,62 @@ class _MediaTileState extends State<_MediaTile> {
     final side = (MediaQuery.sizeOf(context).width - 40 - MediaHistoryGrid.gap * 2) /
         MediaHistoryGrid.columns;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(MediaHistoryGrid.radius),
-      child: path.isEmpty
-          ? _placeholder()
-          : GestureDetector(
-              onTap: _open,
-              child: Image.file(
-                File(path),
-                fit: BoxFit.cover,
-                cacheWidth: (side * MediaQuery.devicePixelRatioOf(context)).round(),
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => ColoredBox(
-                  color: widget.placeholderColor,
-                  child: Center(
-                    child: Icon(Icons.broken_image_outlined, color: widget.iconColor, size: 26),
-                  ),
+    if (path.isEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(MediaHistoryGrid.radius),
+        child: _placeholder(),
+      );
+    }
+
+    if (widget.message.isVideo) {
+      final seconds = widget.message.fileDurationSeconds;
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(MediaHistoryGrid.radius),
+        child: GestureDetector(
+          onTap: _open,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: widget.placeholderColor),
+              Center(
+                child: Icon(
+                  Icons.play_circle_outline_rounded,
+                  color: widget.iconColor,
+                  size: 30,
                 ),
               ),
+              if (seconds != null && seconds > 0)
+                Positioned(
+                  right: 5,
+                  bottom: 4,
+                  child: Text(
+                    DurationUtils.formatClock(seconds),
+                    style: TextStyle(color: widget.iconColor, fontSize: 10),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(MediaHistoryGrid.radius),
+      child: GestureDetector(
+        onTap: _open,
+        child: Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          cacheWidth: (side * MediaQuery.devicePixelRatioOf(context)).round(),
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => ColoredBox(
+            color: widget.placeholderColor,
+            child: Center(
+              child: Icon(Icons.broken_image_outlined, color: widget.iconColor, size: 26),
             ),
+          ),
+        ),
+      ),
     );
   }
 }

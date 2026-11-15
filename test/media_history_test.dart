@@ -21,6 +21,7 @@ void main() {
 
   const image = {'type': 'image/jpeg'};
   const voice = {'type': 'audio/mp4'};
+  const video = {'type': 'video/mp4'};
 
   group('imagesNewestFirst', () {
     test('keeps only pictures', () {
@@ -28,6 +29,7 @@ void main() {
         msg('text', 1),
         msg('vn', 2, file: voice),
         msg('img', 3, file: image),
+        msg('vid', 4, file: video),
       ]);
       expect(out.map((m) => m.id), ['img']);
     });
@@ -44,6 +46,25 @@ void main() {
     test('does not change the input list', () {
       final input = [msg('a', 1, file: image), msg('b', 2, file: image)];
       imagesNewestFirst(input);
+      expect(input.map((m) => m.id), ['a', 'b']);
+    });
+  });
+
+  group('mediaNewestFirst', () {
+    test('keeps pictures and videos, newest first', () {
+      final out = mediaNewestFirst([
+        msg('text', 1),
+        msg('old', 100, file: image),
+        msg('vid', 300, file: video),
+        msg('vn', 150, file: voice),
+        msg('new', 200, file: image),
+      ]);
+      expect(out.map((m) => m.id), ['vid', 'new', 'old']);
+    });
+
+    test('does not change the input list', () {
+      final input = [msg('a', 1, file: video), msg('b', 2, file: image)];
+      mediaNewestFirst(input);
       expect(input.map((m) => m.id), ['a', 'b']);
     });
   });
@@ -72,6 +93,15 @@ void main() {
 
     test('an unknown id gives nothing', () {
       expect(viewerSetFor(images, 'zzz'), isNull);
+    });
+
+    test('videos are not part of the picture viewer', () {
+      final mixed = [
+        msg('v', 400, file: video, path: '/m/v.mp4'),
+        ...images,
+      ];
+      expect(viewerSetFor(mixed, 'v'), isNull);
+      expect(viewerSetFor(mixed, 'a')!.paths, ['/m/c.jpg', '/m/a.jpg']);
     });
   });
 

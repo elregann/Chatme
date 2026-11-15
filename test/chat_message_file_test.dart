@@ -75,6 +75,49 @@ void main() {
     expect(build(fileMap: image.toMap()).isVoiceNote, isFalse);
   });
 
+  test('a video message is a video, not an image or a voice note', () {
+    final video = FileMessage(
+      url: file.url,
+      mimeType: 'video/mp4',
+      key: key,
+      nonce: nonce,
+      hash: hash,
+      algorithm: FileMessage.chunkedAlgorithm,
+      originalHash: 'd' * 64,
+      size: 9000,
+      plainSize: 8000,
+      durationSeconds: 21,
+      width: 1280,
+      height: 720,
+    );
+    final message = build(fileMap: video.toMap());
+
+    expect(message.isVideo, isTrue);
+    expect(message.isImage, isFalse);
+    expect(message.isVoiceNote, isFalse);
+    expect(message.isStreamedFile, isTrue);
+    expect(message.fileDurationSeconds, 21);
+    // What the receiver writes to disk, not the encrypted size.
+    expect(message.fileSize, 8000);
+    expect(message.imageSize?.width, 1280);
+    expect(message.imageSize?.height, 720);
+  });
+
+  test('a picture is not streamed', () {
+    final image = FileMessage(
+      url: file.url,
+      mimeType: 'image/jpeg',
+      key: key,
+      nonce: nonce,
+      hash: hash,
+      size: 1234,
+    );
+    final message = build(fileMap: image.toMap());
+    expect(message.isVideo, isFalse);
+    expect(message.isStreamedFile, isFalse);
+    expect(message.fileSize, 1234);
+  });
+
   test('copyWith keeps the file and can set the local path', () {
     final message = build(fileMap: file.toMap());
     final saved = message.copyWith(localPath: '/data/x.m4a');

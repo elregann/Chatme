@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Bundle
 import android.os.Looper
 import android.os.PowerManager
+import android.os.StatFs
 import android.provider.Settings
 import androidx.work.*
 import io.flutter.embedding.android.FlutterActivity
@@ -20,6 +21,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity: FlutterActivity() {
     private val BATTERY_CHANNEL = "com.chatme.app/battery"
     private val TASK_CHANNEL = "com.chatme.app/task"
+    private val STORAGE_CHANNEL = "com.chatme.app/storage"
 
     companion object {
         private var retainedEngine: FlutterEngine? = null
@@ -136,6 +138,20 @@ class MainActivity: FlutterActivity() {
                     }
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        // Storage Channel: how much room is left for a video download.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "freeBytes") {
+                try {
+                    val stat = StatFs(filesDir.absolutePath)
+                    result.success(stat.availableBytes)
+                } catch (e: Exception) {
+                    result.error("STORAGE_ERROR", e.message, null)
+                }
+            } else {
+                result.notImplemented()
             }
         }
 

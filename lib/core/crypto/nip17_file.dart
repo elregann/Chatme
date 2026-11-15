@@ -4,7 +4,19 @@
 /// reply `e` tags are added by the sender code, as for any other rumor.
 class FileMessage {
   static const int kind = 15;
-  static const String algorithm = 'aes-gcm';
+
+  /// The whole file sealed in one AES-GCM block. Used for pictures and voice
+  /// notes, which are small enough to keep in memory.
+  static const String plainAlgorithm = 'aes-gcm';
+
+  /// The file sealed in chunks while it streams, for videos. See
+  /// `stream_crypto.dart` for the layout.
+  static const String chunkedAlgorithm = 'aes-gcm-chunked';
+
+  /// The algorithms this client can open.
+  static const List<String> supportedAlgorithms = [plainAlgorithm, chunkedAlgorithm];
+
+  final String algorithm;
 
   final String url;
   final String mimeType;
@@ -20,6 +32,10 @@ class FileMessage {
   /// size: bytes of the encrypted file.
   final int? size;
 
+  /// psize: bytes of the file before it was encrypted. For a streamed file
+  /// this is the size the receiver will write to disk.
+  final int? plainSize;
+
   /// duration: seconds, a Chatme extra tag for voice notes.
   final int? durationSeconds;
 
@@ -33,8 +49,10 @@ class FileMessage {
     required this.key,
     required this.nonce,
     required this.hash,
+    this.algorithm = plainAlgorithm,
     this.originalHash,
     this.size,
+    this.plainSize,
     this.durationSeconds,
     this.width,
     this.height,
@@ -44,8 +62,18 @@ class FileMessage {
 
   bool get isImage => mimeType.startsWith('image/');
 
+  bool get isVideo => mimeType.startsWith('video/');
+
+  /// True when the file must be opened with the chunked reader.
+  bool get isStreamed => algorithm == chunkedAlgorithm;
+
   /// What the chat list and notifications show for this file.
-  String get previewLabel => isAudio ? 'Voice message' : (isImage ? 'Photo' : 'File');
+  String get previewLabel {
+    if (isAudio) return 'Voice message';
+    if (isImage) return 'Photo';
+    if (isVideo) return 'Video';
+    return 'File';
+  }
 
   static final RegExp _dim = RegExp(r'^(\d{1,5})x(\d{1,5})$');
 
@@ -73,8 +101,10 @@ class FileMessage {
         'key': key,
         'nonce': nonce,
         'x': hash,
+        if (algorithm != plainAlgorithm) 'alg': algorithm,
         if (originalHash != null) 'ox': originalHash!,
         if (size != null) 'size': '$size',
+        if (plainSize != null) 'psize': '$plainSize',
         if (durationSeconds != null) 'duration': '$durationSeconds',
         if (width != null && height != null) 'dim': '${width}x$height',
       };
@@ -95,8 +125,10 @@ class FileMessage {
       key: key,
       nonce: nonce,
       hash: hash,
+      algorithm: map['alg'] ?? plainAlgorithm,
       originalHash: map['ox'],
       size: int.tryParse(map['size'] ?? ''),
+      plainSize: int.tryParse(map['psize'] ?? ''),
       durationSeconds: int.tryParse(map['duration'] ?? ''),
       width: parseDim(map['dim'])?.width,
       height: parseDim(map['dim'])?.height,
@@ -111,6 +143,7 @@ class FileMessage {
         ['x', hash],
         if (originalHash != null) ['ox', originalHash!],
         if (size != null) ['size', '$size'],
+        if (plainSize != null) ['psize', '$plainSize'],
         if (durationSeconds != null) ['duration', '$durationSeconds'],
         if (width != null && height != null) ['dim', '${width}x$height'],
       ];
@@ -122,7 +155,8 @@ class FileMessage {
   }
 
   /// Reads a kind 15 rumor. Returns null when it is not a file we can use:
-  /// a missing or wrong tag, another algorithm, or an address that is not https.
+  /// a missing or wrong tag, an algorithm this client cannot open, or an
+  /// address that is not https.
   static FileMessage? parse({required String content, required List tags}) {
     final values = <String, String>{};
     for (final tag in tags) {
@@ -137,7 +171,8 @@ class FileMessage {
 
     final mimeType = values['file-type'];
     if (mimeType == null || mimeType.isEmpty) return null;
-    if (values['encryption-algorithm'] != algorithm) return null;
+    final algorithm = values['encryption-algorithm'];
+    if (algorithm == null || !supportedAlgorithms.contains(algorithm)) return null;
 
     final key = values['decryption-key'];
     final nonce = values['decryption-nonce'];
@@ -149,6 +184,7 @@ class FileMessage {
     if (originalHash != null && !_isHex(originalHash, [64])) return null;
 
     final size = int.tryParse(values['size'] ?? '');
+    final plainSize = int.tryParse(values['psize'] ?? '');
     final duration = int.tryParse(values['duration'] ?? '');
     final dim = parseDim(values['dim']);
 
@@ -158,8 +194,10 @@ class FileMessage {
       key: key!.toLowerCase(),
       nonce: nonce!.toLowerCase(),
       hash: hash!.toLowerCase(),
+      algorithm: algorithm,
       originalHash: originalHash?.toLowerCase(),
       size: size != null && size >= 0 ? size : null,
+      plainSize: plainSize != null && plainSize >= 0 ? plainSize : null,
       durationSeconds: duration != null && duration >= 0 ? duration : null,
       width: dim?.width,
       height: dim?.height,

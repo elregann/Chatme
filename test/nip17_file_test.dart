@@ -81,6 +81,59 @@ void main() {
       expect(parsed.durationSeconds, 12);
       expect(parsed.isAudio, isTrue);
     });
+
+    test('a streamed video writes the chunked algorithm and psize', () {
+      final message = FileMessage(
+        url: url,
+        mimeType: 'video/mp4',
+        key: key,
+        nonce: nonce,
+        hash: hash,
+        algorithm: FileMessage.chunkedAlgorithm,
+        originalHash: originalHash,
+        size: 8192,
+        plainSize: 8000,
+        durationSeconds: 34,
+        width: 1920,
+        height: 1080,
+      );
+      expect(message.toTags(), [
+        ['file-type', 'video/mp4'],
+        ['encryption-algorithm', 'aes-gcm-chunked'],
+        ['decryption-key', key],
+        ['decryption-nonce', nonce],
+        ['x', hash],
+        ['ox', originalHash],
+        ['size', '8192'],
+        ['psize', '8000'],
+        ['duration', '34'],
+        ['dim', '1920x1080'],
+      ]);
+
+      final parsed = FileMessage.parse(content: url, tags: message.toTags())!;
+      expect(parsed.algorithm, FileMessage.chunkedAlgorithm);
+      expect(parsed.isStreamed, isTrue);
+      expect(parsed.isVideo, isTrue);
+      expect(parsed.plainSize, 8000);
+      expect(parsed.width, 1920);
+      expect(parsed.height, 1080);
+      expect(parsed.previewLabel, 'Video');
+    });
+
+    test('a plain file never writes an algorithm tag twice', () {
+      final message = FileMessage(
+        url: url,
+        mimeType: 'image/jpeg',
+        key: key,
+        nonce: nonce,
+        hash: hash,
+      );
+      expect(
+        message.toTags().where((t) => t[0] == 'encryption-algorithm').length,
+        1,
+      );
+      expect(message.previewLabel, 'Photo');
+    });
   });
 
   group('FileMessage.parse', () {

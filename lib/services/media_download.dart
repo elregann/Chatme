@@ -24,3 +24,26 @@ Future<String> downloadImage(ChatMessage message) async {
   );
   return path;
 }
+
+/// Downloads and decrypts a received video in pieces, so a large file never
+/// sits in memory. Saves it to the gallery with the same rule as a picture.
+Future<String> downloadVideo(
+  ChatMessage message, {
+  void Function(int received, int total)? onProgress,
+}) async {
+  final file = message.fileMessage;
+  if (file == null) throw const FileTransferException('download failed');
+  final path = await FileTransferService.downloadAndSave(
+    file,
+    directory: await mediaDirectory(),
+    onProgress: onProgress,
+  );
+  await ChatManager.instance.setLocalPath(message.id, message.chatKey, path);
+  await GallerySaver.saveIfWanted(
+    enabled: AppSettings.instance.saveToGalleryEnabled,
+    received: !message.isMe,
+    path: path,
+    video: true,
+  );
+  return path;
+}

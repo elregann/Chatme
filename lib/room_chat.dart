@@ -32,6 +32,7 @@ import 'widgets/message_bubble.dart';
 import 'widgets/message_highlight.dart';
 import 'widgets/chatme_menu.dart';
 import 'services/image_prepare.dart';
+import 'services/video_metadata.dart';
 import 'package:image_picker/image_picker.dart';
 import 'services/just_audio_backend.dart';
 import 'services/record_backend.dart';
@@ -728,8 +729,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   Future<void> _pickImage(ImageSource source) async {
     if (kIsWeb) return;
     try {
-      final picked = await ImagePicker().pickImage(source: source);
+      // The camera takes a picture. The gallery offers pictures and videos,
+      // the same way WhatsApp does.
+      final picked = source == ImageSource.camera
+          ? await ImagePicker().pickImage(source: source)
+          : await ImagePicker().pickMedia();
       if (picked == null || !mounted) return;
+
+      final videoType = videoMimeTypeFor(picked.path, picked.mimeType);
+      if (videoType != null) {
+        await _sendPickedVideo(picked.path, videoType);
+        return;
+      }
 
       final imageBytes = await picked.readAsBytes();
       if (!mounted) return;
@@ -762,6 +773,42 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     } catch (e) {
       DebugLogger.log('[Image] Pick failed | $e', type: 'ERROR');
       _showHint('Could not open the photo');
+    }
+  }
+
+  /// Sends a video picked from the gallery. The length and size are read with
+  /// the player; when the file cannot be opened, it is still sent, just without
+  /// a duration and a size on the bubble.
+  Future<void> _sendPickedVideo(String path, String mimeType) async {
+    try {
+      final metadata = await readVideoMetadata(path);
+      if (!mounted) return;
+
+      final replyId = _replyingTo?.id;
+      final replyContent = _replyingTo?.plaintext;
+      final replySenderPubkey = _replyingTo?.senderPubkey;
+      setState(() => _replyingTo = null);
+
+      ChatManager.sendVideo(
+        pickedPath: path,
+        mimeType: mimeType,
+        seconds: metadata?.seconds ?? 0,
+        width: metadata?.width,
+        height: metadata?.height,
+        receiverPubkey: widget.contact.pubkey,
+        relayManager: widget.relayManager,
+        replyToId: replyId,
+        replyToContent: replyContent,
+        replyToSenderPubkey: replySenderPubkey,
+      ).catchError((Object e) {
+        DebugLogger.log('[Video] Send failed | $e', type: 'ERROR');
+      });
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) _maybeAutoScroll(force: true);
+      });
+    } catch (e) {
+      DebugLogger.log('[Video] Pick failed | $e', type: 'ERROR');
+      if (mounted) _showHint('Could not open the video');
     }
   }
 
@@ -1922,7 +1969,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                         color: inputBgColor,
                                         textColor: inputTextColor,
                                         icon: const Icon(
-                                          Icons.photo_camera_outlined,
+                                          Icons.attach_file,
                                           size: 24,
                                           color: ChatmeColors.textSecondary,
                                         ),
