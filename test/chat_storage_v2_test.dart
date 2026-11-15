@@ -22,6 +22,8 @@ void main() {
     String status = 'sent',
     String chatKey = chatKey,
     String? replyToId,
+    Map<String, String>? file,
+    String localPath = '',
   }) =>
       ChatMessage(
         id: id,
@@ -33,6 +35,8 @@ void main() {
         status: status,
         chatKey: chatKey,
         replyToId: replyToId,
+        file: file ?? const {},
+        localPath: localPath,
       );
 
   setUpAll(() async {
@@ -219,6 +223,85 @@ void main() {
         ChatManager.instance.getMessageByIdSync('r1', chatKey)?.replyToContent,
         'text of temp_1',
       );
+    });
+  });
+
+  group('offline queue selection', () {
+    const uploadingVideo = <String, String>{
+      'type': 'video/mp4',
+      'psize': '1700000',
+    };
+
+    const uploadedVideo = <String, String>{
+      'url': 'https://blossom.example/abc',
+      'type': 'video/mp4',
+      'alg': 'aes-gcm-chunked',
+      'key': 'aa',
+      'nonce': 'bb',
+      'x': 'cc',
+      'psize': '1700000',
+    };
+
+    final stale = DateTime.now().millisecondsSinceEpoch - 60000;
+
+    test('does not take a sending video that is still uploading', () async {
+      await ChatManager.instance.saveMessage(
+        msg(
+          'temp_video',
+          timestamp: stale,
+          status: 'sending',
+          file: uploadingVideo,
+          localPath: 'C:/videos/chosen.mp4',
+        ),
+      );
+
+      final pending = await ChatManager.instance.getPendingMessages();
+      expect(pending.map((m) => m.id), isNot(contains('temp_video')));
+    });
+
+    test('still retries a failed upload saved as pending', () async {
+      await ChatManager.instance.saveMessage(
+        msg(
+          'pending_video',
+          timestamp: stale,
+          status: 'pending',
+          file: uploadingVideo,
+          localPath: 'C:/videos/chosen.mp4',
+        ),
+      );
+
+      final pending = await ChatManager.instance.getPendingMessages();
+      expect(pending.map((m) => m.id), contains('pending_video'));
+    });
+
+    test('retries a sending message whose file is already uploaded', () async {
+      await ChatManager.instance.saveMessage(
+        msg(
+          'sent_video',
+          timestamp: stale,
+          status: 'sending',
+          file: uploadedVideo,
+          localPath: 'C:/videos/chosen.mp4',
+        ),
+      );
+
+      final pending = await ChatManager.instance.getPendingMessages();
+      expect(pending.map((m) => m.id), contains('sent_video'));
+    });
+
+    test('still retries an error message that needs its file', () async {
+      await ChatManager.instance.saveMessage(
+        msg(
+          'error_video',
+          timestamp: stale,
+          status: 'error',
+          file: uploadingVideo,
+          localPath: 'C:/videos/chosen.mp4',
+        ),
+      );
+
+      final pending = await ChatManager.instance.getPendingMessages();
+      expect(pending.map((m) => m.id), contains('error_video'));
     });
   });
 

@@ -505,7 +505,14 @@ class ChatManager {
       for (var m in _messagesBox.values) {
         final bool isPending = m.status == 'pending';
         final bool isError = m.status == 'error';
-        final bool isStuckSending = m.status == 'sending' && (now - m.timestamp) > 10000;
+        // A `sending` message that still needs its file uploaded belongs to
+        // the send that started it. Taking it here would encrypt and upload
+        // the same file a second time, and that copy would get its own Rumor
+        // ID, so the receiver (and our own self-wrap) would show a second
+        // bubble. Failed sends are stored as `pending` and still retried.
+        final bool isStuckSending = m.status == 'sending' &&
+            !m.needsUpload &&
+            (now - m.timestamp) > 10000;
 
         if (isPending || isError || isStuckSending) {
           pendingQueue.add(m);
