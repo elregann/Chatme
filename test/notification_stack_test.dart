@@ -159,6 +159,50 @@ void main() {
       expect(await BgInbox.stackSizes(), {'alice': 2, 'bob': 1});
     });
 
+    group('latestPerConversation', () {
+      test('returns the newest message of each contact, newest first', () async {
+        await BgInbox.addToStack('alice', 'a1', entry('old alice', timeMs: 10));
+        await BgInbox.addToStack('alice', 'a2', entry('new alice', timeMs: 30));
+        await BgInbox.addToStack('bob', 'b1', entry('new bob', timeMs: 20));
+
+        final latest = await BgInbox.latestPerConversation();
+
+        expect(
+          latest.map((item) => item.message).toList(),
+          ['new alice', 'new bob'],
+        );
+        expect(latest.first.sender, 'Alice');
+        expect(latest.first.timeMs, 30);
+      });
+
+      test('ignores unread ids and read receipts', () async {
+        await BgInbox.addUnread('alice', 'rumor1');
+        await BgInbox.recordRead('bob', ['rumor2']);
+        await BgInbox.addToStack('alice', 'a1', entry('hello', timeMs: 1));
+
+        final latest = await BgInbox.latestPerConversation();
+
+        expect(latest.map((item) => item.message).toList(), ['hello']);
+      });
+
+      test('is empty when no conversation has unread messages', () async {
+        expect(await BgInbox.latestPerConversation(), isEmpty);
+      });
+
+      test('skips an unreadable entry', () async {
+        await BgInbox.addToStack('alice', 'a1', entry('hello', timeMs: 1));
+        final folder = Directory('${tempDir.path}/bg_inbox');
+        await File('${folder.path}/n_alice_broken').writeAsString('not json');
+
+        expect(
+          (await BgInbox.latestPerConversation())
+              .map((item) => item.message)
+              .toList(),
+          ['hello'],
+        );
+      });
+    });
+
     test('an unreadable entry is ignored', () async {
       await BgInbox.addToStack('alice', 'm1', entry('hello', timeMs: 1));
       final folder = Directory('${tempDir.path}/bg_inbox');

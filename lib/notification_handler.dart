@@ -254,7 +254,6 @@ class NotificationHandler {
       replyOnly: replyOnly,
       pluginInstance: _plugin,
     );
-    await chat_notif.ChatNotificationHandler.showSummaryIfNeeded(_plugin);
   }
 
   /// Dismisses the notification of a specific contact.

@@ -258,6 +258,46 @@ class BgInbox {
     return sizes;
   }
 
+  /// The newest message of every contact, newest first.
+  ///
+  /// This is what the grouped notification lists: one entry per conversation,
+  /// even if that conversation holds several unread messages.
+  static Future<List<NotificationEntry>> latestPerConversation() async {
+    final dir = await _dir();
+    final latest = <String, ({NotificationEntry entry, String path})>{};
+
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!name.startsWith(_stackPrefix)) continue;
+      final rest = name.substring(_stackPrefix.length);
+      final sep = rest.indexOf('_');
+      if (sep <= 0) continue;
+
+      try {
+        final json = jsonDecode(await entity.readAsString());
+        final entry = NotificationEntry.fromJson(json as Map<String, dynamic>);
+        final peer = rest.substring(0, sep);
+        final current = latest[peer];
+        if (current == null ||
+            entry.timeMs > current.entry.timeMs ||
+            (entry.timeMs == current.entry.timeMs &&
+                entity.path.compareTo(current.path) > 0)) {
+          latest[peer] = (entry: entry, path: entity.path);
+        }
+      } catch (_) {}
+    }
+
+    final entries = [for (final item in latest.values) item.entry];
+    entries.sort((a, b) {
+      final byTime = b.timeMs.compareTo(a.timeMs);
+      if (byTime != 0) return byTime;
+      final bySender = a.sender.compareTo(b.sender);
+      return bySender != 0 ? bySender : a.message.compareTo(b.message);
+    });
+    return entries;
+  }
+
   /// Forgets the messages of [peer]'s notification (the chat was read).
   static Future<void> clearStack(String peer) =>
       _deleteStack('$_stackPrefix${peer}_');

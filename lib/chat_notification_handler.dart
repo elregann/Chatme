@@ -14,6 +14,7 @@ import 'core/crypto/nip04.dart';
 import 'core/theme/chatme_colors.dart';
 import 'core/utils/notification_entry.dart';
 import 'core/utils/notification_profile.dart';
+import 'core/utils/notification_summary.dart';
 import 'core/utils/sync_gate.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'call_notification_handler.dart';
@@ -303,6 +304,9 @@ class ChatNotificationHandler {
       autoCancel: true,
       ongoing: false,
       onlyAlertOnce: false,
+      // The summary must stay quiet; the conversation notifications are the
+      // only ones that may alert. This does not change a chat shown alone.
+      groupAlertBehavior: GroupAlertBehavior.children,
     );
 
     final NotificationDetails details = NotificationDetails(android: androidDetails);
@@ -313,6 +317,10 @@ class ChatNotificationHandler {
       } catch (e) {
         debugPrint('[Notification] Show failed | $e');
       }
+
+      // Keep the grouped inbox in sync on every path, including the
+      // background FCM isolate that never goes through NotificationHandler.
+      await showSummaryIfNeeded(pluginInstance);
     }
   }
 
@@ -340,23 +348,36 @@ class ChatNotificationHandler {
     }
   }
 
-  static Future<Map<String, int>> _stackSizes() async {
-    try {
-      return await BgInbox.stackSizes();
-    } catch (_) {
-      return const {};
-    }
-  }
-
-  /// Show or update the group summary notification.
+  /// Show or update the group summary.
+  ///
+  /// The summary is one inbox for every conversation with unread messages: one
+  /// line per conversation, newest first. Android already shows the app name
+  /// above it, so the title is the newest line instead of a second "ChatMe".
+  /// It is silent and updated in place: the conversation notifications remain
+  /// the only ones that alert.
   static Future<void> showSummaryIfNeeded(FlutterLocalNotificationsPlugin plugin) async {
-    final sizes = await _stackSizes();
-    final activeCount = sizes.length;
-    if (activeCount < 2) return;
+    final List<NotificationEntry> latest;
+    try {
+      latest = await BgInbox.latestPerConversation();
+    } catch (e) {
+      debugPrint('[Notification] Summary read failed | $e');
+      return;
+    }
 
-    final total = sizes.values.fold<int>(0, (sum, count) => sum + count);
+    // One conversation keeps the plain chat notification, without a wrapper.
+    if (latest.length < 2) {
+      try {
+        await plugin.cancel(summaryNotificationId);
+      } catch (e) {
+        debugPrint('[Notification] Summary clear failed | $e');
+      }
+      return;
+    }
 
-    const AndroidNotificationDetails summaryDetails = AndroidNotificationDetails(
+    final preview = NotificationSummary.previewFor(latest);
+    if (preview == null) return;
+
+    final AndroidNotificationDetails summaryDetails = AndroidNotificationDetails(
       channelId,
       channelName,
       channelDescription: channelDescription,
@@ -365,17 +386,21 @@ class ChatNotificationHandler {
       category: AndroidNotificationCategory.message,
       groupKey: groupKey,
       setAsGroupSummary: true,
+      styleInformation: InboxStyleInformation(NotificationSummary.linesFor(latest)),
       icon: '@drawable/ic_stat_chatme',
       color: ChatmeColors.notificationAccent,
       autoCancel: true,
+      silent: true,
+      onlyAlertOnce: true,
+      groupAlertBehavior: GroupAlertBehavior.children,
     );
 
     try {
       await plugin.show(
         summaryNotificationId,
-        'ChatMe',
-        '$total new messages from $activeCount conversation${activeCount > 1 ? "s" : ""}',
-        const NotificationDetails(android: summaryDetails),
+        preview.title,
+        preview.body,
+        NotificationDetails(android: summaryDetails),
       );
     } catch (e) {
       debugPrint('[Notification] Summary show failed | $e');
@@ -387,12 +412,7 @@ class ChatNotificationHandler {
     final int notifId = notificationId(senderPubkey);
     await plugin.cancel(notifId);
     await _clearStack(senderPubkey);
-
-    if ((await _stackSizes()).length < 2) {
-      await plugin.cancel(summaryNotificationId);
-    } else {
-      await showSummaryIfNeeded(plugin);
-    }
+    await showSummaryIfNeeded(plugin);
   }
 
   /// Dismiss all chat notifications.
