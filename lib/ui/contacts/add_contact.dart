@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:async';
 import '../../models/contact.dart';
 import '../../core/theme/chatme_buttons.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/debug_logger.dart';
 import '../../core/utils/key_utils.dart';
 import '../../core/utils/shortcut_helper.dart';
+import '../../services/app_settings.dart';
 import '../../widgets/chatme_notice.dart';
 
 class AddContactPage extends StatefulWidget {
@@ -252,6 +254,14 @@ class _AddContactPageState extends State<AddContactPage> {
                           );
 
                           await contactsBox.put(pubkey, contact);
+
+                          // Confirm a `name@chatme` handle from the directory.
+                          // Force it so a row re-added after deletion is not
+                          // skipped by an old hydration flag.
+                          unawaited(AppSettings.hydrateSingleContact(
+                            pubkey,
+                            force: true,
+                          ));
 
                           await ShortcutHelper.pushConversationShortcut(
                             id: pubkey,

@@ -13,6 +13,7 @@ import '../../services/app_settings.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/profile_photo_viewer.dart';
 import '../../widgets/media_history_grid.dart';
+import '../../widgets/profile_bio.dart';
 import '../../widgets/voice_history_list.dart';
 import '../qr/qr_code_page.dart';
 
@@ -148,12 +149,21 @@ class ContactProfilePage extends StatelessWidget {
                         color: textPrimary,
                       ),
                     ),
-                    if (current.hasGlobalId) ...[
+                    if (current.chatmeHandle != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        '${current.globalHandle}@chatme',
+                        current.chatmeHandle!,
                         style:
                             const TextStyle(fontSize: 13, color: textSecondary),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 4),
+                      // Only the Chatme directory can confirm a
+                      // `name@chatme` handle. Without that confirmation the
+                      // honest label is that this is a Nostr profile.
+                      const Text(
+                        'Nostr user',
+                        style: TextStyle(fontSize: 13, color: textSecondary),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -174,6 +184,8 @@ class ContactProfilePage extends StatelessWidget {
                       borderColor: borderColor,
                       textColor: textSecondary,
                     ),
+                    const SizedBox(height: 14),
+                    ProfileBioBuilder(pubkey: current.pubkey),
                   ],
                 ),
               ),

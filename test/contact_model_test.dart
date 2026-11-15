@@ -89,4 +89,72 @@ void main() {
       expect(contact.hasGlobalId, isTrue);
     });
   });
+
+  group('chatmeHandle', () {
+    test('is null when there is no directory-confirmed handle', () {
+      expect(buildContact().chatmeHandle, isNull);
+      expect(buildContact(globalId: '').chatmeHandle, isNull);
+    });
+
+    test('formats a confirmed handle as name@chatme', () {
+      expect(buildContact(globalId: 'edwards').chatmeHandle, 'edwards@chatme');
+    });
+
+    test('refuses placeholder values that leaked into globalId', () {
+      expect(
+        buildContact(globalId: 'npub1xyz...abc').chatmeHandle,
+        isNull,
+      );
+      expect(buildContact(globalId: 'User 42').chatmeHandle, isNull);
+      expect(buildContact(globalId: pubkey).chatmeHandle, isNull);
+    });
+  });
+
+  group('fromSearchResult', () {
+    test('a Chatme directory result keeps the confirmed handle', () {
+      final contact = Contact.fromSearchResult(
+        pubkey: pubkey,
+        name: 'edwards',
+        source: 'Chatme',
+      );
+
+      expect(contact.globalId, 'edwards');
+      expect(contact.chatmeHandle, 'edwards@chatme');
+      expect(contact.isSaved, isTrue);
+    });
+
+    test('a Nostr result never turns its profile name into an identity', () {
+      final contact = Contact.fromSearchResult(
+        pubkey: pubkey,
+        name: '0xChat',
+        source: 'Nostr',
+      );
+
+      expect(contact.globalId, isNull);
+      expect(contact.chatmeHandle, isNull);
+      expect(contact.displayName, '0xChat');
+    });
+
+    test('a Chatme result with a placeholder name stores no handle', () {
+      final contact = Contact.fromSearchResult(
+        pubkey: pubkey,
+        name: 'npub1xyz...abc',
+        source: 'Chatme',
+      );
+
+      expect(contact.globalId, isNull);
+      expect(contact.chatmeHandle, isNull);
+    });
+
+    test('carries the saved flag through', () {
+      final contact = Contact.fromSearchResult(
+        pubkey: pubkey,
+        name: '0xChat',
+        source: 'Nostr',
+        isSaved: false,
+      );
+
+      expect(contact.isSaved, isFalse);
+    });
+  });
 }

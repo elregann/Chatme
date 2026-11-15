@@ -30,9 +30,11 @@ class ProfileMetaStore {
         if (stored is Map) {
           final timestamp = stored['ts'];
           final eventId = stored['id'];
+          final about = stored['about'];
           final meta = _Kind0Meta(
             timestamp: timestamp is int ? timestamp : 0,
             eventId: eventId is String ? eventId : '',
+            about: about is String ? about : null,
           );
           _cache[pubkey] = meta;
           return meta;
@@ -47,6 +49,30 @@ class ProfileMetaStore {
 
   /// True once any kind-0 has been processed for [pubkey].
   static bool hasProfile(String pubkey) => _metaFor(pubkey).timestamp > 0;
+
+  /// The bio (`about`) published by the winning kind-0 for [pubkey].
+  ///
+  /// Empty when the profile has no bio or was never seen. The text is stored
+  /// as received; callers sanitize it before rendering.
+  static String aboutFor(String pubkey) => _metaFor(pubkey).about ?? '';
+
+  /// True when [createdAt] and [eventId] already won for [pubkey], but the
+  /// bio was recorded before Chatme started storing it.
+  ///
+  /// Existing installs have persisted watermarks without an `about` value.
+  /// On the next relay replay of the same (still winning) kind-0, the app can
+  /// backfill the bio without re-running identity side effects.
+  static bool needsAboutBackfill(
+    String pubkey,
+    int createdAt,
+    String eventId,
+  ) {
+    final current = _metaFor(pubkey);
+    return current.timestamp > 0 &&
+        current.timestamp == createdAt &&
+        current.eventId == eventId &&
+        current.about == null;
+  }
 
   /// Returns true when an event with [createdAt] and [eventId] should become
   /// the new winner for [pubkey].
@@ -116,20 +142,32 @@ class ProfileMetaStore {
   /// The in-memory guard is updated synchronously, before the returned future
   /// yields, so an echo arriving from another relay cannot race it. The Hive
   /// write is best effort: a failure only loses the cross-restart guard.
+  ///
+  /// [about] is the bio carried by the same event. Omit it when the caller
+  /// does not have profile content to update (the previous bio is kept); pass
+  /// an empty string to record that the newer profile has no bio.
   static Future<void> remember(
     String pubkey,
     int createdAt,
-    String eventId,
-  ) {
-    _cache[pubkey] = _Kind0Meta(timestamp: createdAt, eventId: eventId);
+    String eventId, {
+    String? about,
+  }) {
+    final resolvedAbout = about ?? _metaFor(pubkey).about;
+    _cache[pubkey] = _Kind0Meta(
+      timestamp: createdAt,
+      eventId: eventId,
+      about: resolvedAbout,
+    );
 
     final box = _box;
     if (box == null) return Future<void>.value();
     try {
-      return box.put(pubkey, <String, dynamic>{
+      final stored = <String, dynamic>{
         'ts': createdAt,
-        'id': eventId
-      }).catchError((Object _) {});
+        'id': eventId,
+      };
+      if (resolvedAbout != null) stored['about'] = resolvedAbout;
+      return box.put(pubkey, stored).catchError((Object _) {});
     } catch (_) {
       return Future<void>.value();
     }
@@ -140,5 +178,12 @@ class _Kind0Meta {
   final int timestamp;
   final String eventId;
 
-  const _Kind0Meta({required this.timestamp, required this.eventId});
+  /// `null` means the bio was never recorded (an older persisted entry).
+  final String? about;
+
+  const _Kind0Meta({
+    required this.timestamp,
+    required this.eventId,
+    this.about,
+  });
 }

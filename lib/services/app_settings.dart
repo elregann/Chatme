@@ -8,12 +8,12 @@ import 'package:bip340/bip340.dart' as bip340;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../core/crypto/key_generator.dart';
+import '../core/utils/bio_text.dart';
 import '../core/utils/shortcut_helper.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
 import '../core/utils/sync_gate.dart';
 import '../models/contact.dart';
-import 'profile_meta_store.dart';
 import 'server_lists.dart';
 
 class AppSettings {
@@ -29,6 +29,7 @@ class AppSettings {
   String myName = '';
   String myMnemonic = '';
   String myNip05 = '';
+  String myAbout = '';
   String myPhotoPath = '';
   String myPhotoUrl = '';
   bool linkPreviewsEnabled = false;
@@ -69,6 +70,7 @@ class AppSettings {
       myPhotoUrl = settingsBox.get('my_photo_url', defaultValue: '');
       isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
       myName = settingsBox.get('my_name', defaultValue: '');
+      myAbout = settingsBox.get('my_about', defaultValue: '');
 
       // Generate new identity if first launch
       if (myPubkey.isEmpty) {
@@ -154,17 +156,40 @@ class AppSettings {
     return _fetchNameFromFirebase(pubkey);
   }
 
-  Future<String?> _fetchNameFromFirebase(String pubkey) async {
+  /// Looks a pubkey up in the Chatme directory (`users/<pubkey>`).
+  ///
+  /// A missing row and a failed request are deliberately different results:
+  /// only a definitive "not registered" may clear a cached handle. A timeout
+  /// or offline device must never make a valid `name@chatme` disappear.
+  static Future<DirectoryIdentityLookup> lookupDirectoryIdentity(
+      String pubkey) async {
+    if (pubkey.isEmpty) return const DirectoryIdentityLookup.notFound();
+
     try {
-      const String rtdbUrl = "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
-      final db = FirebaseDatabase.instanceFor(app: Firebase.app(), databaseURL: rtdbUrl);
-      final snapshot = await db.ref("users/$pubkey").get().timeout(const Duration(seconds: 10));
-      if (snapshot.exists) return snapshot.value as String?;
-      return null;
+      const String rtdbUrl =
+          "https://chatme-412d1-default-rtdb.asia-southeast1.firebasedatabase.app";
+      final db =
+          FirebaseDatabase.instanceFor(app: Firebase.app(), databaseURL: rtdbUrl);
+      final snapshot = await db
+          .ref("users/$pubkey")
+          .get()
+          .timeout(const Duration(seconds: 10));
+      if (!snapshot.exists) return const DirectoryIdentityLookup.notFound();
+
+      final value = snapshot.value;
+      final name = value is String ? value.trim() : '';
+      if (name.isEmpty) return const DirectoryIdentityLookup.notFound();
+      return DirectoryIdentityLookup.found(name);
     } catch (e) {
-      DebugLogger.log('[Settings] Fetch name from Firebase failed | $e', type: 'ERROR');
-      return null;
+      DebugLogger.log('[Settings] Fetch name from Firebase failed | $e',
+          type: 'ERROR');
+      return const DirectoryIdentityLookup.failed();
     }
+  }
+
+  Future<String?> _fetchNameFromFirebase(String pubkey) async {
+    final result = await lookupDirectoryIdentity(pubkey);
+    return result.isFound ? result.name : null;
   }
 
   Future<void> importAccount(String input) async {
@@ -197,6 +222,7 @@ class AppSettings {
       // delivers the account's kind-0 event.
       myPhotoUrl = '';
       myPhotoPath = '';
+      myAbout = '';
 
       // Try to fetch existing display name from Firebase
       final fetchedName = await _fetchNameFromFirebase(myPubkey);
@@ -217,9 +243,14 @@ class AppSettings {
         'my_name': myName,
         'my_nip05': myNip05,
         'is_nip05_verified': isNip05Verified,
+        'my_about': '',
         'my_photo_url': '',
         'my_photo_path': '',
       });
+
+      // The restored account may already have a contact row from an older
+      // session. Its handle comes from the directory, never from a kind 0.
+      await syncOwnContactIdentity();
 
       DebugLogger.log('[Settings] Account restored: $myPubkey', type: 'SETUP');
     } catch (e) {
@@ -240,6 +271,18 @@ class AppSettings {
     await Hive.box('settings').put('my_photo_url', url);
   }
 
+  /// Saves the user's bio, normalized and limited to [BioText.maxUserLength].
+  ///
+  /// Only local storage changes here; the caller republishes kind 0 when it
+  /// wants the new bio to reach relays. A no-op when nothing changed keeps
+  /// the Me tab from rebuilding on repeated saves.
+  Future<void> setMyAbout(String about) async {
+    final cleaned = BioText.sanitize(about, maxLength: BioText.maxUserLength);
+    if (cleaned == myAbout) return;
+    myAbout = cleaned;
+    await Hive.box('settings').put('my_about', cleaned);
+  }
+
   Future<void> loadPhotoPath() async {
     myPhotoPath = Hive.box('settings').get('my_photo_path', defaultValue: '');
   }
@@ -258,6 +301,7 @@ class AppSettings {
     if (verifiedChanged) {
       await settingsBox.put('is_nip05_verified', verified);
     }
+    await syncOwnContactIdentity();
     DebugLogger.log('[Settings] Identity updated: $newNip05 (verified: $verified)', type: 'SETUP');
   }
 
@@ -317,57 +361,54 @@ Backup Date: ${DateTime.now().toString()}
     return contact.displayName;
   }
 
-  static Future<void> hydrateSingleContact(String pubkey) async {
+  /// Confirms a contact against the Chatme directory once.
+  ///
+  /// Directory confirmation is the only way a row earns a
+  /// `name@chatme` handle. A kind-0 profile no longer prerequires (or blocks)
+  /// this check: it runs for every contact, even one whose metadata already
+  /// arrived. Only a successful request sets the hydration flag, so a
+  /// temporary network failure retries on the next call instead of leaving
+  /// the contact unconfirmed for good.
+  static Future<void> hydrateSingleContact(
+    String pubkey, {
+    bool force = false,
+  }) async {
     if (pubkey.isEmpty) return;
-
-    // A kind-0 profile is authoritative. Firebase only fills contacts that
-    // have never received metadata, so a released ID cannot be revived.
-    if (ProfileMetaStore.hasProfile(pubkey)) return;
+    // Our own identity is local state (`myNip05`), not a directory lookup.
+    if (pubkey == AppSettings.instance.myPubkey) return;
 
     final settingsBox = Hive.box('settings');
     final flagKey = 'hydrated_$pubkey';
-    if (settingsBox.get(flagKey, defaultValue: false) == true) return;
+    if (!force && settingsBox.get(flagKey, defaultValue: false) == true) {
+      return;
+    }
+
+    final result = await lookupDirectoryIdentity(pubkey);
+    if (!result.isDefinitive) {
+      // Network failure: keep the old row and leave the flag unset.
+      return;
+    }
 
     try {
-      final name = await AppSettings.instance._fetchNameFromFirebase(pubkey);
-      // A kind-0 may have arrived while the fetch was in flight; it wins.
-      if (ProfileMetaStore.hasProfile(pubkey)) return;
-      if (name != null && name.isNotEmpty) {
-        final contactsBox = Hive.box<Contact>('contacts');
-        final contact = contactsBox.get(pubkey);
-        if (contact != null) {
-          // The claimed global ID is the contact's remote identity: always
-          // recorded, and never clobbered by a locally saved nickname.
-          final globalIdChanged = contact.globalId != name;
-          // The display name only follows the claimed ID while the user
-          // hasn't saved their own nickname for this contact.
-          final nameChanged = !contact.isSaved && contact.name != name;
-          if (globalIdChanged) {
-            contact.globalId = name;
-          }
-          if (nameChanged) {
-            contact.name = name;
-          }
-          if (globalIdChanged || nameChanged) {
-            await contactsBox.put(pubkey, contact);
-
-            // Keep Android conversation shortcut label in sync with the new global ID
-            await ShortcutHelper.pushConversationShortcut(
-              id: pubkey,
-              name: contact.displayName,
-              avatarBytes: null,
-            );
-          }
-        }
+      if (result.isFound) {
+        await _applyDirectoryIdentityToContact(
+          pubkey,
+          result.name,
+          displayName: result.name,
+        );
+      } else {
+        // The directory answered: the pubkey is not registered. Only this
+        // definitive answer may clear a cached handle.
+        await _applyDirectoryIdentityToContact(pubkey, null);
       }
       await settingsBox.put(flagKey, true);
-    } catch (_) {
-      // fetch failed, do not set flag, retry next time
+    } catch (e) {
+      DebugLogger.log('[Settings] Contact hydration failed | $e', type: 'ERROR');
     }
   }
 
   static Future<void> hydrateMissingContactNames() async {
-    await _migrateContactGlobalIds();
+    await _migrateContactGlobalIdsToDirectory();
     await _cleanupPlaceholderGlobalIds();
     final contactsBox = Hive.box<Contact>('contacts');
     for (final key in contactsBox.keys.toList()) {
@@ -375,31 +416,106 @@ Backup Date: ${DateTime.now().toString()}
     }
   }
 
-  /// One-time migration for the split between local nicknames and global
-  /// IDs: wipe the per-contact hydration flags so every existing contact
-  /// re-fetches its claimed global ID once. Contacts saved before the
-  /// `globalId` field existed (e.g. renamed to a local nickname, which used
-  /// to clobber the handle shown on the profile page) recover their
-  /// `edwards@chatme` identity this way.
-  static Future<void> _migrateContactGlobalIds() async {
+  /// Applies the locally trusted directory handle to our own contact row.
+  ///
+  /// Claiming or releasing an ID used to depend on the kind-0 receiver
+  /// copying `name` into `globalId`. Since only the directory may set a
+  /// handle now, the row is updated here from [myNip05] instead.
+  static Future<void> syncOwnContactIdentity() async {
+    final settings = AppSettings.instance;
+    if (settings.myPubkey.isEmpty) return;
+    final handle = settings.myNip05.isNotEmpty
+        ? settings.myNip05.split('@').first.trim()
+        : null;
+    await _applyDirectoryIdentityToContact(settings.myPubkey, handle);
+  }
+
+  /// Writes a directory result to a contact row.
+  ///
+  /// [handle] is the confirmed username, or null for a confirmed "not
+  /// registered". A saved nickname is never replaced; only an unsaved row
+  /// follows the directory name.
+  static Future<void> _applyDirectoryIdentityToContact(
+    String pubkey,
+    String? handle, {
+    String? displayName,
+  }) async {
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      final contact = contactsBox.get(pubkey);
+      if (contact == null) return;
+
+      final normalized = (handle == null ||
+              handle.isEmpty ||
+              Contact.isPlaceholderName(handle, pubkey))
+          ? null
+          : handle;
+
+      var changed = false;
+      if (contact.globalId != normalized) {
+        contact.globalId = normalized;
+        changed = true;
+      }
+      if (displayName != null &&
+          displayName.isNotEmpty &&
+          !contact.isSaved &&
+          contact.name != displayName) {
+        contact.name = displayName;
+        changed = true;
+      }
+
+      if (changed) {
+        await contactsBox.put(pubkey, contact);
+        await ShortcutHelper.pushConversationShortcut(
+          id: pubkey,
+          name: contact.displayName,
+          avatarBytes: null,
+        );
+      }
+    } catch (e) {
+      DebugLogger.log('[Settings] Contact identity update failed | $e',
+          type: 'ERROR');
+    }
+  }
+
+  /// One-time migration for directory-confirmed identities.
+  ///
+  /// Earlier versions wrote `globalId` straight from a kind-0 `name`, which
+  /// made any Nostr profile look like a Chatme username. Drop every cached
+  /// handle and the per-contact hydration flags, then let
+  /// [hydrateMissingContactNames] re-confirm each row with the directory.
+  static Future<void> _migrateContactGlobalIdsToDirectory() async {
     final settingsBox = Hive.box('settings');
-    const migrationKey = 'contact_global_id_split_migration';
+    const migrationKey = 'contact_global_id_directory_migration';
     if (settingsBox.get(migrationKey, defaultValue: false) == true) return;
 
     try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      var cleared = 0;
+      for (final key in contactsBox.keys.toList()) {
+        final contact = contactsBox.get(key.toString());
+        if (contact == null || contact.globalId == null) continue;
+        contact.globalId = null;
+        await contactsBox.put(key, contact);
+        cleared++;
+      }
+
       final flags = settingsBox.keys
           .where((k) => k.toString().startsWith('hydrated_'))
           .toList();
       if (flags.isNotEmpty) {
         await settingsBox.deleteAll(flags);
       }
+
       await settingsBox.put(migrationKey, true);
       DebugLogger.log(
-        '[Settings] Global ID migration done (${flags.length} contacts re-hydrating)',
+        '[Settings] Directory identity migration done '
+        '($cleared handles cleared, ${flags.length} contacts re-hydrating)',
         type: 'SETUP',
       );
     } catch (e) {
-      DebugLogger.log('[Settings] Global ID migration failed | $e', type: 'ERROR');
+      DebugLogger.log('[Settings] Directory identity migration failed | $e',
+          type: 'ERROR');
     }
   }
 
@@ -437,12 +553,17 @@ Backup Date: ${DateTime.now().toString()}
     }
   }
 
-  /// Clears the cached identity (globalId and, when the row is not saved,
-  /// the name) from the local contact row for [pubkey]. Called when a
-  /// global ID is released — locally on disconnect, and from the kind-0
-  /// receiver when a peer's newest profile is bare (no name, no nip05) —
-  /// so the row immediately falls back to the npub display.
-  static Future<void> clearContactIdentity(String pubkey) async {
+  /// Clears the cached identity from the local contact row for [pubkey].
+  ///
+  /// Called when a global ID is released locally on disconnect, and from the
+  /// kind-0 receiver when a peer's newest profile is bare (no name, no
+  /// nip05). [includeGlobalId] is false for the latter: a bare kind-0 is not
+  /// proof that the directory released the handle, so the receiver confirms
+  /// it with the directory before clearing anything.
+  static Future<void> clearContactIdentity(
+    String pubkey, {
+    bool includeGlobalId = true,
+  }) async {
     if (pubkey.isEmpty) return;
     try {
       final contactsBox = Hive.box<Contact>('contacts');
@@ -450,7 +571,7 @@ Backup Date: ${DateTime.now().toString()}
       if (contact == null) return;
 
       var changed = false;
-      if (contact.globalId != null) {
+      if (includeGlobalId && contact.globalId != null) {
         contact.globalId = null;
         changed = true;
       }
@@ -487,4 +608,32 @@ Backup Date: ${DateTime.now().toString()}
       return pubkey.length > 16 ? "${pubkey.substring(0, 8)}...${pubkey.substring(pubkey.length - 8)}" : pubkey;
     }
   }
+}
+
+/// The three possible answers from the Chatme directory.
+///
+/// Keeping "not registered" and "request failed" apart matters: a temporary
+/// network error must never erase a valid `name@chatme` handle.
+enum DirectoryLookupStatus { found, notFound, failed }
+
+class DirectoryIdentityLookup {
+  final DirectoryLookupStatus status;
+  final String? name;
+
+  const DirectoryIdentityLookup._(this.status, this.name);
+
+  const DirectoryIdentityLookup.found(String name)
+      : this._(DirectoryLookupStatus.found, name);
+
+  const DirectoryIdentityLookup.notFound()
+      : this._(DirectoryLookupStatus.notFound, null);
+
+  const DirectoryIdentityLookup.failed()
+      : this._(DirectoryLookupStatus.failed, null);
+
+  bool get isFound => status == DirectoryLookupStatus.found;
+
+  /// True when the directory actually answered, whether or not it found a
+  /// row. False means the lookup failed and should be retried later.
+  bool get isDefinitive => status != DirectoryLookupStatus.failed;
 }

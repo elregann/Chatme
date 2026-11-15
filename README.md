@@ -30,7 +30,7 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - Offline outbox: messages and voice notes written without a connection are sent automatically when the network returns.
 - Optional link previews, off by default.
 - Read receipts that you can turn off.
-- Names and profile pictures from standard Nostr profile metadata.
+- Names, profile pictures and bios from standard Nostr profile metadata (kind `0`). Your bio is edited under Global ID and shown below your name in Me; a contact's bio appears under their `npub`. A long bio is clipped to a few lines and opens in a scrollable sheet when tapped. Text written by other people is always shown as plain text.
 
 ### Voice notes
 - Tap the microphone to record, then send or cancel from the recording bar.
@@ -62,7 +62,8 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - Security Vault to view and export `npub` and `nsec` keys.
 - BIP-39 recovery phrase (NIP-06) for backup and restore, compatible with other Nostr clients.
 - Converter between hexadecimal and NIP-19 Bech32 keys.
-- Optional Global ID handle (`username@chatme`).
+- Optional Global ID handle (`username@chatme`). A `name@chatme` handle is shown on a profile only when the Chatme directory confirms that the public key is registered under that username. Every other profile is labelled **Nostr user**, so a kind `0` profile name can never impersonate a Chatme username. Adding a NIP-50 search result never saves the profile name as a Chatme handle.
+- Bios are published as the `about` field of the kind `0` profile. A bio is public: it is stored on the relays your profile reaches, and it can be set with or without a claimed Global ID.
 
 ### Relays and file servers
 - Simultaneous connections to multiple relays with live status.
@@ -80,13 +81,14 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 
 | NIP | Description | Status | Notes |
 | --- | --- | --- | --- |
-| [01](https://github.com/nostr-protocol/nips/blob/master/01.md) | Basic protocol flow | Yes | Events, `REQ`, `EVENT`, `OK`, BIP-340 Schnorr signatures. Profile metadata (kind `0`) is published and read. |
+| [01](https://github.com/nostr-protocol/nips/blob/master/01.md) | Basic protocol flow | Yes | Events, `REQ`, `EVENT`, `OK`, BIP-340 Schnorr signatures. Profile metadata (kind `0`) is published and read, including the `name`, `picture`, `nip05` and `about` fields. Kind `0` keeps the newest `created_at`, with the lowest event id winning a tie, and remembers the winner across restarts. |
 | [04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted direct messages (legacy) | Partial | Receive only (kind `4`), so older conversations stay readable. New messages never use it. |
 | [05](https://github.com/nostr-protocol/nips/blob/master/05.md) | DNS-based identifiers | Partial | The `nip05` field is published in the profile. The `username@chatme` handle is verified through Chatme's own backend, not a `.well-known/nostr.json` lookup. |
 | [06](https://github.com/nostr-protocol/nips/blob/master/06.md) | Key derivation from mnemonic seed phrase | Yes | 12 word BIP-39 phrase, derived with BIP-32 at `m/44'/1237'/0'/0/0`. The same phrase gives the same account in other NIP-06 clients. |
 | [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Partial | Rumor (kind `14`), file message (kind `15`, used for voice notes), seal (kind `13`), gift wrap (kind `1059`). Publishes your Inbox relays as the DM relay list (kind `10050`), and again whenever you change them, so other clients such as Amethyst can reach Chatme. It does not read the recipient's kind `10050` yet, so messages go to the relays Chatme is connected to. |
 | [19](https://github.com/nostr-protocol/nips/blob/master/19.md) | bech32 encoded entities | Partial | `npub` and `nsec` (view, export, convert, add contact), plus `nprofile` for contact QR codes and when adding a contact. Other entities such as `nevent` and `naddr` are not handled. |
 | [21](https://github.com/nostr-protocol/nips/blob/master/21.md) | `nostr:` URI scheme | Partial | Contact QR codes hold a `nostr:nprofile` link, and `nostr:npub` and `nostr:nprofile` are accepted when adding a contact. Secret keys are refused. Other entities are not handled. |
+| [24](https://github.com/nostr-protocol/nips/blob/master/24.md) | Extra metadata fields | Partial | The `display_name` field is read from kind `0` search results and used as a label when `name` is empty. Contacts and Me use `name`; other extra fields such as `website`, `banner`, `bot` and `birthday` are not displayed. |
 | [25](https://github.com/nostr-protocol/nips/blob/master/25.md) | Reactions | Yes | Kind `7`, sent inside a gift wrap. |
 | [42](https://github.com/nostr-protocol/nips/blob/master/42.md) | Authentication of clients to relays | Yes | Answers `AUTH` challenges (kind `22242`) for relays that require it. |
 | [44](https://github.com/nostr-protocol/nips/blob/master/44.md) | Versioned encryption | Yes | Encrypts both the seal and the gift wrap. |
@@ -106,7 +108,7 @@ Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
 
 | Kind | Name | Where | Used for |
 | ---: | --- | --- | --- |
-| `0` | Profile metadata | Public | Display name, picture, `nip05`. Also read from search relays through NIP-50. |
+| `0` | Profile metadata | Public | Display name, picture, `nip05` and the `about` bio. Also read from search relays through NIP-50. |
 | `1` | Short text note | Public | Read only, legacy fallback for plain messages. |
 | `4` | Encrypted direct message (NIP-04) | Public | Read only, legacy fallback. |
 | `7` | Reaction | Inside gift wrap | Emoji reactions to a message. |

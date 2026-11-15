@@ -20,6 +20,7 @@ import 'core/crypto/nip17.dart';
 import 'core/crypto/nip17_isolate.dart';
 import 'core/crypto/nip17_file.dart';
 import 'core/crypto/nostr_protocol.dart';
+import 'core/utils/bio_text.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'core/utils/sync_gate.dart';
@@ -67,6 +68,10 @@ class RelayManager {
 
   /// Challenges already answered this connection (prevents double-sign).
   final Set<String> _answeredAuthChallenges = {};
+
+  /// Contacts with an in-flight directory identity check, so duplicate
+  /// kind-0 copies from several relays only trigger one lookup.
+  final Set<String> _pendingDirectoryChecks = {};
 
   /// AUTH event id → relayUrl, waiting for OK confirmation.
   final Map<String, String> _pendingAuthEventIds = {};
@@ -622,14 +627,24 @@ class RelayManager {
             final content = jsonDecode(rawContent);
             if (content is Map<String, dynamic>) {
               final picture = content['picture'] is String ? content['picture'] as String : null;
-
-              if (ProfileMetaStore.shouldAccept(
+              final rawAbout = content['about'];
+              final about = BioText.sanitize(
+                rawAbout is String ? rawAbout : null,
+              );
+              final accept = ProfileMetaStore.shouldAccept(
                 pubkey,
                 createdAt,
                 eventId,
-              )) {
+              );
+
+              if (accept) {
                 unawaited(
-                  ProfileMetaStore.remember(pubkey, createdAt, eventId),
+                  ProfileMetaStore.remember(
+                    pubkey,
+                    createdAt,
+                    eventId,
+                    about: about,
+                  ),
                 );
 
                 final oldPicture = _profilePics.containsKey(pubkey) ? _profilePics.get(pubkey) : null;
@@ -653,6 +668,11 @@ class RelayManager {
                   } else {
                     AppSettings.instance.savePhotoUrl('');
                   }
+                  // A profile restored or edited in another client carries
+                  // the bio here; `setMyAbout` only writes when it changed.
+                  if (rawAbout is String) {
+                    unawaited(AppSettings.instance.setMyAbout(about));
+                  }
                 }
 
                 final name = content['name'] is String ? content['name'] as String : null;
@@ -669,6 +689,22 @@ class RelayManager {
                 // rebuilds via Hive listeners (contacts box, profile_pics
                 // box). Calling this 100x on startup caused a rebuild
                 // storm that contributed to jank.
+              } else if (ProfileMetaStore.needsAboutBackfill(
+                pubkey,
+                createdAt,
+                eventId,
+              )) {
+                // The winning kind-0 was stored before bios were kept. The
+                // relay replay is enough to backfill the bio; no identity
+                // side effects need to run again.
+                unawaited(
+                  ProfileMetaStore.remember(
+                    pubkey,
+                    createdAt,
+                    eventId,
+                    about: about,
+                  ),
+                );
               }
             }
           }
@@ -745,11 +781,15 @@ class RelayManager {
 
   /// Applies a kind-0 identity (name and nip05) to the local contact row.
   ///
-  /// Placeholder names (npub stubs etc., published by older clients while
-  /// their global ID was disconnected) are not a real identity, so they never
-  /// pollute the contact row. A profile with neither a name nor a nip05 is the
-  /// signature of a released global ID: the cached identity is dropped so the
-  /// row falls back to npub instead of showing a stale handle.
+  /// A kind-0 `name` is only a display name. It is never copied into
+  /// `globalId`: the `name@chatme` handle belongs to the Chatme directory, so
+  /// a Nostr profile called "0xChat" cannot make itself look like a Chatme
+  /// user. A `nip05` ending in `@chatme` is a hint, not proof; it triggers a
+  /// directory lookup, and only a confirmed answer writes the handle.
+  ///
+  /// Placeholder names (npub stubs etc.) are not a real identity. A profile
+  /// with neither a name nor a nip05 no longer wipes the cached handle on
+  /// sight: the directory is asked first, and a failed request keeps it.
   Future<void> _applyProfileIdentity(
     String pubkey, {
     required String? name,
@@ -768,45 +808,123 @@ class RelayManager {
     final hasValidName = name != null &&
         name.isNotEmpty &&
         !Contact.isPlaceholderName(name, pubkey);
+    final cleanNip05 = nip05?.trim() ?? '';
 
-    if (hasValidName) {
-      try {
-        final contactsBox = Hive.box<Contact>('contacts');
-        final contact = contactsBox.get(pubkey);
-        if (contact != null) {
-          var changed = false;
-
-          // The global ID is the contact's remote identity: always keep it
-          // fresh, but never let a locally saved nickname clobber it (it
-          // lives in its own field).
-          if (contact.globalId != name) {
-            contact.globalId = name;
-            changed = true;
-          }
-
-          // The display name only follows remote metadata while the user
-          // hasn't saved their own nickname yet.
-          if (!contact.isSaved && contact.name != name) {
-            contact.name = name;
-            changed = true;
-          }
-
-          if (changed) {
-            await contactsBox.put(pubkey, contact);
-
-            // Keep Android conversation shortcut label in sync with profile name
-            await ShortcutHelper.pushConversationShortcut(
-              id: pubkey,
-              name: contact.displayName,
-              avatarBytes: null,
-            );
-          }
-        }
-      } catch (_) {}
+    if (pubkey == AppSettings.instance.myPubkey) {
+      // Our own handle is trusted local state: it is only set by a successful
+      // DirectoryService claim or restored from the directory, and lives in
+      // `myNip05`. No kind-0 name takes part.
+      await AppSettings.syncOwnContactIdentity();
+      return;
     }
 
-    if (!hasValidName && (nip05 == null || nip05.isEmpty)) {
-      await AppSettings.clearContactIdentity(pubkey);
+    if (hasValidName) {
+      await _applyContactName(pubkey, name);
+    }
+
+    if (cleanNip05.isNotEmpty) {
+      final at = cleanNip05.lastIndexOf('@');
+      final domain =
+          at >= 0 ? cleanNip05.substring(at + 1).toLowerCase() : '';
+      if (domain == 'chatme') {
+        final candidate = at > 0 ? cleanNip05.substring(0, at).trim() : '';
+        if (candidate.isNotEmpty) {
+          _verifyChatmeIdentity(pubkey, candidate: candidate);
+        }
+      }
+      // Other NIP-05 providers say nothing about a Chatme handle.
+      return;
+    }
+
+    if (hasValidName) return;
+
+    // The newest profile declares nothing at all. Drop a stale unsaved name,
+    // but let the directory decide whether the handle is gone.
+    await AppSettings.clearContactIdentity(pubkey, includeGlobalId: false);
+    String? cachedHandle;
+    try {
+      cachedHandle = Hive.box<Contact>('contacts').get(pubkey)?.globalId;
+    } catch (_) {}
+    if (cachedHandle != null && cachedHandle.isNotEmpty) {
+      _verifyChatmeIdentity(pubkey, candidate: cachedHandle);
+    }
+  }
+
+  /// Updates the display name of an unsaved contact from its kind-0.
+  Future<void> _applyContactName(String pubkey, String name) async {
+    try {
+      final contactsBox = Hive.box<Contact>('contacts');
+      final contact = contactsBox.get(pubkey);
+      if (contact == null || contact.isSaved || contact.name == name) return;
+
+      contact.name = name;
+      await contactsBox.put(pubkey, contact);
+      await ShortcutHelper.pushConversationShortcut(
+        id: pubkey,
+        name: contact.displayName,
+        avatarBytes: null,
+      );
+    } catch (_) {}
+  }
+
+  /// Starts at most one directory check per contact at a time.
+  ///
+  /// [candidate] is the handle from the peer's `nip05`, or the cached handle
+  /// when a newer profile is bare. If the row already carries exactly that
+  /// handle it was confirmed before, so no request is needed.
+  void _verifyChatmeIdentity(String pubkey, {required String candidate}) {
+    if (pubkey.isEmpty || pubkey == AppSettings.instance.myPubkey) return;
+    try {
+      final contact = Hive.box<Contact>('contacts').get(pubkey);
+      if (contact != null && contact.globalId == candidate) return;
+    } catch (_) {}
+
+    if (!_pendingDirectoryChecks.add(pubkey)) return;
+    unawaited(_runChatmeIdentityCheck(pubkey));
+  }
+
+  Future<void> _runChatmeIdentityCheck(String pubkey) async {
+    try {
+      final result = await AppSettings.lookupDirectoryIdentity(pubkey);
+      // A failed request keeps whatever the row already has.
+      if (!result.isDefinitive) return;
+
+      final contactsBox = Hive.box<Contact>('contacts');
+      final contact = contactsBox.get(pubkey);
+      if (contact == null) return;
+
+      final name = result.isFound ? result.name : null;
+      final normalized = (name == null ||
+              name.isEmpty ||
+              Contact.isPlaceholderName(name, pubkey))
+          ? null
+          : name;
+
+      var changed = false;
+      if (contact.globalId != normalized) {
+        contact.globalId = normalized;
+        changed = true;
+      }
+      if (result.isFound &&
+          !contact.isSaved &&
+          contact.name != result.name) {
+        contact.name = result.name!;
+        changed = true;
+      }
+
+      if (changed) {
+        await contactsBox.put(pubkey, contact);
+        await ShortcutHelper.pushConversationShortcut(
+          id: pubkey,
+          name: contact.displayName,
+          avatarBytes: null,
+        );
+      }
+    } catch (e) {
+      DebugLogger.log('[Profile] Directory identity check failed | $e',
+          type: 'ERROR');
+    } finally {
+      _pendingDirectoryChecks.remove(pubkey);
     }
   }
 
@@ -1732,6 +1850,8 @@ class RelayManager {
         if (myName != null && myName.isNotEmpty) 'name': myName,
         if (AppSettings.instance.myNip05.isNotEmpty)
           'nip05': AppSettings.instance.myNip05,
+        if (AppSettings.instance.myAbout.isNotEmpty)
+          'about': AppSettings.instance.myAbout,
         if (effectivePhotoUrl != null && effectivePhotoUrl.isNotEmpty) 'picture': effectivePhotoUrl,
       });
 
@@ -1750,7 +1870,12 @@ class RelayManager {
 
       // Persist the new watermark before anything else, so an event that
       // arrives while the local identity update runs cannot win.
-      await ProfileMetaStore.remember(myPubkey, createdAt, eventId);
+      await ProfileMetaStore.remember(
+        myPubkey,
+        createdAt,
+        eventId,
+        about: AppSettings.instance.myAbout,
+      );
 
       // Local-first identity update: the watermark above makes the receiver
       // ignore the echo of this event, so our own contact row is updated here.

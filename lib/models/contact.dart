@@ -56,6 +56,39 @@ class Contact {
     return globalHandle.isNotEmpty;
   }
 
+  /// A `name@chatme` handle, but only when the Chatme directory confirmed it.
+  ///
+  /// [globalId] is written exclusively from the directory, never from an
+  /// arbitrary kind-0 `name`, so a Nostr profile called "0xChat" cannot
+  /// pretend to be "0xChat@chatme". Placeholder values that leaked in from
+  /// older app versions are rejected as well.
+  String? get chatmeHandle {
+    final handle = globalId?.trim() ?? '';
+    if (handle.isEmpty || isPlaceholderName(handle, pubkey)) return null;
+    return '$handle@chatme';
+  }
+
+  /// Builds a contact row from a global-search result.
+  ///
+  /// Only a row that came from the Chatme directory may carry a global ID.
+  /// A NIP-50 result from the wider Nostr ecosystem has a profile `name`, not
+  /// a Chatme username, so [globalId] stays null even when the names look
+  /// alike.
+  factory Contact.fromSearchResult({
+    required String pubkey,
+    required String name,
+    required String source,
+    bool isSaved = true,
+  }) {
+    final confirmed = source == 'Chatme' && !isPlaceholderName(name, pubkey);
+    return Contact(
+      pubkey: pubkey,
+      name: name,
+      isSaved: isSaved,
+      globalId: confirmed ? name : null,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'pubkey': pubkey,

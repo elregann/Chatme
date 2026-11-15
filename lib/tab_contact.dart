@@ -154,18 +154,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  Future<void> _quickAddFromGlobal(String name, String pubkey) async {
+  Future<void> _quickAddFromGlobal(Map<String, String> result) async {
+    final name = result['username'] ?? '';
+    final pubkey = result['pubkey'] ?? '';
     try {
       final contactsBox = Hive.box<Contact>('contacts');
       final normalizedPubkey = KeyUtils.normalizeToHex(pubkey);
-      final contact = Contact(
+      // Only a Chatme directory row may store a `name@chatme` handle. A NIP-50
+      // result from another client has a profile name, not a Chatme username.
+      final contact = Contact.fromSearchResult(
         pubkey: normalizedPubkey,
         name: name,
-        isSaved: true,
-        lastChatTime: 0,
-        lastMessage: '',
-        unreadCount: 0,
-        globalId: name,
+        source: result['source'] ?? 'Nostr',
       );
       await contactsBox.put(normalizedPubkey, contact);
 
@@ -174,6 +174,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
         name: contact.displayName,
         avatarBytes: null,
       );
+
+      // Fetch the new contact's kind 0 (name, picture, bio) without waiting
+      // for the next launch.
+      widget.relayManager.refreshProfileSubscription();
 
       HapticFeedback.mediumImpact();
 
@@ -197,10 +201,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _addContact() async {
-    await Navigator.push(
+    final added = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (context) => const AddContactPage()),
     );
+    // Ask the relays for the new contact's kind 0 so the profile page has a
+    // name, picture and bio without waiting for the next launch.
+    if (added == true) {
+      widget.relayManager.refreshProfileSubscription();
+    }
   }
 
   Future<void> _deleteContact(Contact contact) async {
@@ -215,20 +224,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
     if (confirmed) {
       final contactsBox = Hive.box<Contact>('contacts');
 
-      // Check if user has a registered global username
-      String? globalName;
+      // Check the directory for a registered Chatme username. A failed
+      // request leaves a previously confirmed handle in place.
+      var lookup = const DirectoryIdentityLookup.failed();
       try {
-        globalName =
-            await AppSettings.instance.fetchGlobalUsername(contact.pubkey);
+        lookup = await AppSettings.lookupDirectoryIdentity(contact.pubkey);
       } catch (_) {}
 
+      final globalName = lookup.isFound ? lookup.name : null;
       final newName = globalName ?? '';
       contact.isSaved = false;
       contact.name = newName;
-      // Removing a contact drops the local nickname, but the claimed
-      // global ID is the peer's remote identity — keep it around so the
-      // profile page keeps showing the correct `edwards@chatme` handle.
-      if (globalName != null && globalName.isNotEmpty) {
+      // Removing a contact drops the local nickname, but a claimed global
+      // ID is the peer's remote identity. Keep it only while the directory
+      // still confirms it.
+      if (lookup.isDefinitive) {
         contact.globalId = globalName;
       }
 
@@ -363,8 +373,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   icon: Icon(Remix.user_add_line,
                                       color: Theme.of(context).iconTheme.color),
                                   onPressed: () {
-                                    _quickAddFromGlobal(
-                                        res['username']!, res['pubkey']!);
+                                    _quickAddFromGlobal(res);
                                   },
                                 ),
                                 onTap: () {
@@ -372,14 +381,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
                                   final normalizedPubkey =
                                       KeyUtils.normalizeToHex(res['pubkey']!);
-                                  final tempContact = Contact(
+                                  final tempContact = Contact.fromSearchResult(
                                     pubkey: normalizedPubkey,
                                     name: res['username']!,
+                                    source: res['source'] ?? 'Nostr',
                                     isSaved: false,
-                                    lastChatTime: 0,
-                                    lastMessage: '',
-                                    unreadCount: 0,
-                                    globalId: res['username'],
                                   );
 
                                   Navigator.push(

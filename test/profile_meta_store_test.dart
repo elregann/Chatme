@@ -116,6 +116,72 @@ void main() {
     expect(ProfileMetaStore.hasProfile(pubkey), isFalse);
   });
 
+  group('about', () {
+    test('stores the bio of a kind 0 and exposes it', () async {
+      await ProfileMetaStore.remember(pubkey, 100, 'id100', about: 'hello');
+
+      expect(ProfileMetaStore.aboutFor(pubkey), 'hello');
+    });
+
+    test('is empty for a pubkey with no kind 0', () {
+      expect(ProfileMetaStore.aboutFor('never-seen'), '');
+    });
+
+    test('a newer kind 0 replaces the bio, even with an empty one', () async {
+      await ProfileMetaStore.remember(pubkey, 100, 'id100', about: 'first');
+      await ProfileMetaStore.remember(pubkey, 101, 'id101', about: '');
+
+      expect(ProfileMetaStore.aboutFor(pubkey), '');
+    });
+
+    test('omitting about keeps the previous bio', () async {
+      await ProfileMetaStore.remember(pubkey, 100, 'id100', about: 'keep me');
+
+      await ProfileMetaStore.remember(pubkey, 101, 'id101');
+
+      expect(ProfileMetaStore.aboutFor(pubkey), 'keep me');
+    });
+
+    test('survives a restart', () async {
+      await ProfileMetaStore.remember(pubkey, 100, 'id100', about: 'persisted');
+
+      ProfileMetaStore.resetForTest();
+
+      expect(ProfileMetaStore.aboutFor(pubkey), 'persisted');
+    });
+
+    test('forget clears the bio too', () async {
+      await ProfileMetaStore.remember(pubkey, 100, 'id100', about: 'gone');
+
+      await ProfileMetaStore.forget(pubkey);
+
+      expect(ProfileMetaStore.aboutFor(pubkey), '');
+    });
+
+    test('needsAboutBackfill only for the current event with an unknown bio',
+        () async {
+      await ProfileMetaStore.remember(pubkey, 100, 'id100');
+
+      expect(ProfileMetaStore.needsAboutBackfill(pubkey, 100, 'id100'), isTrue);
+      expect(ProfileMetaStore.needsAboutBackfill(pubkey, 99, 'id100'), isFalse);
+      expect(ProfileMetaStore.needsAboutBackfill(pubkey, 101, 'id101'), isFalse);
+
+      await ProfileMetaStore.remember(pubkey, 100, 'id100', about: '');
+
+      expect(
+        ProfileMetaStore.needsAboutBackfill(pubkey, 100, 'id100'),
+        isFalse,
+      );
+    });
+
+    test('an older event cannot replace the current bio', () async {
+      await ProfileMetaStore.remember(pubkey, 200, 'id200', about: 'new');
+
+      expect(ProfileMetaStore.shouldAccept(pubkey, 100, 'id100'), isFalse);
+      expect(ProfileMetaStore.aboutFor(pubkey), 'new');
+    });
+  });
+
   test('deleting a contacts row forgets only that pubkey', () async {
     await ProfileMetaStore.remember(pubkey, 100, 'id100');
     await ProfileMetaStore.remember(otherPubkey, 200, 'id200');

@@ -19,6 +19,7 @@ import 'ui/profile/relay_status.dart';
 import 'ui/profile/file_servers.dart';
 import 'ui/profile/key_converter.dart';
 import 'ui/qr/qr_code_page.dart';
+import 'widgets/profile_bio.dart';
 import 'ui/chat_image_crop_page.dart';
 import 'package:remixicon/remixicon.dart';
 import 'dart:io' show File, Platform;
@@ -423,6 +424,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _openGlobalId() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GlobalIdPage(relayManager: widget.relayManager),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _currentHandle = AppSettings.instance.myNip05;
+      _isEditing = _currentHandle.isEmpty;
+    });
+  }
+
   void _showRestoreDialog(BuildContext context) async {
     await Navigator.push(
       context,
@@ -527,6 +542,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         keys: const [
           'my_pubkey',
           'my_name',
+          'my_about',
           'my_photo_path',
           'my_photo_url',
           'link_previews_enabled',
@@ -645,6 +661,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: textPrimary)),
+                      const SizedBox(height: 6),
+                      // The bio sits under the name without a card. A long
+                      // bio is clipped to a few lines and opens in a sheet,
+                      // so it cannot push the rest of the page away.
+                      ProfileBioText(
+                        about: settings.myAbout,
+                        maxLines: 3,
+                        textAlign: TextAlign.center,
+                        showEmptyHint: true,
+                        emptyHint: 'Add a bio',
+                        onEmptyTap: _openGlobalId,
+                      ),
                     ],
                   ),
                 ),
@@ -671,18 +699,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded,
                         color: textSecondary),
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => GlobalIdPage(
-                                relayManager: widget.relayManager)),
-                      );
-                      setState(() {
-                        _currentHandle = AppSettings.instance.myNip05;
-                        _isEditing = _currentHandle.isEmpty;
-                      });
-                    },
+                    onTap: _openGlobalId,
                   ),
                 ),
                 const SizedBox(height: 24),
