@@ -11,8 +11,289 @@ import '../../services/chat_reply.dart';
 import '../../services/gallery_save.dart';
 import '../../widgets/chatme_menu.dart';
 
+/// The players on screen that a swipe should silence at once. The gallery owns
+/// one and hands it to every video page; each page adds its own pause while it
+/// lives and removes it when it goes.
+class VideoPauseGroup {
+  final Set<VoidCallback> _pauses = {};
+
+  void add(VoidCallback pause) => _pauses.add(pause);
+
+  void remove(VoidCallback pause) => _pauses.remove(pause);
+
+  void pauseAll() {
+    for (final pause in _pauses) {
+      pause();
+    }
+  }
+}
+
+/// The video surface and its controls, used full screen and inside the
+/// swipeable gallery.
+///
+/// It owns one [VideoPlayerController] and starts paused unless [autoPlay] is
+/// true. A gallery page that is merely being swiped past is not [active] and
+/// owns no decoder at all, so only the video on screen is ever alive.
+class VideoPlayerView extends StatefulWidget {
+  final String path;
+
+  /// Starts playing as soon as the decoder is ready. The gallery keeps this
+  /// off so the video waits for a tap.
+  final bool autoPlay;
+
+  /// Whether this page may own a decoder. Always true outside the gallery.
+  final bool active;
+
+  /// The length from the message, used when the decoder has not reported one
+  /// yet, so the clock is ready the moment the page appears.
+  final int? knownDurationSeconds;
+
+  /// The players a swipe should silence. See [VideoPauseGroup].
+  final VideoPauseGroup? pauseGroup;
+
+  const VideoPlayerView({
+    super.key,
+    required this.path,
+    this.autoPlay = true,
+    this.active = true,
+    this.knownDurationSeconds,
+    this.pauseGroup,
+  });
+
+  @override
+  State<VideoPlayerView> createState() => _VideoPlayerViewState();
+}
+
+class _VideoPlayerViewState extends State<VideoPlayerView> {
+  VideoPlayerController? _controller;
+  late final VoidCallback _pause = _pauseNow;
+  int _generation = 0;
+  bool _ready = false;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.pauseGroup?.add(_pause);
+    if (widget.active) _start();
+  }
+
+  @override
+  void didUpdateWidget(VideoPlayerView old) {
+    super.didUpdateWidget(old);
+    if (old.pauseGroup != widget.pauseGroup) {
+      old.pauseGroup?.remove(_pause);
+      widget.pauseGroup?.add(_pause);
+    }
+    if (old.path != widget.path) {
+      _stop();
+      if (widget.active) _start();
+    } else if (old.active != widget.active) {
+      if (widget.active) {
+        _start();
+      } else {
+        _stop();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.pauseGroup?.remove(_pause);
+    _generation++;
+    _controller?.dispose();
+    _controller = null;
+    super.dispose();
+  }
+
+  void _start() {
+    if (_controller != null) return;
+    final controller = VideoPlayerController.file(File(widget.path));
+    _controller = controller;
+    _ready = false;
+    _failed = false;
+    final generation = ++_generation;
+    _run(controller, generation);
+  }
+
+  void _stop() {
+    _generation++;
+    final controller = _controller;
+    _controller = null;
+    _ready = false;
+    _failed = false;
+    controller?.dispose();
+  }
+
+  /// A late initialization from a page that has already moved on must not
+  /// touch the new controller or the widget tree.
+  bool _current(VideoPlayerController controller, int generation) =>
+      mounted && identical(_controller, controller) && generation == _generation;
+
+  Future<void> _run(VideoPlayerController controller, int generation) async {
+    try {
+      await controller.initialize();
+      if (!_current(controller, generation)) return;
+      await controller.setLooping(false);
+      if (!_current(controller, generation)) return;
+      if (widget.autoPlay) {
+        await controller.play();
+        if (!_current(controller, generation)) return;
+      }
+      if (!mounted) return;
+      setState(() => _ready = true);
+    } catch (_) {
+      if (!_current(controller, generation)) return;
+      setState(() => _failed = true);
+    }
+  }
+
+  void _pauseNow() {
+    final controller = _controller;
+    if (controller == null) return;
+    final value = controller.value;
+    if (value.isInitialized && value.isPlaying) controller.pause();
+  }
+
+  void _togglePlay() {
+    final controller = _controller;
+    if (controller == null) return;
+    final value = controller.value;
+    if (!value.isInitialized) return;
+    if (value.isPlaying) {
+      controller.pause();
+    } else {
+      controller.play();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) return _inactive();
+
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        if (_failed || value.hasError) {
+          return const Center(
+            child: Text(
+              'This video cannot be played',
+              style: TextStyle(color: Colors.white70),
+            ),
+          );
+        }
+        if (!_ready || !value.isInitialized) {
+          return const Center(
+            child: SizedBox(
+              width: 30,
+              height: 30,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: Colors.white,
+              ),
+            ),
+          );
+        }
+
+        // ExoPlayer can report a zero length right after it starts; the
+        // message already knows how long the video is.
+        final known = widget.knownDurationSeconds;
+        final duration = value.duration > Duration.zero
+            ? value.duration
+            : Duration(seconds: known != null && known > 0 ? known : 0);
+
+        return Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _togglePlay,
+                  child: AspectRatio(
+                    aspectRatio: value.aspectRatio,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        VideoPlayer(controller),
+                        if (!value.isPlaying)
+                          const Center(
+                            child: Icon(
+                              Icons.play_circle_fill_rounded,
+                              color: Colors.white70,
+                              size: 64,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            _controls(controller, value, duration),
+          ],
+        );
+      },
+    );
+  }
+
+  /// A video page that is not on screen yet. It owns no decoder, so a swipe
+  /// past it costs the same as a black square.
+  Widget _inactive() {
+    return const ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Icon(
+          Icons.play_circle_fill_rounded,
+          color: Colors.white24,
+          size: 64,
+        ),
+      ),
+    );
+  }
+
+  Widget _controls(
+    VideoPlayerController controller,
+    VideoPlayerValue value,
+    Duration duration,
+  ) {
+    return SafeArea(
+      top: false,
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _togglePlay,
+            icon: Icon(
+              value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              color: Colors.white,
+            ),
+          ),
+          Expanded(
+            child: VideoProgressIndicator(
+              controller,
+              allowScrubbing: true,
+              colors: const VideoProgressColors(
+                playedColor: Colors.white,
+                bufferedColor: Colors.white38,
+                backgroundColor: Colors.white24,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${DurationUtils.formatClock(value.position.inSeconds)} / '
+            '${DurationUtils.formatClock(duration.inSeconds)}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+    );
+  }
+}
+
 /// A video played full screen, with a slider and the same menu as a picture.
-class VideoViewerPage extends StatefulWidget {
+class VideoViewerPage extends StatelessWidget {
   final String path;
   final ChatMessage? message;
 
@@ -34,43 +315,11 @@ class VideoViewerPage extends StatefulWidget {
     return GallerySaver.save(path, video: true);
   }
 
-  @override
-  State<VideoViewerPage> createState() => _VideoViewerPageState();
-}
-
-class _VideoViewerPageState extends State<VideoViewerPage> {
-  late final VideoPlayerController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.file(File(widget.path));
-    _start();
-  }
-
-  Future<void> _start() async {
-    try {
-      await _controller.initialize();
-      if (!mounted) return;
-      await _controller.setLooping(false);
-      await _controller.play();
-      if (mounted) setState(() {});
-    } catch (_) {
-      if (mounted) setState(() {});
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
+  Future<void> _save(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     String text;
     try {
-      await widget.saveToGallery(widget.path);
+      await saveToGallery(path);
       text = 'Saved to the Chatme album';
     } on GallerySaveException catch (e) {
       text = e.message;
@@ -85,26 +334,15 @@ class _VideoViewerPageState extends State<VideoViewerPage> {
   }
 
   void _reply() {
-    final message = widget.message;
+    final message = this.message;
     if (message == null || !canReplyTo(message)) return;
-    widget.onReply?.call(message);
-  }
-
-  void _togglePlay() {
-    final value = _controller.value;
-    if (!value.isInitialized) return;
-    if (value.isPlaying) {
-      _controller.pause();
-    } else {
-      _controller.play();
-    }
+    onReply?.call(message);
   }
 
   @override
   Widget build(BuildContext context) {
-    final message = widget.message;
-    final canReply =
-        message != null && widget.onReply != null && canReplyTo(message);
+    final message = this.message;
+    final canReply = message != null && onReply != null && canReplyTo(message);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -124,99 +362,13 @@ class _VideoViewerPageState extends State<VideoViewerPage> {
               if (canReply)
                 const ChatmeMenuEntry(value: 1, icon: Icons.reply, label: 'Reply'),
             ],
-            onSelected: (value) => value == 0 ? _save() : _reply(),
+            onSelected: (value) => value == 0 ? _save(context) : _reply(),
           ),
         ],
       ),
-      body: ValueListenableBuilder<VideoPlayerValue>(
-        valueListenable: _controller,
-        builder: (context, value, _) {
-          if (value.hasError) {
-            return const Center(
-              child: Text(
-                'This video cannot be played',
-                style: TextStyle(color: Colors.white70),
-              ),
-            );
-          }
-          if (!value.isInitialized) {
-            return const Center(
-              child: SizedBox(
-                width: 30,
-                height: 30,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  color: Colors.white,
-                ),
-              ),
-            );
-          }
-          return Column(
-            children: [
-              Expanded(
-                child: Center(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _togglePlay,
-                    child: AspectRatio(
-                      aspectRatio: value.aspectRatio,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          VideoPlayer(_controller),
-                          if (!value.isPlaying)
-                            const Center(
-                              child: Icon(
-                                Icons.play_circle_fill_rounded,
-                                color: Colors.white70,
-                                size: 64,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              _controls(value),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _controls(VideoPlayerValue value) {
-    return SafeArea(
-      top: false,
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: _togglePlay,
-            icon: Icon(
-              value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              color: Colors.white,
-            ),
-          ),
-          Expanded(
-            child: VideoProgressIndicator(
-              _controller,
-              allowScrubbing: true,
-              colors: const VideoProgressColors(
-                playedColor: Colors.white,
-                bufferedColor: Colors.white38,
-                backgroundColor: Colors.white24,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            '${DurationUtils.formatClock(value.position.inSeconds)} / '
-            '${DurationUtils.formatClock(value.duration.inSeconds)}',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(width: 12),
-        ],
+      body: VideoPlayerView(
+        path: path,
+        knownDurationSeconds: message?.fileDurationSeconds,
       ),
     );
   }

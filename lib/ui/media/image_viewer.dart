@@ -6,12 +6,11 @@ import '../../models/chat_message.dart';
 import '../../services/chat_reply.dart';
 import '../../services/gallery_save.dart';
 import '../../services/media_history.dart';
-import '../../services/video_thumbnails.dart';
 import '../../widgets/chatme_menu.dart';
 import 'video_viewer.dart';
 
 /// Full screen media from a chat. Swipe to change, pinch to zoom a picture,
-/// tap a video to play it.
+/// tap a video to play it in place.
 class ImageViewerPage extends StatefulWidget {
   final List<String> paths;
   final int initialIndex;
@@ -62,6 +61,10 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
   late int _index;
   bool _zoomed = false;
 
+  /// The players that a swipe can silence, so a video never keeps talking
+  /// while its page slides away.
+  final VideoPauseGroup _videoPauses = VideoPauseGroup();
+
   @override
   void initState() {
     super.initState();
@@ -107,20 +110,6 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
   bool _isVideoPage(int index) =>
       index < widget.messages.length && widget.messages[index].isVideo;
 
-  /// Opens the player for the video on this page. The gallery itself never
-  /// starts a decoder; a swipe past a video only draws its saved poster.
-  void _openVideo() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => VideoViewerPage(
-          path: _paths[_index],
-          message: _currentMessage,
-          onReply: widget.onReply,
-        ),
-      ),
-    );
-  }
-
   void _reply() {
     final message = _currentMessage;
     if (message == null || !canReplyTo(message)) return;
@@ -159,94 +148,42 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
           ),
         ],
       ),
-      body: PageView.builder(
-        controller: _controller,
-        itemCount: _paths.length,
-        physics: _zoomed ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
-        onPageChanged: (i) => setState(() {
-          _index = i;
-          _zoomed = false;
-        }),
-        itemBuilder: (_, i) => _isVideoPage(i)
-            ? _VideoPosterPage(
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is ScrollStartNotification &&
+              notification.dragDetails != null) {
+            _videoPauses.pauseAll();
+          }
+          return false;
+        },
+        child: PageView.builder(
+          controller: _controller,
+          itemCount: _paths.length,
+          physics: _zoomed
+              ? const NeverScrollableScrollPhysics()
+              : const PageScrollPhysics(),
+          onPageChanged: (i) => setState(() {
+            _index = i;
+            _zoomed = false;
+          }),
+          itemBuilder: (_, i) {
+            if (_isVideoPage(i)) {
+              return VideoPlayerView(
                 key: ValueKey(_paths[i]),
                 path: _paths[i],
-                onOpen: _openVideo,
-              )
-            : _ZoomablePage(
-                key: ValueKey(_paths[i]),
-                path: _paths[i],
-                onZoomChanged: _setZoomed,
-              ),
-      ),
-    );
-  }
-}
-
-/// A video inside the gallery. It draws the poster saved next to the file and
-/// opens the player on a tap, so swiping past videos costs the same as
-/// swiping past pictures.
-class _VideoPosterPage extends StatefulWidget {
-  final String path;
-  final VoidCallback onOpen;
-
-  const _VideoPosterPage({
-    super.key,
-    required this.path,
-    required this.onOpen,
-  });
-
-  @override
-  State<_VideoPosterPage> createState() => _VideoPosterPageState();
-}
-
-class _VideoPosterPageState extends State<_VideoPosterPage> {
-  String? _thumb;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  void _load() {
-    final cached = VideoThumbnails.pathFor(widget.path);
-    if (File(cached).existsSync()) {
-      _thumb = cached;
-      return;
-    }
-    VideoThumbnails.instance.ensure(widget.path).then((thumb) {
-      if (!mounted || thumb == null) return;
-      setState(() => _thumb = thumb);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final thumb = _thumb;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: widget.onOpen,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (thumb != null)
-            Image.file(
-              File(thumb),
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black),
-            )
-          else
-            const ColoredBox(color: Colors.black),
-          const Center(
-            child: Icon(
-              Icons.play_circle_fill_rounded,
-              color: Colors.white70,
-              size: 64,
-            ),
-          ),
-        ],
+                autoPlay: false,
+                active: i == _index,
+                knownDurationSeconds: widget.messages[i].fileDurationSeconds,
+                pauseGroup: _videoPauses,
+              );
+            }
+            return _ZoomablePage(
+              key: ValueKey(_paths[i]),
+              path: _paths[i],
+              onZoomChanged: _setZoomed,
+            );
+          },
+        ),
       ),
     );
   }

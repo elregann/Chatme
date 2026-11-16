@@ -15,7 +15,6 @@ import '../services/media_download.dart';
 import '../services/media_history.dart';
 import '../services/video_thumbnails.dart';
 import '../ui/media/image_viewer.dart';
-import '../ui/media/video_viewer.dart';
 
 /// All pictures and videos of one chat as a grid of square tiles, newest first.
 class MediaHistoryGrid extends StatelessWidget {
@@ -158,25 +157,6 @@ class _MediaTileState extends State<_MediaTile> {
   }
 
   void _open() {
-    if (widget.message.isVideo) {
-      final message = widget.message;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => VideoViewerPage(
-            path: message.localPath,
-            message: message,
-            onReply: (message) => ChatReplyNavigator.instance.openReply(
-              context,
-              message,
-              contact: widget.contact,
-              relayManager: widget.relayManager,
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-
     final set = viewerSetFor(widget.all, widget.message.id);
     if (set == null) return;
     Navigator.of(context).push(

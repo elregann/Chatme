@@ -153,21 +153,6 @@ void main() {
       expect(find.text('2 / 2'), findsOneWidget);
     });
 
-    testWidgets('a video page shows a play button and no player', (tester) async {
-      final media = [
-        msg('v', 400, file: video, path: '/m/v.mp4'),
-        msg('a', 100, file: image, path: '/m/a.jpg'),
-      ];
-      await tester.pumpWidget(host(ImageViewerPage(
-        paths: media.map((m) => m.localPath).toList(),
-        messages: media,
-      )));
-      await tester.pump();
-
-      expect(find.text('1 / 2'), findsOneWidget);
-      expect(find.byIcon(Icons.play_circle_fill_rounded), findsOneWidget);
-    });
-
     testWidgets('a single picture shows no counter', (tester) async {
       await tester.pumpWidget(host(const ImageViewerPage.single(path: '/x/1.jpg')));
       await tester.pump();
