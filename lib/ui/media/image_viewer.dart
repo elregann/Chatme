@@ -6,23 +6,30 @@ import '../../models/chat_message.dart';
 import '../../services/chat_reply.dart';
 import '../../services/gallery_save.dart';
 import '../../services/media_history.dart';
+import '../../services/video_thumbnails.dart';
 import '../../widgets/chatme_menu.dart';
+import 'video_viewer.dart';
 
-/// Full screen pictures. Swipe to change, pinch to zoom.
+/// Full screen media from a chat. Swipe to change, pinch to zoom a picture,
+/// tap a video to play it.
 class ImageViewerPage extends StatefulWidget {
   final List<String> paths;
   final int initialIndex;
 
-  /// The messages shown in [paths], in the same order. Used for Reply.
+  /// The messages shown in [paths], in the same order. Used for Reply and to
+  /// tell a video page from a picture.
   final List<ChatMessage> messages;
 
-  /// Replies to the picture on screen. No Reply item is shown without it.
+  /// Replies to the media on screen. No Reply item is shown without it.
   final ValueChanged<ChatMessage>? onReply;
 
   final String? _single;
 
   /// Saves a picture to the gallery. Replaceable for tests.
   final Future<void> Function(String path) saveToGallery;
+
+  /// Saves a video to the gallery. Replaceable for tests.
+  final Future<void> Function(String path) saveVideoToGallery;
 
   const ImageViewerPage({
     super.key,
@@ -31,6 +38,7 @@ class ImageViewerPage extends StatefulWidget {
     this.messages = const [],
     this.onReply,
     this.saveToGallery = GallerySaver.save,
+    this.saveVideoToGallery = VideoViewerPage.saveVideoToGallery,
   }) : _single = null;
 
   const ImageViewerPage.single({
@@ -39,6 +47,7 @@ class ImageViewerPage extends StatefulWidget {
     this.messages = const [],
     this.onReply,
     this.saveToGallery = GallerySaver.save,
+    this.saveVideoToGallery = VideoViewerPage.saveVideoToGallery,
   })  : paths = const [],
         initialIndex = 0,
         _single = path;
@@ -69,14 +78,19 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
 
   Future<void> _save() async {
     final messenger = ScaffoldMessenger.of(context);
+    final video = _isVideoPage(_index);
     String text;
     try {
-      await widget.saveToGallery(_paths[_index]);
+      if (video) {
+        await widget.saveVideoToGallery(_paths[_index]);
+      } else {
+        await widget.saveToGallery(_paths[_index]);
+      }
       text = 'Saved to the Chatme album';
     } on GallerySaveException catch (e) {
       text = e.message;
     } catch (_) {
-      text = 'Could not save the photo';
+      text = video ? 'Could not save the video' : 'Could not save the photo';
     }
     messenger
       ..hideCurrentSnackBar()
@@ -89,6 +103,23 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
 
   ChatMessage? get _currentMessage =>
       _index < widget.messages.length ? widget.messages[_index] : null;
+
+  bool _isVideoPage(int index) =>
+      index < widget.messages.length && widget.messages[index].isVideo;
+
+  /// Opens the player for the video on this page. The gallery itself never
+  /// starts a decoder; a swipe past a video only draws its saved poster.
+  void _openVideo() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VideoViewerPage(
+          path: _paths[_index],
+          message: _currentMessage,
+          onReply: widget.onReply,
+        ),
+      ),
+    );
+  }
 
   void _reply() {
     final message = _currentMessage;
@@ -136,11 +167,86 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
           _index = i;
           _zoomed = false;
         }),
-        itemBuilder: (_, i) => _ZoomablePage(
-          key: ValueKey(_paths[i]),
-          path: _paths[i],
-          onZoomChanged: _setZoomed,
-        ),
+        itemBuilder: (_, i) => _isVideoPage(i)
+            ? _VideoPosterPage(
+                key: ValueKey(_paths[i]),
+                path: _paths[i],
+                onOpen: _openVideo,
+              )
+            : _ZoomablePage(
+                key: ValueKey(_paths[i]),
+                path: _paths[i],
+                onZoomChanged: _setZoomed,
+              ),
+      ),
+    );
+  }
+}
+
+/// A video inside the gallery. It draws the poster saved next to the file and
+/// opens the player on a tap, so swiping past videos costs the same as
+/// swiping past pictures.
+class _VideoPosterPage extends StatefulWidget {
+  final String path;
+  final VoidCallback onOpen;
+
+  const _VideoPosterPage({
+    super.key,
+    required this.path,
+    required this.onOpen,
+  });
+
+  @override
+  State<_VideoPosterPage> createState() => _VideoPosterPageState();
+}
+
+class _VideoPosterPageState extends State<_VideoPosterPage> {
+  String? _thumb;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    final cached = VideoThumbnails.pathFor(widget.path);
+    if (File(cached).existsSync()) {
+      _thumb = cached;
+      return;
+    }
+    VideoThumbnails.instance.ensure(widget.path).then((thumb) {
+      if (!mounted || thumb == null) return;
+      setState(() => _thumb = thumb);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final thumb = _thumb;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onOpen,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (thumb != null)
+            Image.file(
+              File(thumb),
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black),
+            )
+          else
+            const ColoredBox(color: Colors.black),
+          const Center(
+            child: Icon(
+              Icons.play_circle_fill_rounded,
+              color: Colors.white70,
+              size: 64,
+            ),
+          ),
+        ],
       ),
     );
   }

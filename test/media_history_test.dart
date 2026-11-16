@@ -95,13 +95,24 @@ void main() {
       expect(viewerSetFor(images, 'zzz'), isNull);
     });
 
-    test('videos are not part of the picture viewer', () {
+    test('videos are part of the same gallery, so the counter counts them', () {
       final mixed = [
         msg('v', 400, file: video, path: '/m/v.mp4'),
         ...images,
       ];
-      expect(viewerSetFor(mixed, 'v'), isNull);
+      final set = viewerSetFor(mixed, 'a')!;
+      expect(set.paths, ['/m/v.mp4', '/m/c.jpg', '/m/a.jpg']);
+      expect(set.index, 2);
+      expect(set.messages.map((m) => m.id), ['v', 'c', 'a']);
+    });
+
+    test('a video that is not downloaded is not in the gallery', () {
+      final mixed = [
+        msg('v', 400, file: video),
+        ...images,
+      ];
       expect(viewerSetFor(mixed, 'a')!.paths, ['/m/c.jpg', '/m/a.jpg']);
+      expect(viewerSetFor(mixed, 'v'), isNull);
     });
   });
 
@@ -126,6 +137,35 @@ void main() {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1500);
       await tester.pumpAndSettle();
       expect(find.text('3 / 3'), findsOneWidget);
+    });
+
+    testWidgets('the counter counts videos as well as pictures', (tester) async {
+      final media = [
+        msg('v', 400, file: video, path: '/m/v.mp4'),
+        msg('a', 100, file: image, path: '/m/a.jpg'),
+      ];
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: media.map((m) => m.localPath).toList(),
+        initialIndex: 1,
+        messages: media,
+      )));
+      await tester.pump();
+      expect(find.text('2 / 2'), findsOneWidget);
+    });
+
+    testWidgets('a video page shows a play button and no player', (tester) async {
+      final media = [
+        msg('v', 400, file: video, path: '/m/v.mp4'),
+        msg('a', 100, file: image, path: '/m/a.jpg'),
+      ];
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: media.map((m) => m.localPath).toList(),
+        messages: media,
+      )));
+      await tester.pump();
+
+      expect(find.text('1 / 2'), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_fill_rounded), findsOneWidget);
     });
 
     testWidgets('a single picture shows no counter', (tester) async {

@@ -14,7 +14,10 @@ List<ChatMessage> mediaNewestFirst(Iterable<ChatMessage> messages) {
     ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 }
 
-/// The pictures the viewer can swipe through and where it starts.
+/// The media the viewer can swipe through and where it starts.
+///
+/// Pictures and videos are one gallery, because the grid shows them together
+/// and the counter above the viewer has to match that grid.
 class ViewerSet {
   final List<String> paths;
   final int index;
@@ -23,14 +26,15 @@ class ViewerSet {
   const ViewerSet(this.paths, this.index, {this.messages = const []});
 }
 
-/// Only downloaded pictures are in the viewer. Returns null when the tapped
-/// picture is not one of them.
-ViewerSet? viewerSetFor(List<ChatMessage> images, String tappedId) {
+/// Only downloaded media is in the viewer, the same way a tile that still
+/// needs a download cannot be opened. Returns null when the tapped item is not
+/// one of them.
+ViewerSet? viewerSetFor(List<ChatMessage> media, String tappedId) {
   final paths = <String>[];
   final messages = <ChatMessage>[];
   var index = -1;
-  for (final m in images) {
-    if (!m.isImage) continue;
+  for (final m in media) {
+    if (!m.isImage && !m.isVideo) continue;
     if (m.localPath.isEmpty) continue;
     if (m.id == tappedId) index = paths.length;
     paths.add(m.localPath);
