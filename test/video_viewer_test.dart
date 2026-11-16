@@ -123,15 +123,23 @@ void main() {
       await settlePlayer(tester);
     }
 
-    testWidgets('opens paused with its clock and the counter', (tester) async {
+    // Stops the position timer before the test ends.
+    Future<void> pauseAndLeave(WidgetTester tester) async {
+      await tester.tap(find.byIcon(Icons.pause_rounded));
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+    }
+
+    testWidgets('starts playing as soon as it opens, with its clock and counter',
+        (tester) async {
       await openVideo(tester);
 
       expect(find.text('1 / 2'), findsOneWidget);
       expect(find.text('00:00 / 00:12'), findsOneWidget);
-      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
-      expect(player.calls, isNot(contains('play')));
+      expect(player.calls, contains('play'));
+      expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
 
-      await tester.pumpWidget(const SizedBox());
+      await pauseAndLeave(tester);
     });
 
     testWidgets('keeps the player clear of the floating app bar',
@@ -149,39 +157,33 @@ void main() {
       expect(playerRect.top, greaterThanOrEqualTo(barBottom));
       expect(playerRect.bottom, lessThan(700));
 
-      await tester.pumpWidget(const SizedBox());
+      await pauseAndLeave(tester);
     });
 
-    testWidgets('plays only when the play button is tapped', (tester) async {
-      await openVideo(tester);
-      expect(player.calls, isNot(contains('play')));
-
-      await tester.tap(find.byIcon(Icons.play_arrow_rounded));
-      await tester.pump();
-
-      expect(player.calls, contains('play'));
-      expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
-
-      // Stop the position timer before the test ends.
-      await tester.tap(find.byIcon(Icons.pause_rounded));
-      await tester.pump();
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('a swipe silences it and then releases the decoder',
+    testWidgets('a tap pauses it and the next tap plays it again',
         (tester) async {
       await openVideo(tester);
+      expect(player.calls.where((c) => c == 'play').length, 1);
+
+      await tester.tap(find.byIcon(Icons.pause_rounded));
+      await tester.pump();
+      expect(player.calls, contains('pause'));
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+
       await tester.tap(find.byIcon(Icons.play_arrow_rounded));
       await tester.pump();
-      expect(player.calls, contains('play'));
+      expect(player.calls.where((c) => c == 'play').length, 2);
+      expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
 
-      final pausesBefore = player.calls.where((c) => c == 'pause').length;
-      await tester.drag(find.byType(PageView), const Offset(-120, 0));
+      await pauseAndLeave(tester);
+    });
+
+    testWidgets('a swipe away releases the decoder of the video it leaves',
+        (tester) async {
+      await openVideo(tester);
+      expect(player.calls, contains('play'));
+      await tester.tap(find.byIcon(Icons.pause_rounded));
       await tester.pump();
-      expect(
-        player.calls.where((c) => c == 'pause').length,
-        greaterThan(pausesBefore),
-      );
 
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1500);
       await tester.pumpAndSettle();
@@ -189,6 +191,31 @@ void main() {
       expect(find.text('2 / 2'), findsOneWidget);
       expect(find.byType(VideoPlayerView, skipOffstage: false), findsNothing);
       expect(player.calls, contains('dispose'));
+    });
+
+    testWidgets('a video reached by swiping plays once its page is on screen',
+        (tester) async {
+      final media = [
+        msg('a', 200, file: image, path: '/m/a.jpg'),
+        msg('v', 100, file: video, path: '/m/v.mp4'),
+      ];
+      await tester.pumpWidget(host(ImageViewerPage(
+        paths: media.map((m) => m.localPath).toList(),
+        messages: media,
+      )));
+      await tester.pump();
+      expect(player.calls, isNot(contains('create')));
+
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1500);
+      await tester.pumpAndSettle();
+      await settlePlayer(tester);
+
+      expect(find.text('2 / 2'), findsOneWidget);
+      expect(player.calls, contains('create'));
+      expect(player.calls, contains('play'));
+      expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+
+      await pauseAndLeave(tester);
     });
 
     testWidgets('Save uses the video gallery, not the picture one',
@@ -205,6 +232,9 @@ void main() {
         saveVideoToGallery: (path) async => saved.add('video:$path'),
       )));
       await settlePlayer(tester);
+
+      await tester.tap(find.byIcon(Icons.pause_rounded));
+      await tester.pump();
 
       await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pumpAndSettle();

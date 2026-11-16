@@ -9,8 +9,9 @@ import '../../services/media_history.dart';
 import '../../widgets/chatme_menu.dart';
 import 'video_viewer.dart';
 
-/// Full screen media from a chat. Swipe to change, pinch to zoom a picture,
-/// tap a video to play it in place.
+/// Full screen media from a chat. Swipe to change, pinch to zoom a picture.
+/// A video plays in place as soon as its page is on screen, and a tap pauses
+/// it.
 class ImageViewerPage extends StatefulWidget {
   final List<String> paths;
   final int initialIndex;
@@ -60,10 +61,6 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
   late final PageController _controller;
   late int _index;
   bool _zoomed = false;
-
-  /// The players that a swipe can silence, so a video never keeps talking
-  /// while its page slides away.
-  final VideoPauseGroup _videoPauses = VideoPauseGroup();
 
   @override
   void initState() {
@@ -153,45 +150,34 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
           ),
         ],
       ),
-      body: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification is ScrollStartNotification &&
-              notification.dragDetails != null) {
-            _videoPauses.pauseAll();
-          }
-          return false;
-        },
-        child: PageView.builder(
-          controller: _controller,
-          itemCount: _paths.length,
-          physics: _zoomed
-              ? const NeverScrollableScrollPhysics()
-              : const PageScrollPhysics(),
-          onPageChanged: (i) => setState(() {
-            _index = i;
-            _zoomed = false;
-          }),
-          itemBuilder: (_, i) {
-            if (_isVideoPage(i)) {
-              return Padding(
-                padding: EdgeInsets.only(top: topChrome),
-                child: VideoPlayerView(
-                  key: ValueKey(_paths[i]),
-                  path: _paths[i],
-                  autoPlay: false,
-                  active: i == _index,
-                  knownDurationSeconds: widget.messages[i].fileDurationSeconds,
-                  pauseGroup: _videoPauses,
-                ),
-              );
-            }
-            return _ZoomablePage(
-              key: ValueKey(_paths[i]),
-              path: _paths[i],
-              onZoomChanged: _setZoomed,
+      body: PageView.builder(
+        controller: _controller,
+        itemCount: _paths.length,
+        physics: _zoomed
+            ? const NeverScrollableScrollPhysics()
+            : const PageScrollPhysics(),
+        onPageChanged: (i) => setState(() {
+          _index = i;
+          _zoomed = false;
+        }),
+        itemBuilder: (_, i) {
+          if (_isVideoPage(i)) {
+            return Padding(
+              padding: EdgeInsets.only(top: topChrome),
+              child: VideoPlayerView(
+                key: ValueKey(_paths[i]),
+                path: _paths[i],
+                active: i == _index,
+                knownDurationSeconds: widget.messages[i].fileDurationSeconds,
+              ),
             );
-          },
-        ),
+          }
+          return _ZoomablePage(
+            key: ValueKey(_paths[i]),
+            path: _paths[i],
+            onZoomChanged: _setZoomed,
+          );
+        },
       ),
     );
   }

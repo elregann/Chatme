@@ -11,35 +11,15 @@ import '../../services/chat_reply.dart';
 import '../../services/gallery_save.dart';
 import '../../widgets/chatme_menu.dart';
 
-/// The players on screen that a swipe should silence at once. The gallery owns
-/// one and hands it to every video page; each page adds its own pause while it
-/// lives and removes it when it goes.
-class VideoPauseGroup {
-  final Set<VoidCallback> _pauses = {};
-
-  void add(VoidCallback pause) => _pauses.add(pause);
-
-  void remove(VoidCallback pause) => _pauses.remove(pause);
-
-  void pauseAll() {
-    for (final pause in _pauses) {
-      pause();
-    }
-  }
-}
-
 /// The video surface and its controls, used full screen and inside the
 /// swipeable gallery.
 ///
-/// It owns one [VideoPlayerController] and starts paused unless [autoPlay] is
-/// true. A gallery page that is merely being swiped past is not [active] and
-/// owns no decoder at all, so only the video on screen is ever alive.
+/// It owns one [VideoPlayerController] and starts playing as soon as the
+/// decoder is ready. A gallery page that is merely being swiped past is not
+/// [active] and owns no decoder at all, so only the video on screen is ever
+/// alive, and leaving its page releases it.
 class VideoPlayerView extends StatefulWidget {
   final String path;
-
-  /// Starts playing as soon as the decoder is ready. The gallery keeps this
-  /// off so the video waits for a tap.
-  final bool autoPlay;
 
   /// Whether this page may own a decoder. Always true outside the gallery.
   final bool active;
@@ -48,16 +28,11 @@ class VideoPlayerView extends StatefulWidget {
   /// yet, so the clock is ready the moment the page appears.
   final int? knownDurationSeconds;
 
-  /// The players a swipe should silence. See [VideoPauseGroup].
-  final VideoPauseGroup? pauseGroup;
-
   const VideoPlayerView({
     super.key,
     required this.path,
-    this.autoPlay = true,
     this.active = true,
     this.knownDurationSeconds,
-    this.pauseGroup,
   });
 
   @override
@@ -66,7 +41,6 @@ class VideoPlayerView extends StatefulWidget {
 
 class _VideoPlayerViewState extends State<VideoPlayerView> {
   VideoPlayerController? _controller;
-  late final VoidCallback _pause = _pauseNow;
   int _generation = 0;
   bool _ready = false;
   bool _failed = false;
@@ -74,17 +48,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   @override
   void initState() {
     super.initState();
-    widget.pauseGroup?.add(_pause);
     if (widget.active) _start();
   }
 
   @override
   void didUpdateWidget(VideoPlayerView old) {
     super.didUpdateWidget(old);
-    if (old.pauseGroup != widget.pauseGroup) {
-      old.pauseGroup?.remove(_pause);
-      widget.pauseGroup?.add(_pause);
-    }
     if (old.path != widget.path) {
       _stop();
       if (widget.active) _start();
@@ -99,7 +68,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   @override
   void dispose() {
-    widget.pauseGroup?.remove(_pause);
     _generation++;
     _controller?.dispose();
     _controller = null;
@@ -136,23 +104,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       if (!_current(controller, generation)) return;
       await controller.setLooping(false);
       if (!_current(controller, generation)) return;
-      if (widget.autoPlay) {
-        await controller.play();
-        if (!_current(controller, generation)) return;
-      }
-      if (!mounted) return;
+      await controller.play();
+      if (!_current(controller, generation)) return;
       setState(() => _ready = true);
     } catch (_) {
       if (!_current(controller, generation)) return;
       setState(() => _failed = true);
     }
-  }
-
-  void _pauseNow() {
-    final controller = _controller;
-    if (controller == null) return;
-    final value = controller.value;
-    if (value.isInitialized && value.isPlaying) controller.pause();
   }
 
   void _togglePlay() {
