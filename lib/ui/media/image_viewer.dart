@@ -122,6 +122,11 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
     final canReply =
         current != null && widget.onReply != null && canReplyTo(current);
 
+    // The gallery draws behind a transparent app bar, so a video page has to
+    // leave room for it. Otherwise the player, which is centred above its
+    // controls, slides up under the back arrow, the counter and the menu.
+    final topChrome = MediaQuery.paddingOf(context).top + kToolbarHeight;
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -168,13 +173,16 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
           }),
           itemBuilder: (_, i) {
             if (_isVideoPage(i)) {
-              return VideoPlayerView(
-                key: ValueKey(_paths[i]),
-                path: _paths[i],
-                autoPlay: false,
-                active: i == _index,
-                knownDurationSeconds: widget.messages[i].fileDurationSeconds,
-                pauseGroup: _videoPauses,
+              return Padding(
+                padding: EdgeInsets.only(top: topChrome),
+                child: VideoPlayerView(
+                  key: ValueKey(_paths[i]),
+                  path: _paths[i],
+                  autoPlay: false,
+                  active: i == _index,
+                  knownDurationSeconds: widget.messages[i].fileDurationSeconds,
+                  pauseGroup: _videoPauses,
+                ),
               );
             }
             return _ZoomablePage(

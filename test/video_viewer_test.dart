@@ -134,6 +134,24 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('keeps the player clear of the floating app bar',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await openVideo(tester);
+
+      final playerRect = tester.getRect(find.descendant(
+        of: find.byType(VideoPlayerView),
+        matching: find.byType(AspectRatio),
+      ));
+      final barBottom = tester.getRect(find.byType(AppBar)).bottom;
+
+      expect(playerRect.top, greaterThanOrEqualTo(barBottom));
+      expect(playerRect.bottom, lessThan(700));
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('plays only when the play button is tapped', (tester) async {
       await openVideo(tester);
       expect(player.calls, isNot(contains('play')));
