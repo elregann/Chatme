@@ -13,6 +13,7 @@ import '../services/chat_reply.dart';
 import '../services/file_transfer_service.dart';
 import '../services/media_download.dart';
 import '../services/media_history.dart';
+import '../services/video_thumbnails.dart';
 import '../ui/media/image_viewer.dart';
 import '../ui/media/video_viewer.dart';
 
@@ -97,6 +98,37 @@ class _MediaTile extends StatefulWidget {
 class _MediaTileState extends State<_MediaTile> {
   bool _downloading = false;
   bool _failed = false;
+  String? _thumb;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThumb();
+  }
+
+  @override
+  void didUpdateWidget(_MediaTile old) {
+    super.didUpdateWidget(old);
+    if (old.message.localPath != widget.message.localPath) _loadThumb();
+  }
+
+  /// Shows the poster of a downloaded video, making it once when it is not
+  /// there yet. Videos that are not downloaded keep their download arrow.
+  void _loadThumb() {
+    _thumb = null;
+    if (!widget.message.isVideo) return;
+    final path = widget.message.localPath;
+    if (path.isEmpty) return;
+    final cached = VideoThumbnails.pathFor(path);
+    if (File(cached).existsSync()) {
+      _thumb = cached;
+      return;
+    }
+    VideoThumbnails.instance.ensure(path).then((thumb) {
+      if (!mounted || thumb == null) return;
+      setState(() => _thumb = thumb);
+    });
+  }
 
   Future<void> _download() async {
     if (_downloading) return;
@@ -201,6 +233,8 @@ class _MediaTileState extends State<_MediaTile> {
 
     if (widget.message.isVideo) {
       final seconds = widget.message.fileDurationSeconds;
+      final thumbPath = _thumb;
+      final hasThumb = thumbPath != null;
       return ClipRRect(
         borderRadius: BorderRadius.circular(MediaHistoryGrid.radius),
         child: GestureDetector(
@@ -208,21 +242,62 @@ class _MediaTileState extends State<_MediaTile> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              ColoredBox(color: widget.placeholderColor),
+              if (thumbPath != null) ...[
+                Image.file(
+                  File(thumbPath),
+                  fit: BoxFit.cover,
+                  cacheWidth: (side * MediaQuery.devicePixelRatioOf(context)).round(),
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) =>
+                      ColoredBox(color: widget.placeholderColor),
+                ),
+                // Keeps the play icon and the duration readable on a bright
+                // frame, while the middle of the video stays visible.
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0x99000000)],
+                    ),
+                  ),
+                ),
+              ] else
+                ColoredBox(color: widget.placeholderColor),
               Center(
                 child: Icon(
                   Icons.play_circle_outline_rounded,
-                  color: widget.iconColor,
+                  color: hasThumb ? Colors.white : widget.iconColor,
                   size: 30,
+                  shadows: hasThumb
+                      ? const [Shadow(color: Colors.black54, blurRadius: 8)]
+                      : null,
                 ),
               ),
               if (seconds != null && seconds > 0)
                 Positioned(
                   right: 5,
                   bottom: 4,
-                  child: Text(
-                    DurationUtils.formatClock(seconds),
-                    style: TextStyle(color: widget.iconColor, fontSize: 10),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: hasThumb
+                          ? Colors.black.withAlpha(120)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: hasThumb ? 5 : 0,
+                        vertical: hasThumb ? 1 : 0,
+                      ),
+                      child: Text(
+                        DurationUtils.formatClock(seconds),
+                        style: TextStyle(
+                          color: hasThumb ? Colors.white : widget.iconColor,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
             ],

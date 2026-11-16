@@ -1890,9 +1890,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                         ? Icons.keyboard
                                         : Icons.emoji_emotions_outlined,
                                     key: ValueKey(_isEmojiPanelOpen && !_isEmojiPanelClosing),
-                                    color: (_isEmojiPanelOpen && !_isEmojiPanelClosing)
-                                        ? accentColor
-                                        : ChatmeColors.textSecondary,
+                                    color: ChatmeColors.textSecondary,
                                     size: 24,
                                   ),
                                 ),
@@ -1969,7 +1967,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                                         color: inputBgColor,
                                         textColor: inputTextColor,
                                         icon: const Icon(
-                                          Icons.attach_file,
+                                          Remix.attachment_line,
                                           size: 24,
                                           color: ChatmeColors.textSecondary,
                                         ),

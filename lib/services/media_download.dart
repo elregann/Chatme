@@ -6,6 +6,7 @@ import 'app_settings.dart';
 import 'gallery_save.dart';
 import 'file_transfer_service.dart';
 import 'media_storage.dart';
+import 'video_thumbnails.dart';
 
 /// Downloads and decrypts a received picture, remembers where it was saved
 /// and returns that path.
@@ -45,5 +46,8 @@ Future<String> downloadVideo(
     path: path,
     video: true,
   );
+  // Make the poster now, so the profile grid shows a frame the first time it
+  // opens instead of a dark tile. A failure just leaves the tile dark.
+  await VideoThumbnails.instance.ensure(path);
   return path;
 }
