@@ -10,6 +10,7 @@ import 'services/file_send_service.dart';
 import 'services/file_transfer_service.dart';
 import 'services/image_prepare.dart';
 import 'services/media_storage.dart';
+import 'services/video_thumbnails.dart';
 import 'services/voice_storage.dart';
 import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
@@ -1017,6 +1018,10 @@ class ChatManager {
       localPath: stored.path,
     );
     await ChatManager.instance.saveMessage(tempMessage);
+
+    // Make the poster in the background, so the bubble shows the video's first
+    // frame without starting a decoder, and the profile grid has it ready.
+    unawaited(VideoThumbnails.instance.ensure(stored.path));
 
     try {
       final file = await FileSendService.encryptAndUploadStreaming(

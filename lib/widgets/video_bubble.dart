@@ -6,7 +6,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:remixicon/remixicon.dart';
-import 'package:video_player/video_player.dart';
 
 import '../core/utils/debug_logger.dart';
 import '../core/utils/duration_utils.dart';
@@ -14,11 +13,16 @@ import '../models/chat_message.dart';
 import '../services/chat_reply.dart';
 import '../services/file_transfer_service.dart';
 import '../services/media_download.dart';
+import '../services/video_thumbnails.dart';
 import '../ui/media/video_viewer.dart';
 
 /// The inside of a chat bubble for a video. A received video waits for a tap
 /// before it is downloaded, like a picture; the poster is the first frame of
 /// the file that was already downloaded and decrypted.
+///
+/// The poster is a small JPEG made once and reused, not a live player. A chat
+/// is scrolled far more often than a video is watched, and a decoder per
+/// bubble made every pass over a video start and stop one.
 class VideoBubble extends StatefulWidget {
   final ChatMessage message;
 
@@ -28,11 +32,15 @@ class VideoBubble extends StatefulWidget {
   /// The widest the video may be, after the chat bubble padding.
   final double maxWidth;
 
+  /// Finds the poster for a downloaded video. Replaceable for tests.
+  final Future<String?> Function(String path)? thumbResolver;
+
   const VideoBubble({
     super.key,
     required this.message,
     required this.footer,
     this.maxWidth = preferredWidth,
+    this.thumbResolver,
   });
 
   static const double preferredWidth = 260;
@@ -46,15 +54,12 @@ class _VideoBubbleState extends State<VideoBubble> {
   bool _downloading = false;
   double? _progress;
   String? _error;
-
-  VideoPlayerController? _controller;
-  bool _ready = false;
-  int _generation = 0;
+  String? _thumb;
 
   @override
   void initState() {
     super.initState();
-    _attachPoster();
+    _loadThumb();
   }
 
   @override
@@ -62,49 +67,29 @@ class _VideoBubbleState extends State<VideoBubble> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.message.localPath != widget.message.localPath) {
       _path = widget.message.localPath;
-      _attachPoster();
+      _loadThumb();
     }
   }
 
-  @override
-  void dispose() {
-    _generation++;
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _attachPoster() async {
-    final generation = ++_generation;
-    final old = _controller;
-    _controller = null;
-    if (_ready && mounted) setState(() => _ready = false);
-    await old?.dispose();
-
+  /// Shows the poster of a downloaded video, making it once when it is not
+  /// there yet. A video nobody watches never starts a decoder.
+  void _loadThumb() {
+    _thumb = null;
     if (_path.isEmpty || kIsWeb) return;
-
-    final controller = VideoPlayerController.file(File(_path));
-    try {
-      await controller.initialize();
-      if (!mounted || generation != _generation) {
-        await controller.dispose();
-        return;
-      }
-      await controller.setVolume(0);
-      await controller.seekTo(Duration.zero);
-      await controller.pause();
-      if (!mounted || generation != _generation) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        _controller = controller;
-        _ready = true;
-      });
-    } catch (e) {
-      await controller.dispose();
-      DebugLogger.log('[Video] Poster failed | $e', type: 'WARN');
+    final path = _path;
+    final cached = VideoThumbnails.pathFor(path);
+    if (File(cached).existsSync()) {
+      _thumb = cached;
+      return;
     }
+    _thumbFor(path).then((thumb) {
+      if (!mounted || thumb == null || _path != path) return;
+      setState(() => _thumb = thumb);
+    });
   }
+
+  Future<String?> _thumbFor(String path) =>
+      (widget.thumbResolver ?? VideoThumbnails.instance.ensure)(path);
 
   Future<void> _download() async {
     if (_downloading) return;
@@ -127,7 +112,7 @@ class _VideoBubbleState extends State<VideoBubble> {
         _downloading = false;
         _progress = null;
       });
-      _attachPoster();
+      _loadThumb();
     } catch (e) {
       DebugLogger.log('[Video] Download failed | $e', type: 'ERROR');
       if (!mounted) return;
@@ -218,24 +203,22 @@ class _VideoBubbleState extends State<VideoBubble> {
   }
 
   Widget _poster() {
-    final controller = _controller;
-    if (!_ready || controller == null || !controller.value.isInitialized) {
-      return const ColoredBox(
-        color: Colors.black87,
-        child: Center(
-          child: Icon(Remix.movie_2_line, color: Colors.white54, size: 36),
-        ),
-      );
-    }
-
-    final size = controller.value.size;
-    return FittedBox(
+    final thumb = _thumb;
+    if (thumb == null) return _blankPoster();
+    return Image.file(
+      File(thumb),
       fit: BoxFit.cover,
-      clipBehavior: Clip.hardEdge,
-      child: SizedBox(
-        width: size.width,
-        height: size.height,
-        child: VideoPlayer(controller),
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => _blankPoster(),
+    );
+  }
+
+  /// A video with no poster yet, or one whose poster cannot be read.
+  Widget _blankPoster() {
+    return const ColoredBox(
+      color: Colors.black87,
+      child: Center(
+        child: Icon(Remix.movie_2_line, color: Colors.white54, size: 36),
       ),
     );
   }

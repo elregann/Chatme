@@ -69,7 +69,9 @@ class VideoThumbnails {
     return VideoThumbnail.thumbnailData(
       video: videoPath,
       imageFormat: ImageFormat.JPEG,
-      maxWidth: 320,
+      // Big enough for the chat bubble on a high-density screen, small enough
+      // that a poster costs a few tens of kilobytes.
+      maxWidth: 640,
       quality: 70,
     );
   }
