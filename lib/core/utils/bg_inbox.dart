@@ -6,9 +6,19 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 import 'notification_entry.dart';
+
+/// One encrypted gift wrap waiting for the main isolate to verify and persist.
+typedef PendingGiftWrap = ({
+  File file,
+  String eventId,
+  String ephemeralPubkey,
+  String ciphertext,
+  int writtenAtMs,
+});
 
 class BgInbox {
   /// Tests point this at a temporary folder instead of the app folder.
@@ -205,6 +215,166 @@ class BgInbox {
       } catch (_) {}
     }
     return peers.toList();
+  }
+
+  // ------------------------------------------------------ Pending messages
+  //
+  // The FCM isolate drops the raw NIP-17 gift wrap here. The main isolate
+  // verifies and persists it later. Hive stays single-isolate; this mailbox
+  // is intentionally just small, atomically written ciphertext files.
+
+  static const String _pendingPrefix = 'p_';
+  static const String _pendingTempPrefix = 'tmp_p_';
+  static const int _maxPendingFiles = 50;
+  static const int _maxPendingBytes = 16 * 1024;
+  static final RegExp _hex64 = RegExp(r'^[0-9a-fA-F]{64}$');
+
+  /// Stores one encrypted gift wrap for the main isolate.
+  ///
+  /// Returns `false` for invalid or duplicate payloads. The JSON is written
+  /// to a temp file first and renamed, so readers never see a partial file.
+  static Future<bool> writePendingMessage({
+    required String eventId,
+    required String ephemeralPubkey,
+    required String ciphertext,
+    int? writtenAtMs,
+  }) async {
+    if (!_hex64.hasMatch(eventId) ||
+        !_hex64.hasMatch(ephemeralPubkey) ||
+        ciphertext.isEmpty ||
+        ciphertext.length > 4096) {
+      return false;
+    }
+
+    File? temp;
+    try {
+      final dir = await _dir();
+      final finalPath = '${dir.path}/$_pendingPrefix$eventId.json';
+      if (await File(finalPath).exists()) return false;
+
+      final nonce = Random.secure()
+          .nextInt(0x7fffffff)
+          .toRadixString(16)
+          .padLeft(8, '0');
+      temp = File('${dir.path}/$_pendingTempPrefix${eventId}_$nonce.json');
+      final payload = <String, dynamic>{
+        'v': 1,
+        'eventId': eventId,
+        'ephemeralPubkey': ephemeralPubkey,
+        'ciphertext': ciphertext,
+        'writtenAtMs': writtenAtMs ?? DateTime.now().millisecondsSinceEpoch,
+      };
+
+      await temp.writeAsString(jsonEncode(payload), flush: true);
+
+      // A duplicate FCM delivery can race the rename. Same event id means the
+      // same gift wrap, so keeping the first file is always correct.
+      if (await File(finalPath).exists()) {
+        await temp.delete();
+        return false;
+      }
+      await temp.rename(finalPath);
+      await prunePendingMessages();
+      return true;
+    } catch (_) {
+      try {
+        await temp?.delete();
+      } catch (_) {}
+      return false;
+    }
+  }
+
+  /// Parsed pending gift wraps, oldest first. Malformed files are discarded;
+  /// structurally valid ones are left for the caller to verify and consume.
+  static Future<List<PendingGiftWrap>> peekPendingMessages() async {
+    final dir = await _dir();
+    final items = <PendingGiftWrap>[];
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!name.startsWith(_pendingPrefix) ||
+          name.startsWith(_pendingTempPrefix)) {
+        continue;
+      }
+      try {
+        if (await entity.length() > _maxPendingBytes) {
+          await entity.delete();
+          continue;
+        }
+        final decoded = jsonDecode(await entity.readAsString());
+        if (decoded is! Map<String, dynamic>) {
+          await entity.delete();
+          continue;
+        }
+        final eventId = decoded['eventId']?.toString() ?? '';
+        final ephemeralPubkey = decoded['ephemeralPubkey']?.toString() ?? '';
+        final ciphertext = decoded['ciphertext']?.toString() ?? '';
+        final writtenAtMs = decoded['writtenAtMs'] is int
+            ? decoded['writtenAtMs'] as int
+            : 0;
+
+        if (decoded['v'] != 1 ||
+            !_hex64.hasMatch(eventId) ||
+            !_hex64.hasMatch(ephemeralPubkey) ||
+            ciphertext.isEmpty ||
+            ciphertext.length > 4096) {
+          await entity.delete();
+          continue;
+        }
+
+        items.add((
+          file: entity,
+          eventId: eventId,
+          ephemeralPubkey: ephemeralPubkey,
+          ciphertext: ciphertext,
+          writtenAtMs: writtenAtMs,
+        ));
+      } catch (_) {
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+    }
+    items.sort((a, b) => a.writtenAtMs.compareTo(b.writtenAtMs));
+    return items;
+  }
+
+  /// Deletes one pending file after the main isolate persisted its message.
+  static Future<void> consumePendingMessage(File file) async {
+    try {
+      await file.delete();
+    } catch (_) {}
+  }
+
+  /// Keeps the mailbox bounded even when the app is not opened for a while.
+  static Future<void> prunePendingMessages({
+    int keepNewest = _maxPendingFiles,
+  }) async {
+    final dir = await _dir();
+    final files = <({File file, int writtenAtMs})>[];
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!name.startsWith(_pendingPrefix) ||
+          name.startsWith(_pendingTempPrefix)) {
+        continue;
+      }
+      int ms = 0;
+      try {
+        final decoded = jsonDecode(await entity.readAsString());
+        if (decoded is Map && decoded['writtenAtMs'] is int) {
+          ms = decoded['writtenAtMs'] as int;
+        }
+      } catch (_) {}
+      files.add((file: entity, writtenAtMs: ms));
+    }
+    if (files.length <= keepNewest) return;
+    files.sort((a, b) => b.writtenAtMs.compareTo(a.writtenAtMs));
+    for (final item in files.skip(keepNewest)) {
+      try {
+        await item.file.delete();
+      } catch (_) {}
+    }
   }
 
   // ------------------------------------------------------ Notification stack

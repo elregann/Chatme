@@ -73,12 +73,29 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     return;
   }
 
+  // Leave the raw gift wrap for the main isolate. It re-verifies and persists
+  // the message when the app is opened; this isolate only needs the preview.
+  if (ephemeralPubkey.isNotEmpty && ciphertext.isNotEmpty) {
+    try {
+      await BgInbox.writePendingMessage(
+        eventId: eventId,
+        ephemeralPubkey: ephemeralPubkey,
+        ciphertext: ciphertext,
+      );
+    } catch (e) {
+      debugPrint('[BgFcm] spool failed | $e');
+    }
+  }
+
   final settingsBox = await Hive.openBox('settings');
   final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
   final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
 
   String plaintext = 'You have a new message';
   String rumorId = '';
+  // The FCM payload's senderPubkey is untrusted. Prefer the one authenticated
+  // by the Seal, so background read markers match the saved message's peer.
+  String verifiedSenderPubkey = senderPubkey;
   if (ciphertext.isNotEmpty && myPrivkey.isNotEmpty) {
     try {
       if (ephemeralPubkey.isNotEmpty) {
@@ -92,6 +109,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           receiverPrivkey: myPrivkey,
           receiverPubkey: myPubkey,
         );
+        verifiedSenderPubkey = nip17Result.senderPubkey;
         if (nip17Result.rumorKind == Nip17.kindFile) {
           final file = FileMessage.parse(
             content: nip17Result.plaintext,
@@ -119,7 +137,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   if (rumorId.isNotEmpty) {
     try {
-      await BgInbox.addUnread(senderPubkey, rumorId);
+      await BgInbox.addUnread(verifiedSenderPubkey, rumorId);
     } catch (e) {
       debugPrint('[BgFcm] record failed | $e');
     }

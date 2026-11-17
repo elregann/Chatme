@@ -217,10 +217,13 @@ class ChatManager {
   /// [touchChatList] and [updateContactPreview] exist so the relay burst
   /// drain can defer the UI-side writes (registry + contact preview) and
   /// flush them once per batch instead of once per message.
+  /// [notify] is false only for the FCM handoff drain: that message already
+  /// notified the user from the background isolate.
   Future<bool> saveMessage(
     ChatMessage message, {
     bool touchChatList = true,
     bool updateContactPreview = true,
+    bool notify = true,
   }) async {
     bool wasNew = false;
     await _lock.synchronized(() async {
@@ -274,7 +277,8 @@ class ChatManager {
           await _messagesBox.put(key, message);
           wasNew = true;
 
-          if (message.senderPubkey != AppSettings.instance.myPubkey) {
+          if (notify &&
+              message.senderPubkey != AppSettings.instance.myPubkey) {
             Future.microtask(() => _triggerNotification(message));
           }
         }

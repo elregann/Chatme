@@ -27,6 +27,9 @@ import 'core/theme/chatme_buttons.dart';
 import 'core/theme/chatme_colors.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/bg_inbox.dart';
+import 'core/utils/sync_gate.dart';
+import 'core/crypto/nip17.dart';
+import 'core/crypto/nip17_file.dart';
 import 'core/utils/main_isolate_ping.dart';
 import 'core/utils/shortcut_launch.dart';
 import 'room_chat.dart';
@@ -137,6 +140,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   final RelayManager _relayManager = RelayManager();
   final NetworkManager _networkManager = NetworkManager();
   ReceivePort? _notificationPort;
+  bool _drainingPendingMessages = false;
 
   @override
   void initState() {
@@ -212,9 +216,11 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
     // Move heavy operations to Post-Frame to prevent UI jank/black screen on Cold Start
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _drainPendingMessages();
       _applyPendingReads();
       // Re-check after relays deliver initial batch
       Future.delayed(const Duration(seconds: 6), _applyPendingReads);
+      Future.delayed(const Duration(seconds: 6), _drainPendingMessages);
       _applyPendingDeclines();
 
       try {
@@ -441,6 +447,152 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Persists gift wraps handed off by the FCM isolate when the app was closed.
+  ///
+  /// The background isolate only writes ciphertext. Verification happens here,
+  /// in the main isolate, before anything reaches Hive. A file stays on disk
+  /// when verification or saving fails and is retried until the TTL expires.
+  Future<void> _drainPendingMessages() async {
+    if (kIsWeb || _drainingPendingMessages) return;
+    final myPubkey = AppSettings.instance.myPubkey;
+    final myPrivkey = AppSettings.instance.myPrivkey;
+    if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
+
+    _drainingPendingMessages = true;
+    try {
+      const ttlMs = 7 * 24 * 60 * 60 * 1000;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final items = await BgInbox.peekPendingMessages();
+      final contactsBox = Hive.box<Contact>('contacts');
+
+      for (final item in items) {
+        if (now - item.writtenAtMs > ttlMs) {
+          await BgInbox.consumePendingMessage(item.file);
+          continue;
+        }
+
+        try {
+          final result = await Nip17.unwrap(
+            giftWrapEvent: {
+              'pubkey': item.ephemeralPubkey,
+              'content': item.ciphertext,
+              'kind': 1059,
+            },
+            receiverPrivkey: myPrivkey,
+            receiverPubkey: myPubkey,
+          );
+
+          if (result.rumorKind != Nip17.kindRumor &&
+              result.rumorKind != Nip17.kindFile) {
+            await BgInbox.consumePendingMessage(item.file);
+            continue;
+          }
+
+          Map<String, String> fileMap = const {};
+          String plaintext = result.plaintext;
+          if (result.rumorKind == Nip17.kindFile) {
+            final fileMessage = FileMessage.parse(
+              content: result.plaintext,
+              tags: result.rumorTags,
+            );
+            if (fileMessage == null) {
+              await BgInbox.consumePendingMessage(item.file);
+              continue;
+            }
+            fileMap = fileMessage.toMap();
+            plaintext = fileMessage.previewLabel;
+          }
+
+          final peer = result.senderPubkey;
+          final bool isFromMe = peer == myPubkey;
+          final chatKey = ChatManager.instance.getChatKey(myPubkey, peer);
+          final replyToId = result.replyToId;
+          String? replyToContent;
+          String? replyToSenderPubkey;
+          if (replyToId != null) {
+            final original = await ChatManager.instance
+                .getMessageById(replyToId, chatKey);
+            replyToContent = original?.plaintext;
+            replyToSenderPubkey = original?.senderPubkey;
+          }
+
+          final message = ChatMessage(
+            id: result.rumorId,
+            senderPubkey: peer,
+            receiverPubkey: myPubkey,
+            content: result.plaintext,
+            plaintext: plaintext,
+            timestamp: result.timestamp,
+            status: 'sent',
+            chatKey: chatKey,
+            replyToId: replyToId,
+            replyToContent: replyToContent,
+            replyToSenderPubkey: replyToSenderPubkey,
+            giftWrapId: item.eventId,
+            file: fileMap,
+          );
+
+          final wasNew = await ChatManager.instance.saveMessage(
+            message,
+            touchChatList: false,
+            updateContactPreview: false,
+            notify: false,
+          );
+
+          // saveMessage swallows its own errors. Only drop the spool file once
+          // the message is really in Hive; otherwise keep it for the next
+          // drain (it stays valid until the TTL expires).
+          if (!await ChatManager.instance.isMessageExists(
+            result.rumorId,
+            chatKey,
+          )) {
+            DebugLogger.log(
+              '[FcmHandoff] save did not persist ${result.rumorId}, will retry',
+              type: 'ERROR',
+            );
+            continue;
+          }
+
+          final preview = plaintext.length > 50
+              ? '${plaintext.substring(0, 50)}...'
+              : plaintext;
+          final bool currentlyOpen =
+              _relayManager.currentlyChattingWith == peer;
+          final bool muteUnread =
+              isFromMe || currentlyOpen || SyncGate.isActive || !wasNew;
+
+          var contact = contactsBox.get(peer);
+          if (contact == null) {
+            contact = Contact(
+              pubkey: peer,
+              name: '',
+              lastChatTime: message.timestamp,
+              lastMessage: preview,
+              unreadCount: muteUnread ? 0 : 1,
+              isSaved: false,
+            );
+          } else {
+            if (message.timestamp >= contact.lastChatTime) {
+              contact.lastChatTime = message.timestamp;
+              contact.lastMessage = preview;
+            }
+            if (!muteUnread) contact.unreadCount++;
+            if (currentlyOpen) contact.unreadCount = 0;
+          }
+          await contactsBox.put(peer, contact);
+
+          await BgInbox.consumePendingMessage(item.file);
+        } catch (e) {
+          DebugLogger.log('[FcmHandoff] drain failed | $e', type: 'ERROR');
+        }
+      }
+    } catch (e) {
+      DebugLogger.log('[FcmHandoff] peek failed | $e', type: 'ERROR');
+    } finally {
+      _drainingPendingMessages = false;
+    }
+  }
+
   /// Saves records of calls declined or missed while the app was closed.
   Future<void> _applyPendingDeclines() async {
     if (kIsWeb) return;
@@ -629,9 +781,12 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // A shortcut tapped while the app was in the background is only known to
-    // Android at that moment, so look for it when the app comes back.
-    if (state == AppLifecycleState.resumed) _openShortcutChat();
+    if (state == AppLifecycleState.resumed) {
+      // A shortcut tapped while the app was in the background is only known to
+      // Android at that moment, so look for it when the app comes back.
+      _openShortcutChat();
+      _drainPendingMessages();
+    }
   }
 
   @override
