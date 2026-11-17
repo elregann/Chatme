@@ -11,7 +11,7 @@
 ![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B.svg)
 ![Protocol: Nostr](https://img.shields.io/badge/protocol-Nostr-8E44AD.svg)
 [![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/elregann/badge.svg)](https://hub.xerj.org/contributors/elregann)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/elregann/Chatme)
+[![Wiki: DeepWiki](https://img.shields.io/badge/wiki-DeepWiki-2EA6A0.svg)](https://deepwiki.com/elregann/Chatme)
 ![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)
 
 </div>

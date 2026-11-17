@@ -126,6 +126,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   bool _isEmojiPanelClosing = false;
   double _emojiPanelHeight = 0.0;
 
+  // Our own keyboard intent. viewInsets changes frame by frame while the IME
+  // slides, so it must never decide whether a focus change is needed.
+  bool _wantsKeyboard = false;
+  // Guards the silent caret refocus: it must not be read as a keyboard request.
+  bool _isRestoringEmojiCaret = false;
+
   // Whether the panel is mounted. Changing it rebuilds only the dock, so the
   // panel can leave at the end of the keyboard animation without rebuilding
   // the whole chat screen in the middle of a frame.
@@ -264,17 +270,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     // Re-enter focus even when the caret is already there, so the keyboard is
     // opened through a fresh, explicitly allowed focus change. FocusManager
     // applies the unfocus first, hence the next frame before asking again.
+    if (_focusNode.hasFocus && _wantsKeyboard) return;
+    _wantsKeyboard = true;
     if (_focusNode.hasFocus) {
-      if (MediaQuery.viewInsetsOf(context).bottom > 0) return;
       _focusNode.unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _focusNode.allowKeyboardOnNextFocus();
+        if (_wantsKeyboard) _focusNode.allowKeyboardOnNextFocus();
         _focusNode.requestFocus();
       });
       return;
     }
-    _focusNode.allowKeyboardOnNextFocus();
+    if (_wantsKeyboard) _focusNode.allowKeyboardOnNextFocus();
     _focusNode.requestFocus();
   }
 
@@ -357,13 +364,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   void _handleComposerFocusChanged() {
-    if (!mounted) return;
+    if (!mounted || _isRestoringEmojiCaret) return;
     if (_focusNode.hasFocus && _isEmojiPanelOpen && !_isEmojiPanelClosing) {
       _restoreKeyboardFromEmojiPanel();
     }
   }
 
   void _toggleEmojiPanel() {
+    if (_isEmojiPanelOpen && _isEmojiPanelClosing) {
+      // The icon has already flipped back to emoji. A fast tap must honor what
+      // is on screen instead of starting another keyboard restore.
+      _emojiPanelCloseToken++;
+      _emojiPanelCloseTimer?.cancel();
+      _wantsKeyboard = false;
+      setState(() => _isEmojiPanelClosing = false);
+      _emojiRevealController.value = 1.0;
+      _restoreEmojiCaretSilently();
+      return;
+    }
     if (_isEmojiPanelOpen) {
       _restoreKeyboardFromEmojiPanel();
     } else {
@@ -374,6 +392,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   void _openEmojiPanel() {
     final hasKeyboard = _readKeyboardInset() > 0;
 
+    _wantsKeyboard = false;
     _emojiPanelCloseToken++;
     _emojiPanelCloseTimer?.cancel();
 
@@ -397,9 +416,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       );
     }
 
+    _restoreEmojiCaretSilently();
+  }
+
+  // Bring the caret back without a keyboard token: the field stays focused so
+  // it looks alive, while the custom node keeps the IME connection shut. The
+  // refocus frame has no panel-state guard, because a fast tap may change that
+  // state in between and dropping the refocus would lose the caret.
+  void _restoreEmojiCaretSilently() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_isEmojiPanelOpen || _isEmojiPanelClosing) return;
+      if (!mounted || !_isEmojiPanelOpen) return;
       _focusNode.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _isRestoringEmojiCaret = true;
+        // A tap may have asked for the keyboard between the two frames.
+        if (_wantsKeyboard) _focusNode.allowKeyboardOnNextFocus();
+        _focusNode.requestFocus();
+        scheduleMicrotask(() {
+          _isRestoringEmojiCaret = false;
+        });
+      });
     });
   }
 
@@ -462,6 +499,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   // keyboard back.
   void _closeEmojiPanel() {
     if (!mounted || !_isEmojiPanelOpen) return;
+    _wantsKeyboard = false;
     _emojiPanelCloseToken++;
     _emojiPanelCloseTimer?.cancel();
     _focusNode.unfocus();
@@ -1721,6 +1759,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         controller: _messageController,
                         focusNode: _focusNode,
                         onTap: () {
+                          _wantsKeyboard = true;
                           if (!_focusNode.hasFocus) {
                             _focusNode.allowKeyboardOnNextFocus();
                           }

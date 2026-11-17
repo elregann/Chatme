@@ -158,6 +158,52 @@ void main() {
     expect(tester.testTextInput.isVisible, isTrue);
   });
 
+  testWidgets('the emoji panel keeps the caret without raising the keyboard',
+      (tester) async {
+    await tester.pumpWidget(app(ChatDetailScreen(
+      contact: Contact(pubkey: 'peer', name: 'Peer'),
+      relayManager: RelayManager(),
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode?.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(find.byIcon(Icons.keyboard), findsOneWidget);
+  });
+
+  testWidgets('a quick keyboard/emoji round trip keeps the caret',
+      (tester) async {
+    await tester.pumpWidget(app(ChatDetailScreen(
+      contact: Contact(pubkey: 'peer', name: 'Peer'),
+      relayManager: RelayManager(),
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    // Go back before the 700 ms restore timer fires, then return to emoji.
+    await tester.tap(find.byIcon(Icons.keyboard));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.pump(const Duration(milliseconds: 160));
+    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode?.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(find.byIcon(Icons.keyboard), findsOneWidget);
+  });
+
   testWidgets('returning to the room does not raise the keyboard', (tester) async {
     await tester.pumpWidget(app(ChatDetailScreen(
       contact: Contact(pubkey: 'peer', name: 'Peer'),
