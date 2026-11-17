@@ -40,7 +40,10 @@ class BackgroundChatActions {
   ///
   /// The ids that received a receipt are noted in [BgInbox], so the main app can
   /// mark exactly those messages as read (and clear the badge) when it opens.
-  static Future<void> markRead(String peerPubkey) async {
+  static Future<void> markRead(
+    String peerPubkey, {
+    bool includeHiveMessages = true,
+  }) async {
     try {
       await _prepareHive();
 
@@ -54,22 +57,24 @@ class BackgroundChatActions {
       final idSet = <String>{};
       idSet.addAll(await BgInbox.takeUnread(peerPubkey));
 
-      final chatKey = _chatKey(myPubkey, peerPubkey);
-      try {
-        final messagesBox = await _openBoxTyped<ChatMessage>('chat_msgs');
-        final prefix = _messageStorageKey(chatKey, '');
-        for (final k in messagesBox.keys.toList()) {
-          if (k is! String || !k.startsWith(prefix)) continue;
-          final m = messagesBox.get(k);
-          if (m == null) continue;
-          if (m.senderPubkey == peerPubkey &&
-              m.status != 'read' &&
-              !m.id.startsWith('temp_')) {
-            idSet.add(m.id);
+      if (includeHiveMessages) {
+        final chatKey = _chatKey(myPubkey, peerPubkey);
+        try {
+          final messagesBox = await _openBoxTyped<ChatMessage>('chat_msgs');
+          final prefix = _messageStorageKey(chatKey, '');
+          for (final k in messagesBox.keys.toList()) {
+            if (k is! String || !k.startsWith(prefix)) continue;
+            final m = messagesBox.get(k);
+            if (m == null) continue;
+            if (m.senderPubkey == peerPubkey &&
+                m.status != 'read' &&
+                !m.id.startsWith('temp_')) {
+              idSet.add(m.id);
+            }
           }
+        } catch (e) {
+          debugPrint('[BgChat] chat_msgs box unavailable | $e');
         }
-      } catch (e) {
-        debugPrint('[BgChat] chat_msgs box unavailable | $e');
       }
 
       final ids = idSet.toList();

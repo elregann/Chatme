@@ -91,6 +91,21 @@ class SyncGate {
     }
   }
 
+  /// Initial status for a message being saved. Restored history (older than
+  /// the gate's start) is not new conversation: incoming history is already
+  /// read and our own history is already sent, so opening the chat later
+  /// raises no badge and sends no receipt storm. Messages arriving live keep
+  /// the normal `sending`/`sent` statuses. Shared by the relay and FCM
+  /// handoff drains so the two paths cannot disagree.
+  static String initialStatusFor({
+    required bool isFromMe,
+    required int timestamp,
+  }) {
+    final isHistory = isActive && timestamp <= startedAtMs;
+    if (isFromMe) return isHistory ? 'sent' : 'sending';
+    return isHistory ? 'read' : 'sent';
+  }
+
   /// Time left before [maxDurationMs], measured from the persisted start.
   /// Resuming an interrupted restore must not give the hard cap a fresh
   /// window on top of the time the gate was already active.

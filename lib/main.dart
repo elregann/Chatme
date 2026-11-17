@@ -537,7 +537,10 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
             content: result.plaintext,
             plaintext: plaintext,
             timestamp: result.timestamp,
-            status: 'sent',
+            status: SyncGate.initialStatusFor(
+              isFromMe: isFromMe,
+              timestamp: result.timestamp,
+            ),
             chatKey: chatKey,
             replyToId: replyToId,
             replyToContent: replyToContent,

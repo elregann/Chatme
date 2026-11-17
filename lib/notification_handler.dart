@@ -43,6 +43,7 @@ Future<void> backgroundNotificationResponseHandler(NotificationResponse response
   // a port that is merely registered is not enough: the app has to answer.
   final bool appDecides =
       actionId == chat_notif.ChatNotificationHandler.replyActionId ||
+      actionId == chat_notif.ChatNotificationHandler.markReadActionId ||
       actionId == CallNotificationHandler.declineActionId ||
       actionId == CallNotificationHandler.endCallActionId;
   final bool appIsAlive =
@@ -78,9 +79,14 @@ Future<void> backgroundNotificationResponseHandler(NotificationResponse response
       } catch (_) {}
     }
   } else if (response.actionId == chat_notif.ChatNotificationHandler.markReadActionId) {
-    // The app only knows messages already saved in Hive. Messages that arrived
-    // through FCM are not there yet, so their receipts are sent from here too.
-    await BackgroundChatActions.markRead(peerPubkey);
+    // A live app handles the messages it can see (those in Hive) itself and
+    // sends their receipts through the port. Only cover the FCM-spooled ones
+    // it cannot see yet; when the app is gone, do the whole job here. Without
+    // this split one tap sends two receipts for the same Hive message.
+    await BackgroundChatActions.markRead(
+      peerPubkey,
+      includeHiveMessages: !appIsAlive,
+    );
   } else if (response.actionId == chat_notif.ChatNotificationHandler.replyActionId) {
     // When the app is alive it handles the reply itself (through the port).
     final String? replyText = response.input;

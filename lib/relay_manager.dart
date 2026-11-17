@@ -1356,11 +1356,10 @@ class RelayManager {
       // sent, so the offline queue never re-wraps and re-publishes it.
       // Messages that arrive live while the gate is open keep their normal
       // status and are handled like any other message.
-      final bool isHistory =
-          SyncGate.isActive && timestamp <= SyncGate.startedAtMs;
-      final String initialStatus = isFromMe
-          ? (isHistory ? 'sent' : 'sending')
-          : (isHistory ? 'read' : 'sent');
+      final String initialStatus = SyncGate.initialStatusFor(
+        isFromMe: isFromMe,
+        timestamp: timestamp,
+      );
 
       final chatMessage = ChatMessage(
         id: actualEventId,

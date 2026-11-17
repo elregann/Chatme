@@ -32,10 +32,29 @@ class BgInbox {
     return dir;
   }
 
+  /// Marker files are named `<prefix>_<peer>_<id>`. A pubkey and a message id
+  /// are opaque single tokens (hex ids, `call_<time>`, `temp_...`). Letting a
+  /// separator or `..` through would let a forged NIP-17 rumor id read or
+  /// write outside [bg_inbox], so reject those instead of quoting the path.
+  static String? _markerName(String prefix, String peer, String id) {
+    if (peer.isEmpty || id.isEmpty) return null;
+    for (final part in [peer, id]) {
+      if (part.contains('/') ||
+          part.contains('\\') ||
+          part.contains('..') ||
+          part.contains('\u0000')) {
+        return null;
+      }
+    }
+    return '${prefix}_${peer}_$id';
+  }
+
   /// Remember a message id received while the app was closed.
   static Future<void> addUnread(String peer, String rumorId) async {
+    final name = _markerName('u', peer, rumorId);
+    if (name == null) return;
     final dir = await _dir();
-    await File('${dir.path}/u_${peer}_$rumorId').create();
+    await File('${dir.path}/$name').create();
   }
 
   /// Returns the remembered ids for [peer] and removes them.
@@ -70,15 +89,19 @@ class BgInbox {
   static Future<void> recordRead(String peer, List<String> ids) async {
     final dir = await _dir();
     for (final id in ids) {
-      await File('${dir.path}/r_${peer}_$id').create();
+      final name = _markerName('r', peer, id);
+      if (name == null) continue;
+      await File('${dir.path}/$name').create();
     }
   }
 
   /// Check if a specific message ID was marked as read while app was in background.
   static Future<bool> isMarkedRead(String peer, String id) async {
     try {
+      final name = _markerName('r', peer, id);
+      if (name == null) return false;
       final dir = await _dir();
-      final file = File('${dir.path}/r_${peer}_$id');
+      final file = File('${dir.path}/$name');
       return await file.exists();
     } catch (_) {
       return false;
@@ -88,8 +111,10 @@ class BgInbox {
   /// Remove a specific read marker once applied to Hive.
   static Future<void> consumeRead(String peer, String id) async {
     try {
+      final name = _markerName('r', peer, id);
+      if (name == null) return;
       final dir = await _dir();
-      final file = File('${dir.path}/r_${peer}_$id');
+      final file = File('${dir.path}/$name');
       if (await file.exists()) {
         await file.delete();
       }
