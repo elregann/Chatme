@@ -169,6 +169,95 @@ void main() {
     });
   });
 
+  group('delete for me', () {
+    Contact? peer() => Hive.box<Contact>('contacts').get('peer');
+
+    Future<void> seedChat() async {
+      await ChatManager.instance.saveMessage(msg('m1', timestamp: 1000));
+      await ChatManager.instance.saveMessage(msg('m2', timestamp: 2000));
+      await Hive.box<Contact>('contacts').put(
+        'peer',
+        Contact(
+          pubkey: 'peer',
+          name: 'Peer',
+          isSaved: true,
+          lastMessage: 'text of m2',
+          lastChatTime: 2000,
+        ),
+      );
+    }
+
+    test('deleting the newest message moves the preview back one', () async {
+      await seedChat();
+
+      await ChatManager.instance.deleteMessageForMe('m2', chatKey);
+
+      expect(await ChatManager.instance.isMessageExists('m2', chatKey), isFalse);
+      expect(peer()?.lastMessage, 'text of m1');
+      expect(peer()?.lastChatTime, 1000);
+    });
+
+    test('deleting an older message leaves the preview alone', () async {
+      await seedChat();
+
+      await ChatManager.instance.deleteMessageForMe('m1', chatKey);
+
+      expect(peer()?.lastMessage, 'text of m2');
+      expect(peer()?.lastChatTime, 2000);
+    });
+
+    test('deleting the last message empties the preview', () async {
+      await seedChat();
+
+      await ChatManager.instance.deleteMessageForMe('m2', chatKey);
+      await ChatManager.instance.deleteMessageForMe('m1', chatKey);
+
+      expect(peer()?.lastMessage, '');
+      expect(peer()?.lastChatTime, 0);
+    });
+
+    test('the preview follows messages from either side', () async {
+      await ChatManager.instance.saveMessage(
+        msg('m1', timestamp: 1000, sender: 'peer', receiver: 'me'),
+      );
+      await ChatManager.instance.saveMessage(msg('m2', timestamp: 2000));
+      await Hive.box<Contact>('contacts').put(
+        'peer',
+        Contact(
+          pubkey: 'peer',
+          name: 'Peer',
+          lastMessage: 'text of m2',
+          lastChatTime: 2000,
+        ),
+      );
+
+      await ChatManager.instance.deleteMessageForMe('m2', chatKey);
+
+      expect(peer()?.lastMessage, 'text of m1');
+      expect(peer()?.lastChatTime, 1000);
+    });
+
+    test('does not create a contact that does not exist', () async {
+      await ChatManager.instance.saveMessage(
+        msg('m1', timestamp: 1000),
+        updateContactPreview: false,
+      );
+
+      await ChatManager.instance.deleteMessageForMe('m1', chatKey);
+
+      expect(peer(), isNull);
+    });
+
+    test('plain deleteMessage leaves the preview untouched', () async {
+      await seedChat();
+
+      await ChatManager.instance.deleteMessage('m2', chatKey);
+
+      expect(peer()?.lastMessage, 'text of m2');
+      expect(peer()?.lastChatTime, 2000);
+    });
+  });
+
   group('status updates', () {
     test('updateMessageStatus upgrades and never downgrades', () async {
       await ChatManager.instance.saveMessage(msg('m1', status: 'sent'));

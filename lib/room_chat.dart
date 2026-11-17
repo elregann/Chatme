@@ -31,6 +31,9 @@ import 'services/link_preview_service.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_highlight.dart';
 import 'widgets/chatme_menu.dart';
+import 'widgets/confirm_dialog.dart';
+import 'widgets/chat_reaction_popup.dart';
+import 'widgets/chat_reaction_picker_sheet.dart';
 import 'services/image_prepare.dart';
 import 'services/video_metadata.dart';
 import 'package:image_picker/image_picker.dart';
@@ -135,16 +138,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   Timer? _scrollIdleTimer;
 
   OverlayEntry? _reactionOverlayEntry;
-  ChatMessage? _messageForReaction;
-  final List<String> _quickReactions = ['👍', '❤️', '😂'];
-  final List<String> _allReactions = [
-    '👍', '❤️', '😂', '😮', '😢', '😡',
-    '👏', '🎉', '🔥', '⭐', '❤️‍🔥', '🥹',
-    '🥳', '🫠', '🙏', '💯', '✨', '💬',
-    '👀', '🤔', '😎', '✅', '❌', '🚀',
-    '🥰', '🤝', '🙌', '💪', '🫡', '🌹',
-    '🤪', '🙈', '👻', '🍻', '🌈', '💤'
-  ];
 
   @override
   void initState() {
@@ -998,28 +991,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   void _showReactionPopup(BuildContext context, Offset tapPosition, ChatMessage message) {
-    _messageForReaction = message;
     _removeReactionOverlay();
 
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    double centerX = (screenWidth / 2) - 120;
+    final isMe = message.senderPubkey == AppSettings.instance.myPubkey;
+    final canReply = canReplyTo(message);
 
     _reactionOverlayEntry = OverlayEntry(
       builder: (context) {
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: _removeReactionOverlay,
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            Positioned(
-              top: tapPosition.dy - 80,
-              left: centerX,
-              child: _buildReactionPopupContent(),
-            ),
-          ],
+        return ChatReactionPopup(
+          message: message,
+          tapPosition: tapPosition,
+          isMe: isMe,
+          canReply: canReply,
+          onReaction: (emoji) => _handleReaction(message, emoji),
+          onMoreReactions: () => _openAllReactionsSheet(message),
+          onReply: () => _startReply(message),
+          onCopy: () {
+            Clipboard.setData(ClipboardData(text: message.plaintext));
+            HapticFeedback.mediumImpact();
+          },
+          onDelete: () => _confirmDeleteMessage(message),
+          onDismiss: _removeReactionOverlay,
         );
       },
     );
@@ -1027,101 +1019,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     Overlay.of(context).insert(_reactionOverlayEntry!);
   }
 
-  Widget _buildReactionPopupContent() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final iconColor = isDark ? Colors.white70 : Colors.black87;
-    final shadowColor = isDark ? Colors.black.withAlpha(100) : Colors.black.withAlpha(30);
-
-    return Material(
-      color: Colors.transparent,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: borderColor, width: 0.5),
-              boxShadow: [
-                BoxShadow(
-                  color: shadowColor,
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ..._quickReactions.map((emoji) => _buildEmojiButton(emoji)),
-                Container(
-                  width: 1,
-                  height: 30,
-                  color: borderColor,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                ),
-                _buildMoreButton(iconColor),
-                Container(
-                  width: 1,
-                  height: 30,
-                  color: borderColor,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    if (_messageForReaction != null) {
-                      Clipboard.setData(ClipboardData(text: _messageForReaction!.plaintext));
-                      HapticFeedback.mediumImpact();
-                      _removeReactionOverlay();
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    margin: const EdgeInsets.all(2),
-                    child: Icon(Icons.copy_rounded, size: 20, color: iconColor),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+  Future<void> _confirmDeleteMessage(ChatMessage message) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete for me',
+      message:
+      'This removes the message from this device only. The other person keeps their copy.',
+      confirmLabel: 'Delete',
     );
+    if (confirmed && mounted) {
+      await ChatManager.instance.deleteMessageForMe(message.id, message.chatKey);
+      if (mounted) setState(() {});
+    }
   }
 
-  Widget _buildEmojiButton(String emoji) {
-    return GestureDetector(
-      onTap: () {
-        _handleReaction(emoji);
-        _removeReactionOverlay();
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Text(emoji, style: const TextStyle(fontSize: 20)),
-      ),
-    );
-  }
-
-  Widget _buildMoreButton(Color iconColor) {
-    return GestureDetector(
-      onTap: _showAllReactionsDialog,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Icon(Icons.add, color: iconColor.withAlpha(150), size: 24),
-      ),
-    );
-  }
-
-  Future<void> _handleReaction(String emoji) async {
-    final targetMessage = _messageForReaction;
-    _messageForReaction = null;
-    if (targetMessage == null) return;
-
+  Future<void> _handleReaction(ChatMessage targetMessage, String emoji) async {
     HapticFeedback.lightImpact();
 
     try {
@@ -1162,160 +1074,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     }
   }
 
-  void _showAllReactionsDialog() {
+  Future<void> _openAllReactionsSheet(ChatMessage message) async {
     FocusScope.of(context).unfocus();
-
-    final backupMessage = _messageForReaction;
     _removeReactionOverlay();
-    _messageForReaction = backupMessage;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(15);
-    final textPrimary = isDark ? Colors.white : Colors.black;
-    final textSecondary = isDark ? Colors.white54 : Colors.black45;
-    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    const accentColor = ChatmeColors.accentPrimary;
-
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final dialogHeight = screenHeight * 0.7;
-    final crossAxisCount = screenWidth < 360 ? 5 : 6;
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) {
-        return Dialog(
-          backgroundColor: bgColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Container(
-            width: screenWidth * 0.9,
-            constraints: BoxConstraints(maxHeight: dialogHeight),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Add Reaction',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Choose an emoji to react',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: accentColor.withAlpha(15),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: accentColor.withAlpha(30), width: 0.5),
-                      ),
-                      child: Icon(
-                        Icons.emoji_emotions_outlined,
-                        size: 18,
-                        color: accentColor.withAlpha(200),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Divider(height: 0.5, thickness: 0.5, color: borderColor),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    physics: const ClampingScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      childAspectRatio: 1.0,
-                    ),
-                    itemCount: _allReactions.length,
-                    itemBuilder: (context, index) {
-                      final emoji = _allReactions[index];
-                      return GestureDetector(
-                        onTap: () {
-                          _handleReaction(emoji);
-                          Navigator.pop(context);
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.white.withAlpha(10) : Colors.black.withAlpha(5),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: borderColor,
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                emoji,
-                                style: TextStyle(
-                                  fontSize: screenWidth < 360 ? 20 : 24,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Divider(height: 0.5, thickness: 0.5, color: borderColor),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: borderColor, width: 0.5),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'Cancel',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    final chosenEmoji = await showChatReactionPicker(context);
+    if (chosenEmoji != null && chosenEmoji.isNotEmpty) {
+      await _handleReaction(message, chosenEmoji);
+    }
   }
 
   void _removeReactionOverlay() {

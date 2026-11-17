@@ -718,6 +718,40 @@ class ChatManager {
     });
   }
 
+  /// Removes one message from this device and brings the chat list preview
+  /// back in line with what is left. [deleteMessage] alone is for internal
+  /// swaps of temporary messages and leaves the preview untouched.
+  Future<void> deleteMessageForMe(String messageId, String chatKey) async {
+    await deleteMessage(messageId, chatKey);
+    await _lock.synchronized(() => _syncContactPreview(chatKey));
+  }
+
+  Future<void> _syncContactPreview(String chatKey) async {
+    try {
+      final parts = chatKey.split('_');
+      if (parts.length != 3) return;
+      final myPubkey = AppSettings.instance.myPubkey;
+      final peerPubkey = (parts[1] == myPubkey) ? parts[2] : parts[1];
+
+      final contactsBox = Hive.box<Contact>('contacts');
+      final contact = contactsBox.get(peerPubkey);
+      if (contact == null) return;
+
+      final remaining = messagesForChatSync(chatKey);
+      if (remaining.isEmpty) {
+        contact.lastMessage = '';
+        contact.lastChatTime = 0;
+      } else {
+        final last = remaining.last;
+        contact.lastMessage = last.plaintext;
+        contact.lastChatTime = last.timestamp;
+      }
+      await contactsBox.put(peerPubkey, contact);
+    } catch (e) {
+      DebugLogger.log('[Contact] Preview sync failed | $e', type: 'ERROR');
+    }
+  }
+
   Future<void> deleteChatHistory(String chatKey) async {
     try {
       final prefix = '$chatKey$messageKeySeparator';
