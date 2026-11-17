@@ -31,14 +31,9 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' show Digest, sha256;
 import 'package:hex/hex.dart';
-import 'package:pointycastle/export.dart'
-    show
-        AEADParameters,
-        AESEngine,
-        GCMBlockCipher,
-        InvalidCipherTextException,
-        KeyParameter;
+import 'package:pointycastle/export.dart' show InvalidCipherTextException;
 
+import 'aead.dart';
 import 'crypto_utils.dart';
 
 class StreamCryptoException implements Exception {
@@ -103,7 +98,11 @@ class StreamKey {
 
   /// Reads [source] once to build the header, the key, the nonce and both
   /// hashes. The file itself is not kept; [openEncrypted] reads it again.
-  static Future<StreamKey> prepare(File source) async {
+  ///
+  /// [aead] is the cipher engine; Android uses its own AES by default, while a
+  /// test can pass [Aead.fallback] so no platform channel is needed.
+  static Future<StreamKey> prepare(File source, {Aead? aead}) async {
+    final engine = aead ?? Aead.platform;
     final plainSize = await source.length();
     final totalChunks = chunkCountFor(plainSize);
     final key = CryptoUtils.generateSecureRandomBytes(32);
@@ -116,7 +115,7 @@ class StreamKey {
 
     await for (final chunk in _readChunks(source, plainSize)) {
       plainHash.add(chunk);
-      cipherHash.add(_seal(chunk, index, key, nonce, header));
+      cipherHash.add(await _seal(chunk, index, key, nonce, header, engine));
       index++;
     }
 
@@ -144,14 +143,16 @@ class StreamKey {
   Stream<List<int>> openEncrypted(
     File source, {
     void Function(int produced, int total)? onProgress,
+    Aead? aead,
   }) async* {
+    final engine = aead ?? Aead.platform;
     final cipherHash = _DigestBuilder()..add(header);
     var produced = headerBytes;
     yield header;
 
     var index = 0;
     await for (final chunk in _readChunks(source, plainSize)) {
-      final sealed = _seal(chunk, index, key, nonce, header);
+      final sealed = await _seal(chunk, index, key, nonce, header, engine);
       index++;
       cipherHash.add(sealed);
       produced += sealed.length;
@@ -197,27 +198,20 @@ class StreamKey {
     }
   }
 
-  static Uint8List _seal(
+  static Future<Uint8List> _seal(
     Uint8List plain,
     int index,
     Uint8List key,
     Uint8List nonce,
     Uint8List header,
+    Aead engine,
   ) {
-    final cipher = GCMBlockCipher(AESEngine())
-      ..init(
-        true,
-        AEADParameters(
-          KeyParameter(key),
-          128,
-          _nonceFor(nonce, index),
-          _aadFor(header, index),
-        ),
-      );
-    final out = Uint8List(cipher.getOutputSize(plain.length));
-    final written = cipher.processBytes(plain, 0, plain.length, out, 0);
-    final total = written + cipher.doFinal(out, written);
-    return Uint8List.sublistView(out, 0, total);
+    return engine.seal(
+      key: key,
+      nonce: _nonceFor(nonce, index),
+      aad: _aadFor(header, index),
+      plain: plain,
+    );
   }
 
   static Uint8List _nonceFor(Uint8List base, int index) {
@@ -244,7 +238,8 @@ class StreamFileCrypto {
   StreamFileCrypto._();
 
   /// [encryptedSize] is the size the sender announced. When it is set, a
-  /// longer or shorter stream is refused before it can fill the phone.
+  /// longer or shorter stream is refused before it can fill the phone. [aead]
+  /// selects the cipher engine, like in [StreamKey.prepare].
   static Future<void> decryptToFile({
     required Stream<List<int>> ciphertext,
     required File target,
@@ -254,7 +249,9 @@ class StreamFileCrypto {
     String? originalHash,
     int? encryptedSize,
     void Function(int received, int total)? onProgress,
+    Aead? aead,
   }) async {
+    final engine = aead ?? Aead.platform;
     final keyBytes = _decodeHex(key, 32, 'key');
     final nonceBytes = _decodeHex(nonce, 16, 'nonce');
     final reader = _FrameReader(ciphertext);
@@ -288,12 +285,13 @@ class StreamFileCrypto {
         cipherHash.add(sealed);
         received += sealed.length;
 
-        final plain = _open(
+        final plain = await _open(
           sealed,
           index,
           keyBytes,
           nonceBytes,
           header,
+          engine,
         );
         plainHash.add(plain);
         await out.writeFrom(plain);
@@ -380,27 +378,20 @@ class StreamFileCrypto {
     return left < chunkSize ? left : chunkSize;
   }
 
-  static Uint8List _open(
+  static Future<Uint8List> _open(
     Uint8List sealed,
     int index,
     Uint8List key,
     Uint8List nonce,
     Uint8List header,
+    Aead engine,
   ) {
-    final cipher = GCMBlockCipher(AESEngine())
-      ..init(
-        false,
-        AEADParameters(
-          KeyParameter(key),
-          128,
-          StreamKey._nonceFor(nonce, index),
-          StreamKey._aadFor(header, index),
-        ),
-      );
-    final out = Uint8List(cipher.getOutputSize(sealed.length));
-    final written = cipher.processBytes(sealed, 0, sealed.length, out, 0);
-    final total = written + cipher.doFinal(out, written);
-    return Uint8List.sublistView(out, 0, total);
+    return engine.open(
+      key: key,
+      nonce: StreamKey._nonceFor(nonce, index),
+      aad: StreamKey._aadFor(header, index),
+      sealed: sealed,
+    );
   }
 
   static Uint8List _decodeHex(String value, int length, String name) {

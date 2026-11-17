@@ -16,17 +16,26 @@ import androidx.work.*
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class MainActivity: FlutterActivity() {
     private val BATTERY_CHANNEL = "com.chatme.app/battery"
     private val TASK_CHANNEL = "com.chatme.app/task"
     private val STORAGE_CHANNEL = "com.chatme.app/storage"
+    private val AES_CHANNEL = "com.chatme.app/aes"
 
     companion object {
         private var retainedEngine: FlutterEngine? = null
         private var attachedActivity: MainActivity? = null
         @Volatile private var callActive = false
+
+        // One worker for the whole process: a file is sealed chunk by chunk, in
+        // order, and the platform thread stays free while it happens.
+        private val aesExecutor = Executors.newSingleThreadExecutor()
     }
 
     override fun provideFlutterEngine(context: Context): FlutterEngine? = retainedEngine
@@ -152,6 +161,45 @@ class MainActivity: FlutterActivity() {
                 }
             } else {
                 result.notImplemented()
+            }
+        }
+
+        // AES Channel: AES-GCM for one chunk of a streamed file. The cipher runs
+        // on a worker, so a video is encrypted without stalling the screen.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AES_CHANNEL).setMethodCallHandler { call, result ->
+            val encrypt = when (call.method) {
+                "seal" -> true
+                "open" -> false
+                else -> {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+            }
+            val args = call.arguments as? Map<*, *>
+            val key = args?.get("key") as? ByteArray
+            val nonce = args?.get("nonce") as? ByteArray
+            val aad = args?.get("aad") as? ByteArray
+            val data = args?.get("data") as? ByteArray
+            if (key == null || nonce == null || aad == null || data == null) {
+                result.error("AES_ARGUMENTS", "key, nonce, aad and data are required", null)
+                return@setMethodCallHandler
+            }
+            aesExecutor.execute {
+                try {
+                    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                    cipher.init(
+                        if (encrypt) Cipher.ENCRYPT_MODE else Cipher.DECRYPT_MODE,
+                        SecretKeySpec(key, "AES"),
+                        GCMParameterSpec(128, nonce)
+                    )
+                    cipher.updateAAD(aad)
+                    val out = cipher.doFinal(data)
+                    Handler(Looper.getMainLooper()).post { result.success(out) }
+                } catch (e: Exception) {
+                    Handler(Looper.getMainLooper()).post {
+                        result.error("AES_ERROR", e.message, null)
+                    }
+                }
             }
         }
 

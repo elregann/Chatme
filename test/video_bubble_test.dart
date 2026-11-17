@@ -53,6 +53,34 @@ void main() {
     expect(find.byType(VideoPlayer), findsNothing);
   });
 
+  testWidgets('a video being sent shows the circle, not the film roll',
+      (tester) async {
+    await tester.pumpWidget(host(VideoBubble(
+      message: video(localPath: 'C:/videos/clip.mp4', status: 'sending'),
+      footer: const SizedBox.shrink(),
+      thumbResolver: (_) async => null,
+    )));
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byIcon(Remix.movie_2_line), findsNothing);
+    expect(find.byIcon(Icons.play_circle_fill_rounded), findsNothing);
+  });
+
+  testWidgets('a video being sent keeps the poster it already has',
+      (tester) async {
+    await tester.pumpWidget(host(VideoBubble(
+      message: video(localPath: 'C:/videos/clip.mp4', status: 'sending'),
+      footer: const SizedBox.shrink(),
+      thumbResolver: (_) async => 'C:/videos/clip.mp4.thumb.jpg',
+    )));
+    await tester.pump();
+
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byIcon(Remix.movie_2_line), findsNothing);
+  });
+
   testWidgets('an undownloaded video asks for no poster', (tester) async {
     var asked = 0;
     await tester.pumpWidget(host(VideoBubble(

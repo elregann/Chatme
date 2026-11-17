@@ -202,23 +202,31 @@ class _VideoBubbleState extends State<VideoBubble> {
     );
   }
 
-  Widget _poster() {
+  Widget _poster({bool sending = false}) {
     final thumb = _thumb;
-    if (thumb == null) return _blankPoster();
+    if (thumb == null) return _blankPoster(sending: sending);
     return Image.file(
       File(thumb),
       fit: BoxFit.cover,
       gaplessPlayback: true,
-      errorBuilder: (_, __, ___) => _blankPoster(),
+      errorBuilder: (_, __, ___) => _blankPoster(sending: sending),
     );
   }
 
-  /// A video with no poster yet, or one whose poster cannot be read.
-  Widget _blankPoster() {
-    return const ColoredBox(
+  /// A video with no poster yet, or one whose poster cannot be read. While the
+  /// file is still being sent the circle above it is the only icon, so the film
+  /// roll does not show behind the spinner.
+  Widget _blankPoster({bool sending = false}) {
+    return ColoredBox(
       color: Colors.black87,
       child: Center(
-        child: Icon(Remix.movie_2_line, color: Colors.white54, size: 36),
+        child: sending
+            ? const SizedBox.shrink()
+            : const Icon(
+                Remix.movie_2_line,
+                color: Colors.white54,
+                size: 36,
+              ),
       ),
     );
   }
@@ -269,7 +277,7 @@ class _VideoBubbleState extends State<VideoBubble> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _path.isEmpty ? _placeholder() : _poster(),
+                _path.isEmpty ? _placeholder() : _poster(sending: sending),
                 if (_path.isNotEmpty && !sending)
                   const IgnorePointer(
                     child: Center(
