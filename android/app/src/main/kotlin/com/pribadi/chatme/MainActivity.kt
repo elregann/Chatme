@@ -27,8 +27,14 @@ class MainActivity: FlutterActivity() {
     private val TASK_CHANNEL = "com.chatme.app/task"
     private val STORAGE_CHANNEL = "com.chatme.app/storage"
     private val AES_CHANNEL = "com.chatme.app/aes"
+    private val SHORTCUT_CHANNEL = "com.chatme.app/shortcut"
+
+    // Pubkey from a tapped launcher shortcut, handed to Dart exactly once.
+    private var pendingShortcutPubkey: String? = null
 
     companion object {
+        // Must match the extra ChatmeShortcutsPlugin puts on the intent.
+        private const val EXTRA_SHORTCUT_PUBKEY = "pubkey"
         private var retainedEngine: FlutterEngine? = null
         private var attachedActivity: MainActivity? = null
         @Volatile private var callActive = false
@@ -59,6 +65,10 @@ class MainActivity: FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Read the shortcut before super: the retained engine can resume and ask
+        // for it right away. A recreation (rotation, process restore) keeps the
+        // saved state, so an old tap is not replayed.
+        if (savedInstanceState == null) captureShortcutIntent(intent)
         super.onCreate(savedInstanceState)
         val tappedOngoing = intent?.action == "SELECT_NOTIFICATION" &&
                 intent?.getIntExtra("notificationId", -1) == 888889
@@ -67,6 +77,24 @@ class MainActivity: FlutterActivity() {
                 MethodChannel(it, TASK_CHANNEL).invokeMethod("openActiveCall", null)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTop: a shortcut tapped while the activity is alive arrives here.
+        // Dart looks for it on the next resume.
+        captureShortcutIntent(intent)
+    }
+
+    private fun captureShortcutIntent(intent: Intent?) {
+        if (intent == null) return
+        // Opening from Recents reuses the old intent; it is not a new tap.
+        if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+        val pubkey = intent.getStringExtra(EXTRA_SHORTCUT_PUBKEY) ?: return
+        if (pubkey.isEmpty()) return
+        pendingShortcutPubkey = pubkey
+        // Consumed, so an activity recreation cannot open the chat again.
+        intent.removeExtra(EXTRA_SHORTCUT_PUBKEY)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -200,6 +228,18 @@ class MainActivity: FlutterActivity() {
                         result.error("AES_ERROR", e.message, null)
                     }
                 }
+            }
+        }
+
+        // Shortcut Channel: the contact of a tapped launcher shortcut. The value
+        // is cleared here, so the Dart side can check on every resume safely.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHORTCUT_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "getLaunchChat") {
+                val pubkey = pendingShortcutPubkey
+                pendingShortcutPubkey = null
+                result.success(pubkey)
+            } else {
+                result.notImplemented()
             }
         }
 

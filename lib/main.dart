@@ -28,6 +28,7 @@ import 'core/theme/chatme_colors.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/bg_inbox.dart';
 import 'core/utils/main_isolate_ping.dart';
+import 'core/utils/shortcut_launch.dart';
 import 'room_chat.dart';
 import 'relay_manager.dart';
 import 'chat_manager.dart';
@@ -255,6 +256,9 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
         _navigateToChat(payload);
       }
     });
+
+    // The app may have been started by tapping a launcher shortcut.
+    _openShortcutChat();
 
     _requestIgnoreBatteryOptimization();
 
@@ -612,6 +616,22 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
         });
       }
     });
+  }
+
+  /// Opens the chat of a tapped launcher shortcut, if there is one. The Android
+  /// side hands the pubkey over once, so checking on every resume is safe.
+  Future<void> _openShortcutChat() async {
+    final pubkey = await ShortcutLaunch.takeLaunchPubkey();
+    if (pubkey != null && mounted) {
+      _navigateToChat(pubkey);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A shortcut tapped while the app was in the background is only known to
+    // Android at that moment, so look for it when the app comes back.
+    if (state == AppLifecycleState.resumed) _openShortcutChat();
   }
 
   @override
