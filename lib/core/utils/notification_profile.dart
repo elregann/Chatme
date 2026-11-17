@@ -37,18 +37,26 @@ class NotificationProfile {
   static const Duration _avatarTtl = Duration(minutes: 5);
   static const Duration _failedAvatarTtl = Duration(seconds: 30);
 
-  static Future<NotificationProfile> resolve(String pubkey) async {
+  /// [allowDownload] false uses only the already cached photo (never waits on
+  /// the network) and falls back to the initials avatar, for callers that must
+  /// stay fast, such as launcher shortcuts pushed from the UI.
+  static Future<NotificationProfile> resolve(
+    String pubkey, {
+    bool allowDownload = true,
+  }) async {
     await _ensureBoxes();
     final name = _resolveName(pubkey);
     final photoUrl = _photoUrl(pubkey);
-    final cacheKey = '$pubkey|$name|${photoUrl ?? ''}';
+    // Cache separately so a cached-only avatar never hides a later download.
+    final cacheKey =
+        '$pubkey|$name|${photoUrl ?? ''}${allowDownload ? '' : '|cached'}';
 
     final cached = _cache[cacheKey];
     if (cached != null && !cached.isExpired) {
       return cached.profile;
     }
 
-    final avatar = await _buildAvatar(pubkey, name, photoUrl);
+    final avatar = await _buildAvatar(pubkey, name, photoUrl, allowDownload);
     final profile = NotificationProfile(name, avatar);
 
     if (_cache.length >= _cacheLimit) {
@@ -105,10 +113,12 @@ class NotificationProfile {
     String pubkey,
     String name,
     String? photoUrl,
+    bool allowDownload,
   ) async {
     try {
       if (photoUrl != null) {
-        final photo = await _circlePhoto(photoUrl);
+        final photo =
+            await _circlePhoto(photoUrl, allowDownload: allowDownload);
         if (photo != null) return photo;
       }
       return await _initialsAvatar(pubkey, name);
@@ -118,12 +128,18 @@ class NotificationProfile {
   }
 
   /// Photo from the same cache cached_network_image uses (key = url).
-  /// If it is not cached yet, tries to download for at most 3 seconds.
-  static Future<Uint8List?> _circlePhoto(String url) async {
+  /// If it is not cached yet, tries to download for at most 3 seconds, unless
+  /// [allowDownload] is false, in which case the caller falls back to initials.
+  static Future<Uint8List?> _circlePhoto(
+    String url, {
+    required bool allowDownload,
+  }) async {
     try {
-      final file = await DefaultCacheManager()
-          .getSingleFile(url)
-          .timeout(const Duration(seconds: 3));
+      final manager = DefaultCacheManager();
+      final file = allowDownload
+          ? await manager.getSingleFile(url).timeout(const Duration(seconds: 3))
+          : (await manager.getFileFromCache(url))?.file;
+      if (file == null) return null;
       final bytes = await file.readAsBytes();
 
       final codec = await ui.instantiateImageCodec(bytes, targetWidth: 512);

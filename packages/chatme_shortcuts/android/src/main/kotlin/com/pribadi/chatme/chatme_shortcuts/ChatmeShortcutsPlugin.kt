@@ -57,19 +57,18 @@ class ChatmeShortcutsPlugin : FlutterPlugin, MethodCallHandler {
         name: String,
         avatarBytes: ByteArray?
     ) {
+        val icon = avatarBytes?.let { bytes ->
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?.let { IconCompat.createWithBitmap(it) }
+        }
+
         val personBuilder = Person.Builder()
             .setName(name)
             .setKey(id)
-
-        if (avatarBytes != null) {
-            val bitmap = BitmapFactory.decodeByteArray(avatarBytes, 0, avatarBytes.size)
-            if (bitmap != null) {
-                personBuilder.setIcon(IconCompat.createWithBitmap(bitmap))
-            }
-        }
+        icon?.let { personBuilder.setIcon(it) }
         val person = personBuilder.build()
 
-        // Same target and extras as the shortcut built in MainActivity.
+        // Launches MainActivity with the pubkey of the contact to open.
         val intent = Intent().apply {
             setClassName(context.packageName, "com.pribadi.chatme.MainActivity")
             action = Intent.ACTION_VIEW
@@ -81,15 +80,18 @@ class ChatmeShortcutsPlugin : FlutterPlugin, MethodCallHandler {
         // Drop the stale label so Android does not keep an old name.
         ShortcutManagerCompat.removeDynamicShortcuts(context, listOf(shortcutId))
 
-        val shortcut = ShortcutInfoCompat.Builder(context, shortcutId)
+        val shortcutBuilder = ShortcutInfoCompat.Builder(context, shortcutId)
             .setShortLabel(name)
             .setLongLabel(name)
             .setPerson(person)
             .setIntent(intent)
             .setLongLived(true)
-            .build()
 
-        ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
+        // The launcher renders the shortcut icon from here; the Person icon is
+        // not used by every launcher (e.g. Pixel), so set both.
+        icon?.let { shortcutBuilder.setIcon(it) }
+
+        ShortcutManagerCompat.pushDynamicShortcut(context, shortcutBuilder.build())
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
