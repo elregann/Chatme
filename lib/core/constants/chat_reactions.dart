@@ -97,18 +97,4 @@ class ChatReactions {
       ],
     ),
   ];
-
-  /// Aggregated list of all emojis without duplicates.
-  static List<String> get allReactions {
-    final seen = <String>{};
-    final result = <String>[];
-    for (final cat in categories) {
-      for (final emoji in cat.emojis) {
-        if (seen.add(emoji)) {
-          result.add(emoji);
-        }
-      }
-    }
-    return result;
-  }
 }

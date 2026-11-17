@@ -110,7 +110,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Disable Impeller to fallback to OpenGL/Skia and avoid Vulkan device lost on Mali GPUs -->
+        <!-- Impeller's Vulkan backend lost the GPU device while playing video on a Samsung phone, so Android renders with Skia. -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />

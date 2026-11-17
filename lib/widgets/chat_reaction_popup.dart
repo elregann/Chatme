@@ -287,7 +287,7 @@ class _ChatReactionPopupState extends State<ChatReactionPopup>
                 label: 'Reply',
                 onTap: () => _close(widget.onReply),
               ),
-            if (widget.canReply && (hasText || true))
+            if (widget.canReply)
               const Divider(height: 0.5, thickness: 0.5, color: ChatmeColors.dividerSubtle),
             if (hasText) ...[
               _ActionRow(
