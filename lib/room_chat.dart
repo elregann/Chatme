@@ -73,10 +73,29 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
+// Flutter opens the IME when a focused node consumes its keyboard token.
+// Swallowing that token keeps the caret without raising the keyboard; an
+// explicit user action opts in before the focus change is applied.
+class _ComposerFocusNode extends FocusNode {
+  bool _allowKeyboardOnNextFocus = false;
+
+  void allowKeyboardOnNextFocus() {
+    _allowKeyboardOnNextFocus = true;
+  }
+
+  @override
+  bool consumeKeyboardToken() {
+    final bool consumed = super.consumeKeyboardToken();
+    final bool allowed = _allowKeyboardOnNextFocus;
+    _allowKeyboardOnNextFocus = false;
+    return consumed && allowed;
+  }
+}
+
 class _ChatDetailScreenState extends State<ChatDetailScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
+  final _ComposerFocusNode _focusNode = _ComposerFocusNode();
 
   final AnchoredListController _anchoredController = AnchoredListController();
   final ScrollController _scrollController = ScrollController();
@@ -142,6 +161,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   @override
   void initState() {
     super.initState();
+    // A valid selection keeps EditableText from calling requestKeyboard() while
+    // repairing an invalid one on the first quiet focus.
+    _messageController.selection = const TextSelection.collapsed(offset: 0);
     _emojiRevealController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 180),
@@ -178,10 +200,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     _focusNode.addListener(_handleComposerFocusChanged);
     if (widget.initialReply != null) {
       _replyingTo = widget.initialReply;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _focusComposer();
-      });
     }
+    // Keep the caret ready on every room entry. Only an explicit reply opts in
+    // to the keyboard; opening the room itself stays silent.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.initialReply != null) {
+        _focusComposer();
+      } else {
+        _focusNode.requestFocus();
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllAsRead();
     });
@@ -231,7 +260,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   void _focusComposer() {
-    if (mounted) _focusNode.requestFocus();
+    if (!mounted) return;
+    // Re-enter focus even when the caret is already there, so the keyboard is
+    // opened through a fresh, explicitly allowed focus change. FocusManager
+    // applies the unfocus first, hence the next frame before asking again.
+    if (_focusNode.hasFocus) {
+      if (MediaQuery.viewInsetsOf(context).bottom > 0) return;
+      _focusNode.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _focusNode.allowKeyboardOnNextFocus();
+        _focusNode.requestFocus();
+      });
+      return;
+    }
+    _focusNode.allowKeyboardOnNextFocus();
+    _focusNode.requestFocus();
   }
 
   @override
@@ -362,7 +406,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   void _restoreKeyboardFromEmojiPanel() {
     if (!mounted) return;
     if (!_isEmojiPanelOpen) {
-      _focusNode.requestFocus();
+      _focusComposer();
       return;
     }
 
@@ -370,7 +414,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     if (!_isEmojiPanelClosing) {
       setState(() => _isEmojiPanelClosing = true);
     }
-    _focusNode.requestFocus();
+    _focusComposer();
 
     // Safety net for when no keyboard ever shows up (hardware keyboard).
     _emojiPanelCloseTimer?.cancel();
@@ -1676,6 +1720,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       child: TextField(
                         controller: _messageController,
                         focusNode: _focusNode,
+                        onTap: () {
+                          if (!_focusNode.hasFocus) {
+                            _focusNode.allowKeyboardOnNextFocus();
+                          }
+                        },
                         textCapitalization: TextCapitalization.sentences,
                         maxLines: 5,
                         minLines: 1,
@@ -2039,7 +2088,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
     HapticFeedback.mediumImpact();
     setState(() => _replyingTo = message);
-    _focusNode.requestFocus();
+    _focusComposer();
   }
 
   void _resetSwipe() {

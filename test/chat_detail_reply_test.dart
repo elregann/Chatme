@@ -126,6 +126,59 @@ void main() {
     expect(field.focusNode?.hasFocus, isTrue);
     expect(tester.testTextInput.isVisible, isTrue);
   });
+
+  testWidgets('entering a room focuses the composer without showing the keyboard',
+      (tester) async {
+    await tester.pumpWidget(app(ChatDetailScreen(
+      contact: Contact(pubkey: 'peer', name: 'Peer'),
+      relayManager: RelayManager(),
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode?.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('tapping the composer opens the keyboard', (tester) async {
+    await tester.pumpWidget(app(ChatDetailScreen(
+      contact: Contact(pubkey: 'peer', name: 'Peer'),
+      relayManager: RelayManager(),
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(tester.testTextInput.isVisible, isTrue);
+  });
+
+  testWidgets('returning to the room does not raise the keyboard', (tester) async {
+    await tester.pumpWidget(app(ChatDetailScreen(
+      contact: Contact(pubkey: 'peer', name: 'Peer'),
+      relayManager: RelayManager(),
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final navigator = Navigator.of(tester.element(find.byType(ChatDetailScreen)));
+    navigator.push(MaterialPageRoute(
+      builder: (_) => const Scaffold(body: Text('Other')),
+    ));
+    await tester.pumpAndSettle();
+
+    navigator.pop();
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode?.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
 }
 
 class _SilentNotifications extends FlutterLocalNotificationsPlatform {
