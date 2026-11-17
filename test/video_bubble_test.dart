@@ -2,7 +2,6 @@ import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/widgets/video_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:remixicon/remixicon.dart';
 import 'package:video_player/video_player.dart';
 
 void main() {
@@ -39,7 +38,7 @@ void main() {
     expect(find.byIcon(Icons.play_circle_fill_rounded), findsOneWidget);
   });
 
-  testWidgets('a video whose poster cannot be made keeps the dark tile',
+  testWidgets('a video whose poster cannot be made shows a dark tile',
       (tester) async {
     await tester.pumpWidget(host(VideoBubble(
       message: video(localPath: 'C:/videos/clip.mp4'),
@@ -49,12 +48,11 @@ void main() {
     await tester.pump();
 
     expect(find.byType(Image), findsNothing);
-    expect(find.byIcon(Remix.movie_2_line), findsOneWidget);
+    expect(find.byIcon(Icons.play_circle_fill_rounded), findsOneWidget);
     expect(find.byType(VideoPlayer), findsNothing);
   });
 
-  testWidgets('a video being sent shows the circle, not the film roll',
-      (tester) async {
+  testWidgets('a video being sent shows only the circle', (tester) async {
     await tester.pumpWidget(host(VideoBubble(
       message: video(localPath: 'C:/videos/clip.mp4', status: 'sending'),
       footer: const SizedBox.shrink(),
@@ -63,7 +61,6 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.byIcon(Remix.movie_2_line), findsNothing);
     expect(find.byIcon(Icons.play_circle_fill_rounded), findsNothing);
   });
 
@@ -78,7 +75,6 @@ void main() {
 
     expect(find.byType(Image), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.byIcon(Remix.movie_2_line), findsNothing);
   });
 
   testWidgets('an undownloaded video asks for no poster', (tester) async {

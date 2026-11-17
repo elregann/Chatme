@@ -5,7 +5,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:remixicon/remixicon.dart';
 
 import '../core/utils/debug_logger.dart';
 import '../core/utils/duration_utils.dart';
@@ -202,33 +201,21 @@ class _VideoBubbleState extends State<VideoBubble> {
     );
   }
 
-  Widget _poster({bool sending = false}) {
+  Widget _poster() {
     final thumb = _thumb;
-    if (thumb == null) return _blankPoster(sending: sending);
+    if (thumb == null) return _blankPoster();
     return Image.file(
       File(thumb),
       fit: BoxFit.cover,
       gaplessPlayback: true,
-      errorBuilder: (_, __, ___) => _blankPoster(sending: sending),
+      errorBuilder: (_, __, ___) => _blankPoster(),
     );
   }
 
-  /// A video with no poster yet, or one whose poster cannot be read. While the
-  /// file is still being sent the circle above it is the only icon, so the film
-  /// roll does not show behind the spinner.
-  Widget _blankPoster({bool sending = false}) {
-    return ColoredBox(
-      color: Colors.black87,
-      child: Center(
-        child: sending
-            ? const SizedBox.shrink()
-            : const Icon(
-                Remix.movie_2_line,
-                color: Colors.white54,
-                size: 36,
-              ),
-      ),
-    );
+  /// A video with no poster yet, or one whose poster cannot be read. The play
+  /// button above it already says that the bubble is a video.
+  Widget _blankPoster() {
+    return const ColoredBox(color: Colors.black87);
   }
 
   Widget _durationChip() {
@@ -277,7 +264,7 @@ class _VideoBubbleState extends State<VideoBubble> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _path.isEmpty ? _placeholder() : _poster(sending: sending),
+                _path.isEmpty ? _placeholder() : _poster(),
                 if (_path.isNotEmpty && !sending)
                   const IgnorePointer(
                     child: Center(
