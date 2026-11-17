@@ -45,6 +45,20 @@ import 'call_notification_handler.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+/// Unread rule for the FCM handoff drain.
+///
+/// Kept in one place (and tested) because it is easy to get wrong: a message
+/// marked read from a background notification is saved a moment later with
+/// [wasNew] still true. Without [alreadyRead] that would re-arm the badge.
+bool shouldMuteHandoffUnread({
+  required bool isFromMe,
+  required bool currentlyOpen,
+  required bool syncActive,
+  required bool wasNew,
+  required bool alreadyRead,
+}) =>
+    isFromMe || currentlyOpen || syncActive || !wasNew || alreadyRead;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -553,13 +567,27 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
             continue;
           }
 
+          // Same rule as the relay drain (relay_manager.dart): a message that
+          // was marked read while still in the spool must not raise the badge
+          // just because this is the first time we save it in Hive.
+          final saved = ChatManager.instance.getMessageByIdSync(
+            result.rumorId,
+            chatKey,
+          );
+          final bool alreadyRead = saved?.status == 'read';
+
           final preview = plaintext.length > 50
               ? '${plaintext.substring(0, 50)}...'
               : plaintext;
           final bool currentlyOpen =
               _relayManager.currentlyChattingWith == peer;
-          final bool muteUnread =
-              isFromMe || currentlyOpen || SyncGate.isActive || !wasNew;
+          final bool muteUnread = shouldMuteHandoffUnread(
+            isFromMe: isFromMe,
+            currentlyOpen: currentlyOpen,
+            syncActive: SyncGate.isActive,
+            wasNew: wasNew,
+            alreadyRead: alreadyRead,
+          );
 
           var contact = contactsBox.get(peer);
           if (contact == null) {
