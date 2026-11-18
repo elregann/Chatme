@@ -117,6 +117,11 @@ class _CallsScreenState extends State<CallsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_rounded,
+              color: Theme.of(context).iconTheme.color, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
         centerTitle: false,
         titleSpacing: 16,
         title: Text(

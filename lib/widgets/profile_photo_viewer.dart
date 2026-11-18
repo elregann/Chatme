@@ -135,8 +135,9 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
               child: IconButton(
                 onPressed: () => Navigator.of(context).maybePop(),
                 icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
+                  Icons.arrow_back_ios_rounded,
                   color: Colors.white,
+                  size: 18,
                 ),
               ),
             ),

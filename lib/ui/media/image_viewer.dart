@@ -128,6 +128,11 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: Colors.white, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         elevation: 0,

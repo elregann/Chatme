@@ -305,6 +305,11 @@ class VideoViewerPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: Colors.white, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,

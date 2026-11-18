@@ -111,6 +111,11 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: ChatmeColors.textPrimary, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
         centerTitle: false,
         titleSpacing: 16,
         title: Row(

@@ -124,7 +124,7 @@ void main() {
     expect(Hive.box('settings').get('calls_history_seen_at'),
         isA<int>().having((v) => v > 0, 'is a timestamp', true));
 
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_rounded));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.more_vert));
