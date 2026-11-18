@@ -17,6 +17,7 @@ import 'services/app_settings.dart';
 import 'services/profile_meta_store.dart';
 import 'services/profile_search_service.dart';
 import 'ui/contacts/add_contact.dart';
+import 'widgets/chatme_menu.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/chatme_search_bar.dart';
 import 'call_overlay.dart';
@@ -212,6 +213,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  /// Re-subscribes to kind 0 profiles for every contact so stale names and
+  /// avatars refresh without changing any local data.
+  void _refreshProfiles() {
+    widget.relayManager.refreshProfileSubscription();
+  }
+
   Future<void> _deleteContact(Contact contact) async {
     final confirmed = await showConfirmDialog(
       context,
@@ -268,6 +275,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
         appBar: AppBar(
+          centerTitle: false,
+          titleSpacing: 16,
           title: Text(
             'Contacts',
             style: TextStyle(
@@ -276,6 +285,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
               color: Theme.of(context).iconTheme.color,
             ),
           ),
+          actions: [
+            ChatmeMenuButton<String>(
+              icon: Icon(Icons.more_vert,
+                  color: Theme.of(context).iconTheme.color),
+              entries: const [
+                ChatmeMenuEntry(
+                  value: 'refresh_profiles',
+                  label: 'Refresh profiles',
+                ),
+              ],
+              onSelected: (value) {
+                if (value == 'refresh_profiles') _refreshProfiles();
+              },
+            ),
+          ],
           elevation: 0,
         ),
         body: Column(
