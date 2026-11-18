@@ -39,6 +39,7 @@ import 'tab_contact.dart';
 import 'tab_profile.dart';
 import 'tab_chat.dart';
 import 'tab_calls.dart';
+import 'tab_discovery.dart';
 import 'call.dart';
 import 'call_manager.dart';
 import 'call_notification_handler.dart';
@@ -983,6 +984,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         children: [
           ChatsScreen(relayManager: widget.relayManager),
           ContactsScreen(relayManager: widget.relayManager),
+          const DiscoveryScreen(),
           CallsScreen(relayManager: widget.relayManager),
           ProfileScreen(
             relayManager: widget.relayManager,
@@ -1040,6 +1042,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               icon: Icon(Remix.contacts_line, color: ChatmeColors.textPrimary),
               selectedIcon: Icon(Remix.contacts_fill, color: ChatmeColors.accentPrimary),
               label: 'Contacts',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.explore_outlined, color: ChatmeColors.textPrimary),
+              selectedIcon:
+                  Icon(Icons.explore, color: ChatmeColors.accentPrimary),
+              label: 'Discovery',
             ),
             const NavigationDestination(
               icon: Icon(Icons.phone_outlined, color: ChatmeColors.textPrimary),
