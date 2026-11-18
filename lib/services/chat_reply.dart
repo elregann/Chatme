@@ -44,8 +44,11 @@ class ChatScreenRegistry {
     }
   }
 
+  /// Forgets every open room handle. Called when the local account is wiped.
+  static void clearAll() => _handles.clear();
+
   @visibleForTesting
-  static void clear() => _handles.clear();
+  static void clear() => clearAll();
 }
 
 typedef ChatPageBuilder = Widget Function(

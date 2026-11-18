@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'relay_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'services/account_logout.dart';
 import 'services/app_settings.dart';
 import 'services/link_preview_service.dart';
 import 'core/utils/key_utils.dart';
@@ -28,13 +29,20 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/profile_photo_viewer.dart';
+import 'widgets/chatme_menu.dart';
+import 'widgets/confirm_dialog.dart';
 
 class ProfileScreen extends StatefulWidget {
   final RelayManager relayManager;
 
+  /// Called after local data is wiped and the new account is ready, so the
+  /// shell can jump back to the Chats tab.
+  final VoidCallback? onResetComplete;
+
   const ProfileScreen({
     super.key,
     required this.relayManager,
+    this.onResetComplete,
   });
 
   @override
@@ -48,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _localPhotoPath;
   String? _remotePhotoUrl;
   String _appVersion = "";
+  bool _isLoggingOut = false;
 
   @override
   void initState() {
@@ -472,6 +481,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Signs out of the local account after an explicit confirmation. The old
+  /// account itself is not touched: only this device's data is erased, then a
+  /// new account is generated in place.
+  Future<void> _confirmLogout() async {
+    if (_isLoggingOut) return;
+
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Log out?',
+      message:
+          'All chats, contacts and settings on this device will be erased and a new account will be created. Your old account and its profile stay online and can be restored with your backup phrase or nsec.',
+      confirmLabel: 'Log out',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isLoggingOut = true);
+    try {
+      await AccountLogout.signOut(widget.relayManager);
+      if (!mounted) return;
+
+      setState(() {
+        _currentHandle = '';
+        _isEditing = true;
+        _nip05Controller.clear();
+        _localPhotoPath = null;
+        _remotePhotoUrl = null;
+        _isLoggingOut = false;
+      });
+      widget.onResetComplete?.call();
+    } catch (e) {
+      debugPrint('[Profile] Logout failed | $e');
+      if (!mounted) return;
+      setState(() => _isLoggingOut = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not sign out: $e')),
+      );
+    }
+  }
+
   void _showPrivacyDialog(BuildContext context, Color bgColor,
       Color textPrimary, Color textSecondary) {
     Navigator.push(
@@ -562,29 +610,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Scaffold(
           backgroundColor: bgColor,
           appBar: AppBar(
-            title: Text(
-              'Profile',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 22,
-                color: Theme.of(context).iconTheme.color,
+            centerTitle: false,
+            leading: IconButton(
+              icon: const Icon(Icons.qr_code_2_rounded,
+                  color: textPrimary, size: 26),
+              tooltip: 'My QR code',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => QrCodePage(
+                    pubkey: settings.myPubkey,
+                    name: settings.myName,
+                    relayManager: widget.relayManager,
+                  ),
+                ),
               ),
             ),
             elevation: 0,
             actions: [
-              IconButton(
-                icon: const Icon(Icons.qr_code_2_rounded,
-                    color: textPrimary, size: 26),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => QrCodePage(
-                      pubkey: settings.myPubkey,
-                      name: settings.myName,
-                      relayManager: widget.relayManager,
-                    ),
-                  ),
-                ),
+              ChatmeMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: textPrimary),
+                entries: _isLoggingOut
+                    ? const <ChatmeMenuEntry<String>>[]
+                    : const [
+                        ChatmeMenuEntry<String>(
+                          value: 'logout',
+                          icon: Icons.logout,
+                          label: 'Log out',
+                        ),
+                      ],
+                onSelected: (value) {
+                  if (value == 'logout') _confirmLogout();
+                },
               ),
               const SizedBox(width: 8),
             ],

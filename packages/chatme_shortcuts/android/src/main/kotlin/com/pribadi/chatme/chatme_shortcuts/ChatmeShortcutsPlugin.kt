@@ -29,6 +29,16 @@ class ChatmeShortcutsPlugin : FlutterPlugin, MethodCallHandler {
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
+        if (call.method == "removeAllShortcuts") {
+            try {
+                ShortcutManagerCompat.removeAllDynamicShortcuts(appContext)
+                result.success(true)
+            } catch (e: Exception) {
+                result.error("SHORTCUT_FAILED", e.message, null)
+            }
+            return
+        }
+
         if (call.method != "pushShortcut") {
             result.notImplemented()
             return

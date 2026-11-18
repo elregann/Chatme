@@ -984,7 +984,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ChatsScreen(relayManager: widget.relayManager),
           ContactsScreen(relayManager: widget.relayManager),
           CallsScreen(relayManager: widget.relayManager),
-          ProfileScreen(relayManager: widget.relayManager),
+          ProfileScreen(
+            relayManager: widget.relayManager,
+            onResetComplete: () {
+              setState(() => _selectedIndex = 0);
+              _pageController.jumpToPage(0);
+            },
+          ),
         ],
       ),
       bottomNavigationBar: _buildBottomNav(),

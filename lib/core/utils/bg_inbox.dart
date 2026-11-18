@@ -85,6 +85,20 @@ class BgInbox {
     }
   }
 
+  /// Removes every marker in the mailbox: unread/read receipts, declined and
+  /// missed calls, sent replies, pending gift wraps and notification stacks.
+  /// Everything here is transient delivery state, so wiping the local account
+  /// can safely delete the whole folder.
+  static Future<void> clearAll() async {
+    final dir = await _dir();
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      try {
+        await entity.delete();
+      } catch (_) {}
+    }
+  }
+
   /// Note the ids whose read receipts were sent while the app was closed.
   static Future<void> recordRead(String peer, List<String> ids) async {
     final dir = await _dir();

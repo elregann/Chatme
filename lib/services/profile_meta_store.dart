@@ -100,6 +100,17 @@ class ProfileMetaStore {
     _cache.clear();
   }
 
+  /// Forgets every kind-0 winner, in memory and on disk. Used when the local
+  /// account is wiped: no profile from the old account may survive the reset.
+  static Future<void> clearAll() async {
+    _cache.clear();
+    final box = _box;
+    if (box == null) return;
+    try {
+      await box.clear();
+    } catch (_) {}
+  }
+
   /// Clears [pubkey] from the in-memory cache and the persisted box.
   ///
   /// The cache entry is removed synchronously so the next kind-0 for this

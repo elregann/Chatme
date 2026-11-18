@@ -30,6 +30,19 @@ class ShortcutHelper {
     }
   }
 
+  /// Removes every conversation shortcut this app pinned on the launcher.
+  /// Called when the local account is wiped, so contacts from the old account
+  /// do not stay reachable from the home screen.
+  static Future<void> removeConversationShortcuts() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    try {
+      await _channel.invokeMethod('removeAllShortcuts');
+    } catch (e) {
+      debugPrint('[ShortcutHelper] Failed to remove shortcuts: $e');
+    }
+  }
+
   /// Cached-only lookup: never waits on a photo download, so shortcut pushes
   /// from the UI stay instant. Falls back to the initials avatar.
   static Future<Uint8List?> _resolveAvatar(String id) async {
