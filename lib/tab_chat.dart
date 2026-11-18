@@ -115,6 +115,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
         builder: (_) => CallsScreen(relayManager: widget.relayManager),
       ),
     );
+    // A call can land while the history page is open. It was visible there, so
+    // returning must not light the dot again for something already seen.
+    await Hive.box('settings')
+        .put(_callsHistorySeenKey, DateTime.now().millisecondsSinceEpoch);
     if (mounted) setState(() {});
   }
 

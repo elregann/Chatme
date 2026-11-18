@@ -44,6 +44,8 @@ void main() {
   late Directory bgDir;
   late Directory mediaDir;
   late Directory voiceDir;
+  late Future<void> Function() originalWebViewDataCleaner;
+  int webViewClears = 0;
 
   setUpAll(() async {
     FlutterLocalNotificationsPlatform.instance = _SilentNotifications();
@@ -83,10 +85,12 @@ void main() {
     // BgInbox appends /bg_inbox to its base directory itself.
     bgDir = Directory('${tempDir.path}/bg_inbox');
     BgInbox.baseDirectoryOverride = tempDir;
+    originalWebViewDataCleaner = AccountLogout.clearWebViewData;
   });
 
   tearDownAll(() async {
     BgInbox.baseDirectoryOverride = null;
+    AccountLogout.clearWebViewData = originalWebViewDataCleaner;
     for (final channel in [
       const MethodChannel('package_info_plus'),
       const MethodChannel('plugins.flutter.io/path_provider'),
@@ -100,6 +104,10 @@ void main() {
 
   setUp(() async {
     SyncGate.resetForTest();
+    webViewClears = 0;
+    AccountLogout.clearWebViewData = () async {
+      webViewClears++;
+    };
 
     final settings = Hive.box('settings');
     await settings.clear();
@@ -209,6 +217,7 @@ void main() {
     expect(Hive.box<CallLog>('call_logs').isEmpty, isTrue);
     expect(Hive.box('processed_events').isEmpty, isTrue);
     expect(Hive.box<String>('link_previews').isEmpty, isTrue);
+    expect(webViewClears, 1);
 
     final files = await bgDir.list().toList();
     expect(files, isEmpty);

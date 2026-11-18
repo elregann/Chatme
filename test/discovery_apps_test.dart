@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:chatme/data/discovery_apps.dart';
 import 'package:chatme/tab_discovery.dart';
+import 'package:chatme/ui/discovery/web_app_browser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remixicon/remixicon.dart';
@@ -43,6 +44,16 @@ void main() {
       expect(app.host, isNotEmpty);
       expect(app.host, isNot(contains('https')));
     }
+  });
+
+  test('the browser host follows the page shown, not only the curated entry',
+      () {
+    expect(browserHostFromUrl('https://primal.net/feed'), 'primal.net');
+    expect(browserHostFromUrl('https://app.example.com/login?next=1'),
+        'app.example.com');
+    expect(browserHostFromUrl('about:blank'), isNull);
+    expect(browserHostFromUrl(''), isNull);
+    expect(browserHostFromUrl(null), isNull);
   });
 
   testWidgets('Discovery is a flat list with icons and opens a web app',

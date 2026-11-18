@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:hive/hive.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../call_manager.dart';
 import '../core/utils/bg_inbox.dart';
@@ -30,6 +31,10 @@ import 'voice_storage.dart';
 
 class AccountLogout {
   AccountLogout._();
+
+  /// Test seam: production wipes the in-app browser's cookies and site data,
+  /// tests only record that the step ran (no native WebView in widget tests).
+  static Future<void> Function() clearWebViewData = _clearWebViewData;
 
   /// Wipes local state, creates the new account, and reconnects in place.
   static Future<void> signOut(RelayManager relayManager) async {
@@ -127,9 +132,21 @@ class AccountLogout {
     });
     await _guard('clear profile cache', ProfileMetaStore.clearAll);
     await _guard('clear link previews', LinkPreviewService.instance.clear);
+    await _guard('clear WebView data', clearWebViewData);
     await _guard('clear settings', () async {
       if (Hive.isBoxOpen('settings')) await Hive.box('settings').clear();
     });
+  }
+
+  /// Discovery web apps live in a shared WebView data store. A logout must not
+  /// leave their cookies, local storage or caches behind for the new account.
+  /// A temporary controller is enough: WebView.clearCache is app-wide, and
+  /// the cookie manager is global to every WebView in the app.
+  static Future<void> _clearWebViewData() async {
+    await WebViewCookieManager().clearCookies();
+    final controller = WebViewController();
+    await controller.clearCache();
+    await controller.clearLocalStorage();
   }
 
   static Future<void> _guard(

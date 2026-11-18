@@ -123,6 +123,17 @@ void main() {
     expect(find.text('Calls'), findsOneWidget);
     expect(Hive.box('settings').get('calls_history_seen_at'),
         isA<int>().having((v) => v > 0, 'is a timestamp', true));
+    final seenAtOpen = Hive.box('settings').get('calls_history_seen_at') as int;
+
+    // A missed call landing while the history page is open has already been
+    // seen on screen; going back must not light the dot again.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.runAsync(
+      () => seedCall('missed', DateTime.now().millisecondsSinceEpoch),
+    );
+    expect(DateTime.now().millisecondsSinceEpoch, greaterThan(seenAtOpen));
 
     await tester.tap(find.byIcon(Icons.arrow_back_ios_rounded));
     await tester.pumpAndSettle();

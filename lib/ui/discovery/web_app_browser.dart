@@ -9,6 +9,15 @@ import '../../core/theme/chatme_colors.dart';
 import '../../data/discovery_apps.dart';
 import '../../widgets/chatme_menu.dart';
 
+/// The host shown under an app's name follows the page actually on screen.
+/// Web apps commonly redirect or navigate to another domain after loading, so
+/// the curated entry's host is only the starting point.
+String? browserHostFromUrl(String? url) {
+  final host = Uri.tryParse(url ?? '')?.host;
+  if (host == null || host.isEmpty) return null;
+  return host;
+}
+
 /// A minimal in-app browser for the web apps listed in Discovery.
 ///
 /// The page is opened as a normal route, so the user stays inside Chatme and
@@ -37,10 +46,12 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
   final ValueNotifier<int> _progress = ValueNotifier<int>(0);
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _loadFailed = ValueNotifier<bool>(false);
+  late final ValueNotifier<String> _host;
 
   @override
   void initState() {
     super.initState();
+    _host = ValueNotifier<String>(widget.app.host);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(ChatmeColors.backgroundPrimary)
@@ -55,7 +66,11 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
             _progress.value = 0;
             _loadFailed.value = false;
           },
-          onPageFinished: (_) => _finishLoading(),
+          onUrlChange: (change) => _updateHost(change.url),
+          onPageFinished: (url) {
+            _updateHost(url);
+            _finishLoading();
+          },
           onWebResourceError: (error) {
             if (error.isForMainFrame != true) return;
             if (mounted) _loadFailed.value = true;
@@ -79,7 +94,14 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
     _progress.dispose();
     _loading.dispose();
     _loadFailed.dispose();
+    _host.dispose();
     super.dispose();
+  }
+
+  void _updateHost(String? url) {
+    final host = browserHostFromUrl(url);
+    if (!mounted || host == null || host == _host.value) return;
+    _host.value = host;
   }
 
   void _finishLoading() {
@@ -147,13 +169,16 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
                       color: ChatmeColors.textPrimary,
                     ),
                   ),
-                  Text(
-                    widget.app.host,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: ChatmeColors.textSubtle,
+                  ValueListenableBuilder<String>(
+                    valueListenable: _host,
+                    builder: (_, host, __) => Text(
+                      host,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: ChatmeColors.textSubtle,
+                      ),
                     ),
                   ),
                 ],
