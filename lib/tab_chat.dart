@@ -17,9 +17,39 @@ import 'models/chat_message.dart';
 import 'core/theme/chatme_colors.dart';
 import 'core/utils/time_utils.dart';
 import 'core/utils/duration_utils.dart';
+import 'core/utils/debug_logger.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/chatme_search_bar.dart';
+import 'widgets/chatme_menu.dart';
 import 'ui/contacts/contact_profile.dart';
+
+/// Marks every unread chat read with the same recipe as opening a room: one
+/// batched local status write per chat, receipts only for the newest few
+/// messages, then the badge and notification are cleared.
+Future<void> markAllChatsAsRead(RelayManager relayManager) async {
+  final peers = Hive.box<Contact>('contacts').values
+      .where((contact) => contact.unreadCount > 0)
+      .map((contact) => contact.pubkey)
+      .toList();
+
+  for (final peer in peers) {
+    try {
+      final toAck =
+          await ChatManager.instance.markIncomingAsRead(peerPubkey: peer);
+      for (final id in toAck) {
+        try {
+          await relayManager.sendReceipt(id, peer, 'read');
+        } catch (e) {
+          DebugLogger.log('[Chat] mark-all-read receipt failed | $e',
+              type: 'ERROR');
+        }
+      }
+      await ChatManager.instance.clearUnreadCount(peer);
+    } catch (e) {
+      DebugLogger.log('[Chat] mark-all-read failed | $e', type: 'ERROR');
+    }
+  }
+}
 
 class ChatsScreen extends StatefulWidget {
   final RelayManager relayManager;
@@ -34,6 +64,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = "";
+  bool _isMarkingAllRead = false;
 
   @override
   void initState() {
@@ -52,6 +83,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _markAllChatsAsRead() {
+    if (!mounted || _isMarkingAllRead) return Future.value();
+    _isMarkingAllRead = true;
+    return markAllChatsAsRead(widget.relayManager).whenComplete(() {
+      if (mounted) _isMarkingAllRead = false;
+    });
   }
 
   Widget _buildHighlightedText(String text, String query) {
@@ -139,14 +178,31 @@ class _ChatsScreenState extends State<ChatsScreen> {
       onTap: () => _searchFocusNode.unfocus(),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            'Chats',
+          centerTitle: false,
+          titleSpacing: 16,
+          title: const Text(
+            'Chatme',
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 22,
-              color: Theme.of(context).iconTheme.color,
+              color: ChatmeColors.accentPrimary,
             ),
           ),
+          actions: [
+            ChatmeMenuButton<String>(
+              icon: Icon(Icons.more_vert,
+                  color: Theme.of(context).iconTheme.color),
+              entries: const [
+                ChatmeMenuEntry(
+                  value: 'mark_all_read',
+                  label: 'Mark all as read',
+                ),
+              ],
+              onSelected: (value) {
+                if (value == 'mark_all_read') _markAllChatsAsRead();
+              },
+            ),
+          ],
           elevation: 0,
         ),
         body: Column(

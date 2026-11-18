@@ -13,10 +13,12 @@ class ChatmeMenu {
 
 class ChatmeMenuEntry<T> {
   final T value;
-  final IconData icon;
+
+  /// Optional: an entry with only a label has no leading icon.
+  final IconData? icon;
   final String label;
 
-  const ChatmeMenuEntry({required this.value, required this.icon, required this.label});
+  const ChatmeMenuEntry({required this.value, this.icon, required this.label});
 }
 
 /// The small menu Chatme uses for a button with a few choices. The press
@@ -81,8 +83,10 @@ class ChatmeMenuButton<T> extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(entry.icon, size: 20, color: rowColor),
-                const SizedBox(width: 12),
+                if (entry.icon != null) ...[
+                  Icon(entry.icon, size: 20, color: rowColor),
+                  const SizedBox(width: 12),
+                ],
                 Text(entry.label, style: TextStyle(fontSize: 14, color: rowColor)),
               ],
             ),
