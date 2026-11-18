@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'services/app_settings.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
+import 'models/call_log.dart';
 import 'core/theme/chatme_colors.dart';
 import 'core/utils/time_utils.dart';
 import 'core/utils/duration_utils.dart';
@@ -22,6 +23,7 @@ import 'widgets/user_avatar.dart';
 import 'widgets/chatme_search_bar.dart';
 import 'widgets/chatme_menu.dart';
 import 'ui/contacts/contact_profile.dart';
+import 'tab_calls.dart';
 
 /// Marks every unread chat read with the same recipe as opening a room: one
 /// batched local status write per chat, receipts only for the newest few
@@ -91,6 +93,29 @@ class _ChatsScreenState extends State<ChatsScreen> {
     return markAllChatsAsRead(widget.relayManager).whenComplete(() {
       if (mounted) _isMarkingAllRead = false;
     });
+  }
+
+  /// Calls no longer own a bottom tab, so missed calls need their own quiet
+  /// marker. A timestamp in the existing settings box avoids touching the
+  /// Hive CallLog model or any live call state.
+  static const String _callsHistorySeenKey = 'calls_history_seen_at';
+
+  bool _hasUnseenMissedCalls(Box<CallLog> logs) {
+    final seen =
+        Hive.box('settings').get(_callsHistorySeenKey, defaultValue: 0) as int;
+    return logs.values.any((log) => log.isMissed && log.timestamp > seen);
+  }
+
+  Future<void> _openCallsHistory() async {
+    await Hive.box('settings')
+        .put(_callsHistorySeenKey, DateTime.now().millisecondsSinceEpoch);
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CallsScreen(relayManager: widget.relayManager),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   Widget _buildHighlightedText(String text, String query) {
@@ -189,17 +214,28 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ),
           ),
           actions: [
-            ChatmeMenuButton<String>(
-              icon: Icon(Icons.more_vert,
-                  color: Theme.of(context).iconTheme.color),
-              entries: const [
-                ChatmeMenuEntry(
-                  value: 'mark_all_read',
-                  label: 'Mark all as read',
-                ),
-              ],
-              onSelected: (value) {
-                if (value == 'mark_all_read') _markAllChatsAsRead();
+            ValueListenableBuilder<Box<CallLog>>(
+              valueListenable: Hive.box<CallLog>('call_logs').listenable(),
+              builder: (context, logs, _) {
+                return ChatmeMenuButton<String>(
+                  icon: Icon(Icons.more_vert,
+                      color: Theme.of(context).iconTheme.color),
+                  entries: [
+                    const ChatmeMenuEntry(
+                      value: 'mark_all_read',
+                      label: 'Mark all as read',
+                    ),
+                    ChatmeMenuEntry(
+                      value: 'calls_history',
+                      label: 'Calls History',
+                      dot: _hasUnseenMissedCalls(logs),
+                    ),
+                  ],
+                  onSelected: (value) {
+                    if (value == 'mark_all_read') _markAllChatsAsRead();
+                    if (value == 'calls_history') _openCallsHistory();
+                  },
+                );
               },
             ),
           ],

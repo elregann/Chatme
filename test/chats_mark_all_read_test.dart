@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:chatme/chat_manager.dart';
 import 'package:chatme/core/theme/chatme_colors.dart';
+import 'package:chatme/models/call_log.dart';
 import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/models/contact.dart';
 import 'package:chatme/relay_manager.dart';
@@ -24,11 +25,13 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('chatme_mark_all_test');
     Hive.init(tempDir.path);
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
+    if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(CallLogAdapter());
     if (!Hive.isAdapterRegistered(1)) {
       Hive.registerAdapter(ChatMessageAdapter());
     }
     await Hive.openBox('settings');
     await Hive.openBox<Contact>('contacts');
+    await Hive.openBox<CallLog>('call_logs');
     await Hive.openBox('chats');
     await Hive.openBox<ChatMessage>('chat_msgs');
   });
@@ -41,6 +44,7 @@ void main() {
   setUp(() async {
     AppSettings.instance.myPubkey = 'me';
     await Hive.box<Contact>('contacts').clear();
+    await Hive.box<CallLog>('call_logs').clear();
     await Hive.box('chats').clear();
     await Hive.box<ChatMessage>('chat_msgs').clear();
   });
@@ -96,9 +100,12 @@ void main() {
 
     final button = tester.widget<ChatmeMenuButton<String>>(
         find.byType(ChatmeMenuButton<String>));
-    expect(button.entries.single.value, 'mark_all_read');
-    expect(button.entries.single.label, 'Mark all as read');
-    expect(button.entries.single.icon, isNull);
+    expect(button.entries, hasLength(2));
+    expect(button.entries.first.value, 'mark_all_read');
+    expect(button.entries.first.label, 'Mark all as read');
+    expect(button.entries.first.icon, isNull);
+    expect(button.entries.last.value, 'calls_history');
+    expect(button.entries.last.label, 'Calls History');
   });
 
   testWidgets('mark all as read clears badges and message statuses',

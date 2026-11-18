@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../core/theme/chatme_colors.dart';
+
 class ChatmeMenu {
   ChatmeMenu._();
 
@@ -18,7 +20,15 @@ class ChatmeMenuEntry<T> {
   final IconData? icon;
   final String label;
 
-  const ChatmeMenuEntry({required this.value, this.icon, required this.label});
+  /// Optional unread dot shown after the label, used by Calls History.
+  final bool dot;
+
+  const ChatmeMenuEntry({
+    required this.value,
+    this.icon,
+    required this.label,
+    this.dot = false,
+  });
 }
 
 /// The small menu Chatme uses for a button with a few choices. The press
@@ -88,6 +98,17 @@ class ChatmeMenuButton<T> extends StatelessWidget {
                   const SizedBox(width: 12),
                 ],
                 Text(entry.label, style: TextStyle(fontSize: 14, color: rowColor)),
+                if (entry.dot) ...[
+                  const SizedBox(width: 8),
+                  const DecoratedBox(
+                    key: Key('chatme-menu-dot'),
+                    decoration: BoxDecoration(
+                      color: ChatmeColors.badgeDanger,
+                      shape: BoxShape.circle,
+                    ),
+                    child: SizedBox(width: 6, height: 6),
+                  ),
+                ],
               ],
             ),
           ),
