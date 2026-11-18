@@ -541,7 +541,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       valueListenable: Hive.box('settings').listenable(
         keys: const [
           'my_pubkey',
-          'my_name',
+          'my_nip05',
           'my_about',
           'my_photo_path',
           'my_photo_url',

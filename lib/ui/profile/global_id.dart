@@ -182,14 +182,6 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
               ),
               child: Row(
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(left: 16),
-                    child: Text('@',
-                        style: TextStyle(
-                            fontSize: 16,
-                            color: textSecondary,
-                            fontWeight: FontWeight.w500)),
-                  ),
                   Expanded(
                     child: TextField(
                       controller: _controller,
@@ -199,7 +191,7 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
                         hintStyle:
                             TextStyle(fontSize: 14, color: textSecondary),
                         contentPadding:
-                            EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+                            EdgeInsets.fromLTRB(16, 14, 8, 14),
                         border: InputBorder.none,
                       ),
                     ),
@@ -254,7 +246,7 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
                         messenger.showSnackBar(
                           SnackBar(
                             content: Text(
-                              '$input@chatme claimed!',
+                              '$input@chatme claimed',
                               style: const TextStyle(
                                   color: ChatmeColors.textPrimary),
                             ),

@@ -26,12 +26,19 @@ class AppSettings {
   bool isNip05Verified = false;
   String myPubkey = '';
   String myPrivkey = '';
-  String myName = '';
   String myMnemonic = '';
   String myNip05 = '';
   String myAbout = '';
   String myPhotoPath = '';
   String myPhotoUrl = '';
+
+  /// Always derived, never stored: a stored copy goes stale when a global ID
+  /// is released or when an account is restored.
+  String get myName {
+    if (myNip05.isNotEmpty) return myNip05.split('@').first;
+    return myPubkey.isEmpty ? '' : formatDisplayName(myPubkey);
+  }
+
   bool linkPreviewsEnabled = false;
   bool readReceiptsEnabled = true;
 
@@ -69,7 +76,6 @@ class AppSettings {
       myPhotoPath = settingsBox.get('my_photo_path', defaultValue: '');
       myPhotoUrl = settingsBox.get('my_photo_url', defaultValue: '');
       isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
-      myName = settingsBox.get('my_name', defaultValue: '');
       myAbout = settingsBox.get('my_about', defaultValue: '');
 
       // Generate new identity if first launch
@@ -77,11 +83,9 @@ class AppSettings {
         final keypair = _generateNostrKeypair();
         myPubkey = keypair['public']!;
         myPrivkey = keypair['private']!;
-        myName = formatDisplayName(myPubkey);
 
         await settingsBox.put('my_pubkey', myPubkey);
         await settingsBox.put('my_privkey', myPrivkey);
-        await settingsBox.put('my_name', myName);
 
         // The very first login is an initial sync too: open the gate
         // before anything connects, so the first relay round-trip stays
@@ -226,7 +230,6 @@ class AppSettings {
 
       // Try to fetch existing display name from Firebase
       final fetchedName = await _fetchNameFromFirebase(myPubkey);
-      myName = fetchedName ?? formatDisplayName(myPubkey);
 
       if (fetchedName != null) {
         myNip05 = '$fetchedName@chatme';
@@ -240,7 +243,6 @@ class AppSettings {
         'my_pubkey': myPubkey,
         'my_privkey': myPrivkey,
         'my_mnemonic': myMnemonic,
-        'my_name': myName,
         'my_nip05': myNip05,
         'is_nip05_verified': isNip05Verified,
         'my_about': '',

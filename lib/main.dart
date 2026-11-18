@@ -1056,7 +1056,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // whole settings box rebuilt it on every unrelated write.
     return ValueListenableBuilder(
       valueListenable: Hive.box('settings').listenable(
-        keys: const ['my_pubkey', 'my_name', 'my_photo_path'],
+        keys: const ['my_pubkey', 'my_nip05', 'my_photo_path'],
       ),
       builder: (context, _, __) {
         final settings = AppSettings.instance;
