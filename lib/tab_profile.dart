@@ -643,7 +643,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (value == 'logout') _confirmLogout();
                 },
               ),
-              const SizedBox(width: 8),
             ],
           ),
           body: SingleChildScrollView(

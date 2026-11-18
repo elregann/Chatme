@@ -2,7 +2,7 @@ name: chatme
 description: "Chat App with Nostr"
 publish_to: 'none'
 
-version: 2.9.0+42
+version: 2.9.1+43
 
 environment:
   sdk: '>=3.4.4 <4.0.0'
