@@ -11,6 +11,7 @@ import 'call_manager.dart';
 import 'core/theme/chatme_colors.dart';
 import 'core/utils/ui_utils.dart';
 import 'core/utils/key_utils.dart';
+import 'widgets/chatme_menu.dart';
 import 'widgets/confirm_dialog.dart';
 import 'widgets/user_avatar.dart';
 
@@ -95,10 +96,29 @@ class _CallsScreenState extends State<CallsScreen> {
     if (confirmed && log.isInBox) await log.delete();
   }
 
+  Future<void> _clearCallLog() async {
+    HapticFeedback.heavyImpact();
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Clear call log?',
+      message: 'Do you want to clear your entire call log?',
+      confirmLabel: 'Ok',
+    );
+    if (!confirmed) return;
+
+    // The list listens to this box, so it rebuilds itself. Call state and the
+    // floating bar are deliberately left untouched.
+    if (Hive.isBoxOpen('call_logs')) {
+      await Hive.box<CallLog>('call_logs').clear();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        centerTitle: false,
+        titleSpacing: 16,
         title: Text(
           'Calls',
           style: TextStyle(
@@ -107,6 +127,21 @@ class _CallsScreenState extends State<CallsScreen> {
             color: Theme.of(context).iconTheme.color,
           ),
         ),
+        actions: [
+          ChatmeMenuButton<String>(
+            icon: Icon(Icons.more_vert,
+                color: Theme.of(context).iconTheme.color),
+            entries: const [
+              ChatmeMenuEntry(
+                value: 'clear_call_log',
+                label: 'Clear call log',
+              ),
+            ],
+            onSelected: (value) {
+              if (value == 'clear_call_log') _clearCallLog();
+            },
+          ),
+        ],
         elevation: 0,
       ),
       body: Column(
