@@ -157,7 +157,11 @@ class RelayManager {
       _startCleanupTimer();
 
       if (_queueTimer == null || !_queueTimer!.isActive) {
-        _queueTimer = Timer.periodic(const Duration(seconds: 15), (t) {
+        // A short poll keeps an offline send responsive once relays come back.
+        // The guard inside [_processOfflineQueue] avoids wrapping anything
+        // while no relay can actually accept the event, so this is cheap when
+        // the queue is empty or the connection is still down.
+        _queueTimer = Timer.periodic(const Duration(seconds: 3), (t) {
           if (_isConnected.value) {
             _processOfflineQueue();
           }
@@ -1555,11 +1559,7 @@ class RelayManager {
         }
       }
 
-      final contactsBox = Hive.box<Contact>('contacts');
-      final myContact = contactsBox.get(myPubkey);
-      final senderName = (myContact != null && myContact.isSaved)
-          ? myContact.displayName
-          : AppSettings.formatDisplayName(myPubkey);
+      final senderName = _currentSenderName();
 
       _triggerCloudflareNotification(
         receiverPubkey: receiverPubkey,
@@ -1603,6 +1603,16 @@ class RelayManager {
       kind: file == null ? Nip17.kindRumor : Nip17.kindFile,
       customTags: file?.rumorTags(receiver: receiverPubkey, replyToId: replyToId),
     );
+  }
+
+  /// Sender label shown in the receiver's push notification. Shared by the
+  /// direct send path and the offline queue so both produce identical pushes.
+  String _currentSenderName() {
+    final myPubkey = AppSettings.instance.myPubkey;
+    final myContact = Hive.box<Contact>('contacts').get(myPubkey);
+    return (myContact != null && myContact.isSaved)
+        ? myContact.displayName
+        : AppSettings.formatDisplayName(myPubkey);
   }
 
   void _triggerCloudflareNotification({
@@ -2503,6 +2513,16 @@ class RelayManager {
       final pendingMessages = await ChatManager.instance.getPendingMessages();
       if (pendingMessages.isEmpty) return;
 
+      // `_isConnected` is a global flag: it can still be true while the
+      // individual relay sockets are down. Wrapping/encrypting is expensive,
+      // so wait until one relay can really take the event. Deliberately do
+      // NOT record a backoff here — the next short poll sends immediately
+      // once a relay returns, instead of making the user wait out a full
+      // minute even though the network is already stable.
+      final bool hasConnectedRelay =
+          _connections.keys.any((url) => _connectionStatus[url] == true);
+      if (!hasConnectedRelay) return;
+
       DebugLogger.log('[Queue] Processing ${pendingMessages.length} pending message(s)');
 
       final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -2514,7 +2534,6 @@ class RelayManager {
 
         final lastAttempt = _lastQueueAttempt[msg.id] ?? 0;
         if (nowMs - lastAttempt < 60000) continue;
-        _lastQueueAttempt[msg.id] = nowMs;
 
         final plaintext = msg.plaintext.isNotEmpty ? msg.plaintext : msg.content;
         if (plaintext.isEmpty) continue;
@@ -2576,12 +2595,35 @@ class RelayManager {
               newContent: wrappedRecipient.giftWrap['content']?.toString() ?? '',
               newGiftWrapId: wrappedRecipient.giftWrapId,
             );
+
+            // Only a send that really happened gets a backoff. It covers the
+            // wait for the relay OK and stops a `sending` row from being
+            // wrapped and published twice. Record both IDs because the ID
+            // swap happens inside updateMessageIdAndStatus above.
+            _lastQueueAttempt[msg.id] = nowMs;
+            _lastQueueAttempt[wrappedRecipient.rumorId] = nowMs;
+
+            // The direct path wakes the receiver through the notifier worker.
+            // The queue used to duplicate the relay write but skip this, so
+            // a message delivered from the offline queue produced no push
+            // until the receiver opened the app.
+            _triggerCloudflareNotification(
+              receiverPubkey: msg.receiverPubkey,
+              senderPubkey: AppSettings.instance.myPubkey,
+              eventId: wrappedRecipient.giftWrapId,
+              senderName: _currentSenderName(),
+              ciphertext: wrappedRecipient.giftWrap['content']?.toString() ?? '',
+              ephemeralPubkey: wrappedRecipient.giftWrap['pubkey']?.toString() ?? '',
+            );
             DebugLogger.log('[Queue] Sent, awaiting OK: ${wrappedRecipient.giftWrapId}');
           } else {
             DebugLogger.log('[Queue] No relay connected, deferring ${msg.id}', type: 'WARN');
           }
         } catch (e) {
           DebugLogger.log('[Queue] Failed to wrap pending msg ${msg.id} | $e', type: 'ERROR');
+          // Wrapping/uploading is expensive; keep a backoff for real failures
+          // so a broken file does not get retried every three seconds.
+          _lastQueueAttempt[msg.id] = nowMs;
         }
 
         await Future.delayed(const Duration(milliseconds: 150));
