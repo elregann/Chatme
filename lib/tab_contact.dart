@@ -20,8 +20,6 @@ import 'ui/contacts/add_contact.dart';
 import 'widgets/chatme_menu.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/chatme_search_bar.dart';
-import 'call_overlay.dart';
-import 'call_manager.dart';
 import 'package:remixicon/remixicon.dart';
 import 'core/utils/shortcut_helper.dart';
 
@@ -307,7 +305,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ChatmeSearchBar(
               controller: _searchController,
               focusNode: _searchFocusNode,
-              hintText: 'Search people by ID or name',
+              hintText: 'Search people',
               onChanged: (val) {
                 setState(() => _searchQuery = val.toLowerCase());
 
@@ -318,20 +316,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 });
               },
               onClear: () => setState(() => _searchQuery = ""),
-            ),
-            ValueListenableBuilder<CallState>(
-              valueListenable: CallManager.instance.callStateNotifier,
-              builder: (context, callState, _) {
-                if (callState == CallState.idle ||
-                    callState == CallState.ending ||
-                    callState == CallState.error) {
-                  return const SizedBox.shrink();
-                }
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: CallFloatingBar(relay: widget.relayManager),
-                );
-              },
             ),
             Expanded(
               child: ValueListenableBuilder<Box<Contact>>(

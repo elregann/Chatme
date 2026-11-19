@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:chatme/call_manager.dart';
+import 'package:chatme/call_overlay.dart';
 import 'package:chatme/models/contact.dart';
 import 'package:chatme/relay_manager.dart';
 import 'package:chatme/tab_contact.dart';
@@ -56,6 +58,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Contacts'), findsOneWidget);
+    expect(find.text('Search people'), findsOneWidget);
+    expect(find.text('Search people by ID or name'), findsNothing);
+
+    // A connected call may float over Chats and Calls History, never Contacts.
+    final callState = CallManager.instance.callStateNotifier;
+    final previousState = callState.value;
+    addTearDown(() => callState.value = previousState);
+    callState.value = CallState.active;
+    await tester.pump();
+    expect(find.byType(CallFloatingBar), findsNothing);
+
     final appBar = tester.widget<AppBar>(find.byType(AppBar).first);
     expect(appBar.centerTitle, isFalse);
     expect(appBar.titleSpacing, 16);
