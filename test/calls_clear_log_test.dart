@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chatme/core/theme/chatme_colors.dart';
 import 'package:chatme/models/call_log.dart';
 import 'package:chatme/models/contact.dart';
 import 'package:chatme/relay_manager.dart';
@@ -44,7 +45,7 @@ void main() {
     await Hive.box<Contact>('contacts').clear();
   });
 
-  testWidgets('Calls has a left title, a text-only clear menu and the standard dialog',
+  testWidgets('Calls has a centered secondary-page header, a text-only clear menu and the standard dialog',
       (tester) async {
     await tester.runAsync(() async {
       await Hive.box<CallLog>('call_logs').put(
@@ -66,12 +67,26 @@ void main() {
 
     expect(find.text('Calls'), findsOneWidget);
     final appBar = tester.widget<AppBar>(find.byType(AppBar).first);
-    expect(appBar.centerTitle, isFalse);
-    expect(appBar.titleSpacing, 16);
+    expect(appBar.centerTitle, isTrue);
+    expect(appBar.titleSpacing, isNull);
+    expect(appBar.backgroundColor, ChatmeColors.backgroundPrimary);
+    expect(appBar.elevation, 0);
+    expect(appBar.scrolledUnderElevation, 0);
+
+    final title = tester.widget<Text>(find.text('Calls'));
+    expect(title.style?.fontSize, 16);
+    expect(title.style?.fontWeight, FontWeight.w500);
+    expect(title.style?.color, ChatmeColors.textPrimary);
+
+    final back = tester.widget<Icon>(find.byIcon(Icons.arrow_back_ios_rounded));
+    expect(back.size, 18);
+    expect(back.color, ChatmeColors.textPrimary);
 
     final button = tester.widget<ChatmeMenuButton<String>>(
       find.byType(ChatmeMenuButton<String>),
     );
+    final menuIcon = button.icon as Icon;
+    expect(menuIcon.size, isNull);
     expect(button.entries.single.value, 'clear_call_log');
     expect(button.entries.single.label, 'Clear call log');
     expect(button.entries.single.icon, isNull);

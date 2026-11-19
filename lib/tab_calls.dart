@@ -115,22 +115,28 @@ class _CallsScreenState extends State<CallsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const bgColor = ChatmeColors.backgroundPrimary;
+    const textPrimary = ChatmeColors.textPrimary;
+
     return Scaffold(
+      backgroundColor: bgColor,
       appBar: AppBar(
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded,
-              color: Theme.of(context).iconTheme.color, size: 18),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: false,
-        titleSpacing: 16,
-        title: Text(
+        backgroundColor: bgColor,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        title: const Text(
           'Calls',
           style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 22,
-            color: Theme.of(context).iconTheme.color,
+            fontWeight: FontWeight.w500,
+            fontSize: 16,
+            color: textPrimary,
           ),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: textPrimary, size: 18),
+          onPressed: () => Navigator.pop(context),
         ),
         actions: [
           ChatmeMenuButton<String>(
@@ -147,7 +153,6 @@ class _CallsScreenState extends State<CallsScreen> {
             },
           ),
         ],
-        elevation: 0,
       ),
       body: Column(
         children: [
