@@ -190,7 +190,10 @@ class NotificationHandler {
       // Foreground FCM: show as a local notification
       _fcmSubscriptions.add(
         FirebaseMessaging.onMessage.listen((message) {
-          chat_notif.ChatNotificationHandler.handleForegroundMessage(message, _plugin);
+          unawaited(chat_notif.ChatNotificationHandler.handleForegroundMessage(
+            message,
+            _plugin,
+          ));
         }),
       );
 

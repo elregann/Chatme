@@ -427,7 +427,9 @@ class ChatManager {
         senderPubkey: message.senderPubkey,
         senderName: senderName,
         message: notifBody,
-        messageId: dedupKey,
+        // The dedup flag above stays keyed by the worker's event id, but the
+        // stack key must survive a re-wrap with a different Gift Wrap id.
+        messageId: message.id.isNotEmpty ? message.id : dedupKey,
         replyOnly: isMissedCall,
       );
     } catch (e) {
@@ -494,6 +496,27 @@ class ChatManager {
         await _messagesBox.put(key, m.copyWithStatus('pending'));
       } catch (e) {
         DebugLogger.log('[Message] Mark pending failed | $e', type: 'ERROR');
+      }
+    });
+  }
+
+  /// Non-monotonic counterpart of [updateMessageStatusByGiftWrap]: only a
+  /// `sending` row may fall back to `pending` after a relay rejection.
+  Future<void> markPendingByGiftWrap(String giftWrapId) async {
+    if (giftWrapId.isEmpty) return;
+    await _lock.synchronized<void>(() async {
+      try {
+        for (final m in _messagesBox.values.toList()) {
+          if (m.giftWrapId != giftWrapId) continue;
+          if (m.status != 'sending') return;
+          await _messagesBox.put(
+            messageStorageKeyFor(m),
+            m.copyWithStatus('pending'),
+          );
+          return;
+        }
+      } catch (e) {
+        DebugLogger.log('[Message] Mark pending by wrap failed | $e', type: 'ERROR');
       }
     });
   }

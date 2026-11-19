@@ -153,7 +153,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     senderName: senderName,
     message: plaintext,
     showActions: true,
-    messageId: eventId,
+    messageId: ChatNotificationHandler.notificationMessageId(
+      rumorId: rumorId,
+      eventId: eventId,
+    ),
     pluginInstance: plugin,
   );
 }
@@ -184,11 +187,16 @@ class ChatNotificationHandler {
   }
 
   /// Handle foreground FCM message for chat.
-  static void handleForegroundMessage(RemoteMessage message, FlutterLocalNotificationsPlugin plugin) {
+  static Future<void> handleForegroundMessage(
+    RemoteMessage message,
+    FlutterLocalNotificationsPlugin plugin,
+  ) async {
     final senderPubkey = message.data['senderPubkey'] ?? '';
     final senderName = message.data['senderName'] ?? 'New Message';
     final body = message.notification?.body ?? message.data['body'] ?? '';
     final eventId = message.data['eventId'] ?? '';
+    final ciphertext = message.data['ciphertext'] ?? '';
+    final ephemeralPubkey = message.data['ephemeralPubkey'] ?? '';
     final fcmType = message.data['type'] ?? '';
 
     // During the initial sync (account restore / first login) the relays
@@ -208,12 +216,38 @@ class ChatNotificationHandler {
       } catch (_) {}
     }
 
+    // The FCM event id is a fresh Gift Wrap id on every retry; the Rumor id
+    // inside it is what identifies the message for the notification stack.
+    String rumorId = '';
+    if (ephemeralPubkey.isNotEmpty && ciphertext.isNotEmpty) {
+      try {
+        final settingsBox = Hive.box('settings');
+        final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+        final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
+        if (myPrivkey.isNotEmpty) {
+          final result = await Nip17.unwrap(
+            giftWrapEvent: {
+              'pubkey': ephemeralPubkey,
+              'content': ciphertext,
+              'kind': 1059,
+            },
+            receiverPrivkey: myPrivkey,
+            receiverPubkey: myPubkey,
+          );
+          rumorId = result.rumorId;
+        }
+      } catch (_) {}
+    }
+
     if (senderPubkey.isNotEmpty && body.isNotEmpty) {
-      showChatNotification(
+      await showChatNotification(
         senderPubkey: senderPubkey,
         senderName: senderName,
         message: body,
-        messageId: eventId,
+        messageId: notificationMessageId(
+          rumorId: rumorId,
+          eventId: eventId,
+        ),
         pluginInstance: plugin,
       );
     }
@@ -224,6 +258,13 @@ class ChatNotificationHandler {
     final digest = sha256.convert(utf8.encode(pubkey)).bytes;
     return ((digest[0] << 24) | (digest[1] << 16) | (digest[2] << 8) | digest[3]).abs() % 1000000;
   }
+
+  /// One message keeps one stack entry even when a retry gets a new wrap id.
+  static String notificationMessageId({
+    required String rumorId,
+    required String eventId,
+  }) =>
+      rumorId.isNotEmpty ? rumorId : eventId;
 
   /// Show a chat notification with MessagingStyle stacking. The stack holds
   /// every unread message of the contact until the chat is read or replied

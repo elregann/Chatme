@@ -552,7 +552,7 @@ class RelayManager {
 
       if (decoded.length > 2) {
         if (type == "EVENT") await _handleEvent(decoded, url);
-        if (type == "OK") _handleOk(decoded, url);
+        if (type == "OK") await _handleOk(decoded, url);
       }
     } catch (e) {
       DebugLogger.log('[Relay] Data handling error | $e', type: 'ERROR');
@@ -1477,7 +1477,7 @@ class RelayManager {
     });
   }
 
-  void _handleOk(List<dynamic> decoded, String url) {
+  Future<void> _handleOk(List<dynamic> decoded, String url) async {
     try {
       if (decoded.length < 3) return;
       final eventId = decoded[1].toString();
@@ -1489,6 +1489,10 @@ class RelayManager {
         final relayUrl = _pendingAuthEventIds.remove(eventId)!;
         if (accepted) {
           _authenticatedRelays.add(relayUrl);
+          // AUTH is per-connection: once confirmed, let queued writes go out
+          // again instead of making them wait out the full retry backoff.
+          _lastQueueAttempt.clear();
+          unawaited(_processOfflineQueue());
           DebugLogger.log('[AUTH] Confirmed on $relayUrl');
           final myPubkey = AppSettings.instance.myPubkey;
           if (myPubkey.isNotEmpty) {
@@ -1512,6 +1516,14 @@ class RelayManager {
 
       if (accepted && _reactionAcks.containsKey(eventId)) {
         _confirmReaction(eventId);
+        return;
+      }
+
+      // NIP-42: a rejected write has to be retried once AUTH is in effect.
+      // Only `sending` rows fall back; the backoff stays until AUTH succeeds.
+      if (!accepted && msg.toLowerCase().startsWith('auth-required')) {
+        await ChatManager.instance.markPendingByGiftWrap(eventId);
+        DebugLogger.log('[Relay] AUTH required on $url | $msg', type: 'WARN');
         return;
       }
 
@@ -2500,6 +2512,20 @@ class RelayManager {
 
   Future<void> dispose() async {
     disconnect();
+  }
+
+  @visibleForTesting
+  Future<void> handleOkForTest(List<dynamic> decoded, String url) =>
+      _handleOk(decoded, url);
+
+  @visibleForTesting
+  void rememberAuthEventForTest(String eventId, String url) =>
+      _pendingAuthEventIds[eventId] = url;
+
+  @visibleForTesting
+  int queueAttemptForTest(String id, {int? setValue}) {
+    if (setValue != null) _lastQueueAttempt[id] = setValue;
+    return _lastQueueAttempt[id] ?? 0;
   }
 
   Future<void> _processOfflineQueue() async {
