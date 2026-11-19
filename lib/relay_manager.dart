@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart';
 import 'notification_handler.dart';
 import 'call_manager.dart';
 import 'call.dart';
@@ -1627,6 +1628,31 @@ class RelayManager {
         : AppSettings.formatDisplayName(myPubkey);
   }
 
+  @visibleForTesting
+  Map<String, String> buildPushHeaders({
+    required String receiverPubkey,
+    required String senderPubkey,
+    required String eventId,
+    required int timestampMs,
+  }) {
+    final canonical = [
+      'chatme-push-v1',
+      receiverPubkey,
+      senderPubkey,
+      eventId,
+      timestampMs,
+    ].join('|');
+    final challenge = sha256.convert(utf8.encode(canonical)).toString();
+    final signature =
+        NostrSigner.sign(challenge, AppSettings.instance.myPrivkey);
+    return {
+      'Content-Type': 'application/json',
+      'X-Nostr-Pubkey': senderPubkey,
+      'X-Nostr-Ts': '$timestampMs',
+      'X-Nostr-Sig': signature,
+    };
+  }
+
   void _triggerCloudflareNotification({
     required String receiverPubkey,
     required String senderPubkey,
@@ -1637,15 +1663,16 @@ class RelayManager {
     String type = 'chat',
   }) async {
     const workerUrl = 'https://chatme-notifier.cintanyanessa.workers.dev/';
-    const secretKey = 'chatme2026secret';
 
     try {
       final response = await http.post(
         Uri.parse(workerUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Secret-Key': secretKey,
-        },
+        headers: buildPushHeaders(
+          receiverPubkey: receiverPubkey,
+          senderPubkey: senderPubkey,
+          eventId: eventId,
+          timestampMs: DateTime.now().millisecondsSinceEpoch,
+        ),
         body: jsonEncode({
           'receiverPubkey': receiverPubkey,
           'senderPubkey': senderPubkey,
