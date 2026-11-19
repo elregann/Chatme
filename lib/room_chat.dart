@@ -27,6 +27,7 @@ import 'ui/chat_image_crop_page.dart';
 import 'widgets/user_avatar.dart';
 import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
+import 'core/utils/temp_id.dart';
 import 'services/link_preview_service.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_highlight.dart';
@@ -1014,8 +1015,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final myPubkey = AppSettings.instance.myPubkey;
     final receiver = widget.contact.pubkey;
     final chatKey = ChatManager.instance.getChatKey(myPubkey, receiver);
-    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final messageTs = DateTime.now().millisecondsSinceEpoch;
+    final tempId = newTempId(messageTs);
 
     final tempMessage = ChatMessage(
       id: tempId,

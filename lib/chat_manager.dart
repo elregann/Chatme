@@ -15,6 +15,7 @@ import 'services/voice_storage.dart';
 import 'models/contact.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/sync_gate.dart';
+import 'core/utils/temp_id.dart';
 import 'models/chat_message.dart';
 import 'services/nostr_service.dart';
 import 'relay_manager.dart';
@@ -959,8 +960,8 @@ class ChatManager {
     try {
       final myPubkey = AppSettings.instance.myPubkey;
       final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
-      final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
       final messageTs = DateTime.now().millisecondsSinceEpoch;
+      final tempId = newTempId(messageTs);
 
       final tempMessage = ChatMessage(
         id: tempId,
@@ -1014,12 +1015,12 @@ class ChatManager {
     final myPubkey = AppSettings.instance.myPubkey;
     final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
     final messageTs = DateTime.now().millisecondsSinceEpoch;
-    final tempId = 'temp_$messageTs';
+    final tempId = newTempId(messageTs);
 
     final stored = await FileSendService.moveIntoFolder(
       File(recordedPath),
       await voiceDirectory(),
-      'out_$messageTs.m4a',
+      'out_${tempIdFileToken(tempId)}.m4a',
     );
 
     final tempMessage = ChatMessage(
@@ -1084,12 +1085,12 @@ class ChatManager {
     final myPubkey = AppSettings.instance.myPubkey;
     final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
     final messageTs = DateTime.now().millisecondsSinceEpoch;
-    final tempId = 'temp_$messageTs';
+    final tempId = newTempId(messageTs);
     const mimeType = 'image/jpeg';
 
     final folder = await mediaDirectory();
     await folder.create(recursive: true);
-    final stored = File('${folder.path}${Platform.pathSeparator}out_$messageTs.jpg');
+    final stored = File('${folder.path}${Platform.pathSeparator}out_${tempIdFileToken(tempId)}.jpg');
     await stored.writeAsBytes(image.bytes, flush: true);
 
     final tempMessage = ChatMessage(
@@ -1160,12 +1161,12 @@ class ChatManager {
     final myPubkey = AppSettings.instance.myPubkey;
     final chatKey = ChatManager.instance.getChatKey(myPubkey, receiverPubkey);
     final messageTs = DateTime.now().millisecondsSinceEpoch;
-    final tempId = 'temp_$messageTs';
+    final tempId = newTempId(messageTs);
 
     final stored = await FileSendService.moveIntoFolder(
       File(pickedPath),
       await mediaDirectory(),
-      'out_$messageTs.${FileTransferService.extensionFor(mimeType)}',
+      'out_${tempIdFileToken(tempId)}.${FileTransferService.extensionFor(mimeType)}',
     );
 
     final tempMessage = ChatMessage(
