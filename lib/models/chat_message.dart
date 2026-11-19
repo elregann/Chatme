@@ -46,6 +46,19 @@ class ChatMessage {
   /// Where the decrypted file lives in the app folder. Empty until downloaded.
   @HiveField(15, defaultValue: '') final String localPath;
 
+  /// Stable, locally generated identity of this message.
+  ///
+  /// This is the Hive storage key suffix and the Flutter render key. It is
+  /// created when the bubble is first shown (as `temp_<millis>`) and **never
+  /// changes**. [id] starts out equal to it for a local send, then becomes the
+  /// canonical Nostr Rumor ID once wrapping finishes; keeping the two apart
+  /// lets that swap be a single in-place `put` instead of write-new/delete-old.
+  ///
+  /// Empty for messages that came from a relay and for legacy rows written
+  /// before this field existed — in both cases the storage key falls back to
+  /// [id], which is already stable for those messages.
+  @HiveField(16, defaultValue: '') final String localId;
+
   ChatMessage({
     required this.id,
     required this.senderPubkey,
@@ -63,6 +76,7 @@ class ChatMessage {
     this.pendingReactions = const {},
     this.file = const {},
     this.localPath = '',
+    this.localId = '',
   });
 
   ChatMessage copyWithStatus(String newStatus) {
@@ -86,6 +100,7 @@ class ChatMessage {
     Map<String, String>? pendingReactions,
     Map<String, String>? file,
     String? localPath,
+    String? localId,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -104,6 +119,7 @@ class ChatMessage {
       pendingReactions: pendingReactions ?? Map.from(this.pendingReactions),
       file: file ?? this.file,
       localPath: localPath ?? this.localPath,
+      localId: localId ?? this.localId,
     );
   }
 
@@ -170,6 +186,7 @@ class ChatMessage {
       'pendingReactions': pendingReactions,
       'file': file,
       'localPath': localPath,
+      'localId': localId,
     };
   }
 
@@ -191,6 +208,7 @@ class ChatMessage {
       pendingReactions: Map<String, String>.from(map['pendingReactions'] ?? {}),
       file: Map<String, String>.from(map['file'] ?? {}),
       localPath: map['localPath'] ?? '',
+      localId: map['localId'] ?? '',
     );
   }
 }

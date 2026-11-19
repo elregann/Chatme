@@ -14,6 +14,7 @@ import 'package:hive/hive.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../call_manager.dart';
+import '../chat_manager.dart';
 import '../core/utils/bg_inbox.dart';
 import '../core/utils/shortcut_helper.dart';
 import '../core/utils/sync_gate.dart';
@@ -114,6 +115,9 @@ class AccountLogout {
       if (Hive.isBoxOpen('chat_msgs')) {
         await Hive.box<ChatMessage>('chat_msgs').clear();
       }
+      // Drop the stale canonical-ID -> localId cache so the next account
+      // cannot resolve IDs left over from the previous one.
+      ChatManager.instance.resetAliasIndex();
     });
     await _guard('clear profile_pictures', () async {
       if (Hive.isBoxOpen('profile_pictures')) {

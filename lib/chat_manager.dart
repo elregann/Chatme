@@ -66,10 +66,82 @@ class ChatManager {
   static const String messageKeySeparator = '\x1f';
 
   /// Public so tests and the notification-action isolate can build keys.
+  ///
+  /// This builds a key from a *storage identity*: for local sends that is the
+  /// stable [ChatMessage.localId]; for incoming / legacy messages, where
+  /// `localId` is empty, it is the canonical event ID. Prefer
+  /// [messageStorageKeyFor] when a [ChatMessage] is at hand so the two never
+  /// drift apart.
   static String messageStorageKey(String chatKey, String messageId) =>
       '$chatKey$messageKeySeparator$messageId';
 
+  /// The stable storage key of [m]. A local send keeps its `temp_<ms>`
+  /// identity for the lifetime of the bubble; the canonical Rumor ID lives in
+  /// [ChatMessage.id] and is looked up through the alias index below.
+  static String messageStorageKeyFor(ChatMessage m) =>
+      messageStorageKey(m.chatKey, m.localId.isNotEmpty ? m.localId : m.id);
+
   Box<ChatMessage> get _messagesBox => Hive.box<ChatMessage>('chat_msgs');
+
+  /// Canonical event ID -> stable storage identity, scoped per chat.
+  ///
+  /// The key is `<chatKey>\x1f<eventId>` and the value is the `localId` used
+  /// as the Hive key suffix. Built lazily from the box (one scan), then kept
+  /// in sync under [_lock] whenever an ID is swapped or a message is saved.
+  /// It is never persisted: the box itself is the source of truth, and a
+  /// fresh map is rebuilt on next access after a hot restart.
+  final Map<String, String> _aliasToLocalId = {};
+  bool _aliasIndexBuilt = false;
+
+  String _aliasKey(String chatKey, String eventId) =>
+      '$chatKey$messageKeySeparator$eventId';
+
+  void _ensureAliasIndex() {
+    if (_aliasIndexBuilt) return;
+    _aliasIndexBuilt = true;
+    try {
+      for (final m in _messagesBox.values) {
+        if (m.id.isEmpty || m.localId.isEmpty) continue;
+        _aliasToLocalId[_aliasKey(m.chatKey, m.id)] = m.localId;
+      }
+    } catch (_) {}
+  }
+
+  void _indexAlias(ChatMessage m) {
+    if (m.id.isEmpty || m.localId.isEmpty) return;
+    _aliasToLocalId[_aliasKey(m.chatKey, m.id)] = m.localId;
+  }
+
+  /// Drops the in-memory alias cache. Called when the message box is wiped
+  /// (account logout / switch) so stale aliases from the previous account
+  /// cannot resolve to keys that no longer exist. The map rebuilds lazily on
+  /// the next read from the box, which is the source of truth.
+  void resetAliasIndex() {
+    _aliasToLocalId.clear();
+    _aliasIndexBuilt = false;
+  }
+
+  /// Resolves a caller-supplied event ID (or a legacy local ID) to the stable
+  /// Hive key. Returns `null` when the message is not stored.
+  String? _resolveStorageKey(String eventId, String chatKey) {
+    _ensureAliasIndex();
+    final alias = _aliasToLocalId[_aliasKey(chatKey, eventId)];
+    final candidates = <String>{
+      if (alias != null) messageStorageKey(chatKey, alias),
+      messageStorageKey(chatKey, eventId),
+    };
+    for (final key in candidates) {
+      if (_messagesBox.containsKey(key)) return key;
+    }
+    return null;
+  }
+
+  /// Like [messageStorageKey] but resolves canonical IDs through the alias
+  /// index. Use this everywhere a caller passes an event ID; keeps callers
+  /// unchanged while the underlying key stays stable.
+  String _storageKeyForId(String messageId, String chatKey) =>
+      _resolveStorageKey(messageId, chatKey) ??
+      messageStorageKey(chatKey, messageId);
 
   Box get _registryBox => Hive.box('chats');
 
@@ -159,7 +231,8 @@ class ChatManager {
 
   ChatMessage? getMessageByIdSync(String eventId, String chatKey) {
     try {
-      return _messagesBox.get(messageStorageKey(chatKey, eventId));
+      final key = _resolveStorageKey(eventId, chatKey);
+      return key == null ? null : _messagesBox.get(key);
     } catch (_) {
       return null;
     }
@@ -170,7 +243,7 @@ class ChatManager {
 
   Future<bool> isMessageExists(String messageId, String chatKey) async {
     try {
-      return _messagesBox.containsKey(messageStorageKey(chatKey, messageId));
+      return _resolveStorageKey(messageId, chatKey) != null;
     } catch (_) {
       return false;
     }
@@ -242,7 +315,18 @@ class ChatManager {
           } catch (_) {}
         }
 
-        final key = messageStorageKey(chatKey, message.id);
+        final effective = message.chatKey == chatKey
+            ? message
+            : message.copyWith(chatKey: chatKey);
+
+        // A local send carries its permanent localId and keeps writing to
+        // that same key. An incoming/self-wrap copy carries only the canonical
+        // ID: resolve it through the alias index first, otherwise it would be
+        // stored under a *second* key and appear as a duplicate bubble (the
+        // FCM handoff path has no isMessageExists pre-check).
+        final key = message.localId.isNotEmpty
+            ? messageStorageKeyFor(effective)
+            : _storageKeyForId(message.id, chatKey);
         final existing = _messagesBox.get(key);
 
         if (existing != null) {
@@ -271,10 +355,13 @@ class ChatManager {
               giftWrapId: message.giftWrapId.isNotEmpty
                   ? message.giftWrapId
                   : existing.giftWrapId,
+              localId: message.localId.isNotEmpty
+                  ? message.localId
+                  : existing.localId,
             ),
           );
         } else {
-          await _messagesBox.put(key, message);
+          await _messagesBox.put(key, effective);
           wasNew = true;
 
           if (notify &&
@@ -282,6 +369,8 @@ class ChatManager {
             Future.microtask(() => _triggerNotification(message));
           }
         }
+
+        _indexAlias(_messagesBox.get(key) ?? effective);
 
         if (touchChatList) await touchChatRegistry(chatKey);
         if (updateContactPreview) await _updateContactPreview(message);
@@ -352,11 +441,25 @@ class ChatManager {
     await _lock.synchronized<void>(() async {
       try {
         if (chatKey != null) {
-          found = await _applyStatus(messageStorageKey(chatKey, messageId), newStatus);
+          final key = _resolveStorageKey(messageId, chatKey) ??
+              messageStorageKey(chatKey, messageId);
+          found = await _applyStatus(key, newStatus);
         } else {
-          final suffix = '$messageKeySeparator$messageId';
+          // No chat key: look up by canonical ID across the alias index first
+          // (O(1)), then fall back to a key-suffix scan for legacy rows whose
+          // ID *is* the key.
+          _ensureAliasIndex();
+          for (final entry in _aliasToLocalId.entries) {
+            if (!entry.key.endsWith('$messageKeySeparator$messageId')) continue;
+            final chat = entry.key.substring(0,
+                entry.key.lastIndexOf(messageKeySeparator));
+            found = await _applyStatus(
+                    messageStorageKey(chat, entry.value), newStatus) ||
+                found;
+          }
+          final direct = '$messageKeySeparator$messageId';
           for (final k in _messagesBox.keys.toList()) {
-            if (k is String && k.endsWith(suffix)) {
+            if (k is String && k.endsWith(direct)) {
               found = await _applyStatus(k, newStatus) || found;
             }
           }
@@ -377,6 +480,23 @@ class ChatManager {
     return true;
   }
 
+  /// Forces a message to `pending` when an optimistic send failed, without
+  /// the monotonic status gate (a failed `sending` message must be allowed to
+  /// fall back to `pending`). Keeps the stable key — one in-place put, no
+  /// delete-and-recreate, so the bubble never disappears and reappears.
+  Future<void> markMessagePending(String messageId, String chatKey) async {
+    await _lock.synchronized<void>(() async {
+      try {
+        final key = _storageKeyForId(messageId, chatKey);
+        final m = _messagesBox.get(key);
+        if (m == null) return;
+        await _messagesBox.put(key, m.copyWithStatus('pending'));
+      } catch (e) {
+        DebugLogger.log('[Message] Mark pending failed | $e', type: 'ERROR');
+      }
+    });
+  }
+
   /// Updates the status of a message identified by its **Gift Wrap ID**.
   ///
   /// This is used to process relay `["OK", <giftWrapId>, true]` acknowledgements.
@@ -395,7 +515,7 @@ class ChatManager {
 
           if (_getStatusWeight(newStatus) > _getStatusWeight(m.status)) {
             await _messagesBox.put(
-              messageStorageKey(m.chatKey, m.id),
+              messageStorageKeyFor(m),
               m.copyWithStatus(newStatus),
             );
             DebugLogger.log('[Message] GiftWrap status updated: $giftWrapId -> $newStatus');
@@ -411,7 +531,7 @@ class ChatManager {
   Future<void> setFile(String messageId, String chatKey, Map<String, String> file) async {
     await _lock.synchronized<void>(() async {
       try {
-        final key = messageStorageKey(chatKey, messageId);
+        final key = _storageKeyForId(messageId, chatKey);
         final m = _messagesBox.get(key);
         if (m == null) return;
         await _messagesBox.put(key, m.copyWith(file: file));
@@ -424,7 +544,7 @@ class ChatManager {
   Future<void> setLocalPath(String messageId, String chatKey, String path) async {
     await _lock.synchronized<void>(() async {
       try {
-        final key = messageStorageKey(chatKey, messageId);
+        final key = _storageKeyForId(messageId, chatKey);
         final m = _messagesBox.get(key);
         if (m == null) return;
         await _messagesBox.put(key, m.copyWith(localPath: path));
@@ -444,7 +564,7 @@ class ChatManager {
   }) async {
     await _lock.synchronized<void>(() async {
       try {
-        final key = messageStorageKey(chatKey, messageId);
+        final key = _storageKeyForId(messageId, chatKey);
         final m = _messagesBox.get(key);
         if (m == null) return;
         await _messagesBox.put(
@@ -467,7 +587,7 @@ class ChatManager {
     required String emoji,
   }) async {
     try {
-      final key = messageStorageKey(chatKey, messageId);
+      final key = _storageKeyForId(messageId, chatKey);
       final m = _messagesBox.get(key);
       if (m == null) {
         DebugLogger.log('[Reaction] Target message not found: $messageId', type: 'WARN');
@@ -492,7 +612,7 @@ class ChatManager {
   }) async {
     await _lock.synchronized<void>(() async {
       try {
-        final key = messageStorageKey(chatKey, messageId);
+        final key = _storageKeyForId(messageId, chatKey);
         final m = _messagesBox.get(key);
         if (m == null) return;
         final pending = Map<String, String>.from(m.pendingReactions)
@@ -551,7 +671,11 @@ class ChatManager {
       }) async {
     await _lock.synchronized(() async {
       try {
-        final oldKey = messageStorageKey(chatKey, oldId);
+        // Resolve through the alias index: `oldId` may be the original local
+        // ID (fresh send) or a previous Rumor ID (queue retry). Either way it
+        // maps to the same stable Hive key.
+        final oldKey = _resolveStorageKey(oldId, chatKey) ??
+            messageStorageKey(chatKey, oldId);
         final current = _messagesBox.get(oldKey);
         if (current == null) return;
 
@@ -560,34 +684,43 @@ class ChatManager {
                 ? 'read'
                 : status;
 
-        await _messagesBox.put(
-          messageStorageKey(chatKey, newId),
-          current.copyWith(
-            id: newId,
-            status: finalStatus,
-            giftWrapId: (newGiftWrapId != null && newGiftWrapId.isNotEmpty)
-                ? newGiftWrapId
-                : current.giftWrapId,
-            content: (newContent != null && newContent.isNotEmpty)
-                ? newContent
-                : current.content,
-          ),
-        );
-        if (oldKey != messageStorageKey(chatKey, newId)) {
-          await _messagesBox.delete(oldKey);
-        }
+        // The first time a local/legacy row is reconciled, freeze its old key
+        // suffix as the permanent storage identity. Retries already have one,
+        // so they keep it. This single in-place put replaces the old
+        // put(newKey)/delete(oldKey) pair — no new Hive key, no bubble flap.
+        final stableLocalId =
+            current.localId.isNotEmpty ? current.localId : oldId;
 
-        // Repair: any message that replied to oldId now points to newId
+        final updated = current.copyWith(
+          id: newId,
+          status: finalStatus,
+          giftWrapId: (newGiftWrapId != null && newGiftWrapId.isNotEmpty)
+              ? newGiftWrapId
+              : current.giftWrapId,
+          content: (newContent != null && newContent.isNotEmpty)
+              ? newContent
+              : current.content,
+          localId: stableLocalId,
+        );
+        await _messagesBox.put(oldKey, updated);
+        _indexAlias(updated);
+
+        // Repair: any message that replied to the old ID now points to the
+        // canonical one. These are incoming messages, so their key is their
+        // own event ID (no localId) — but resolve defensively in case a local
+        // reply was also reconciled.
         for (final m in messagesForChatSync(chatKey)) {
           if (m.id == newId || m.replyToId != oldId) continue;
+          final replyKey = _resolveStorageKey(m.id, chatKey) ??
+              messageStorageKey(chatKey, m.id);
           await _messagesBox.put(
-            messageStorageKey(chatKey, m.id),
+            replyKey,
             m.copyWith(replyToId: newId),
           );
         }
 
         await touchChatRegistry(chatKey);
-        DebugLogger.log('[Message] ID updated: $oldId -> $newId ($finalStatus)');
+        DebugLogger.log('[Message] ID updated in place: $oldId -> $newId ($finalStatus)');
       } catch (e) {
         DebugLogger.log('[Message] ID & status update failed | $e', type: 'ERROR');
       }
@@ -609,7 +742,7 @@ class ChatManager {
         if (original == null) continue;
 
         await _messagesBox.put(
-          messageStorageKey(chatKey, m.id),
+          messageStorageKeyFor(m),
           m.copyWith(
             replyToContent: original.plaintext,
             replyToSenderPubkey: original.senderPubkey,
@@ -682,8 +815,7 @@ class ChatManager {
         }
 
         final updates = <String, ChatMessage>{
-          for (final m in unread)
-            messageStorageKey(chatKey, m.id): m.copyWithStatus('read'),
+          for (final m in unread) messageStorageKeyFor(m): m.copyWithStatus('read'),
         };
         await _messagesBox.putAll(updates);
       });
@@ -712,7 +844,7 @@ class ChatManager {
   Future<void> deleteMessage(String messageId, String chatKey) async {
     await _lock.synchronized(() async {
       try {
-        final key = messageStorageKey(chatKey, messageId);
+        final key = _storageKeyForId(messageId, chatKey);
         if (_messagesBox.containsKey(key)) {
           await _messagesBox.delete(key);
           await touchChatRegistry(chatKey);
@@ -797,6 +929,12 @@ class ChatManager {
           if (k is! String) continue;
           final m = _messagesBox.get(k);
           if (m == null || !m.id.startsWith('temp_')) continue;
+          // A failed local send keeps its `temp_` identity now (it is no
+          // longer renamed to `pending_`). Those rows are the offline queue:
+          // deleting them here silently loses messages the user expects to
+          // be delivered on the next reconnect. Only drop sends that were
+          // interrupted before any retry state was recorded.
+          if (m.status == 'pending' || m.status == 'error') continue;
           await _messagesBox.delete(k);
           removed++;
           touchedChats.add(m.chatKey);
@@ -826,6 +964,7 @@ class ChatManager {
 
       final tempMessage = ChatMessage(
         id: tempId,
+        localId: tempId,
         senderPubkey: myPubkey,
         receiverPubkey: receiverPubkey,
         content: '',
@@ -843,19 +982,16 @@ class ChatManager {
         messageTimestampMs: messageTs,
       );
 
-      // `event` now carries the NIP-17 metadata map:
-      //   { giftWrap, giftWrapId, rumorId, rumorTimestamp }
-      // The canonical message ID is the Rumor ID; the Gift Wrap ID is kept
-      // alongside for relay OK matching.
-      final realMessage = tempMessage.copyWith(
-        id: event['rumorId'].toString(),
-        giftWrapId: event['giftWrapId'].toString(),
-        content: (event['giftWrap'] as Map<String, dynamic>)['content'].toString(),
-        status: 'sending',
+      // Reconcile in place: the stable localId keeps the same Hive key while
+      // the canonical Rumor ID and Gift Wrap ID are written into the row.
+      await ChatManager.instance.updateMessageIdAndStatus(
+        tempId,
+        event['rumorId'].toString(),
+        'sending',
+        chatKey,
+        newContent: (event['giftWrap'] as Map<String, dynamic>)['content'].toString(),
+        newGiftWrapId: event['giftWrapId'].toString(),
       );
-
-      await ChatManager.instance.saveMessage(realMessage);
-      await ChatManager.instance.deleteMessage(tempId, chatKey);
       NotificationHandler.clearNotification(receiverPubkey);
 
     } catch (e) {
@@ -888,6 +1024,7 @@ class ChatManager {
 
     final tempMessage = ChatMessage(
       id: tempId,
+      localId: tempId,
       senderPubkey: myPubkey,
       receiverPubkey: receiverPubkey,
       content: '',
@@ -930,10 +1067,7 @@ class ChatManager {
       );
     } catch (e) {
       DebugLogger.log('[Voice] Send failed, queued for later | $e', type: 'WARN');
-      final latest = await ChatManager.instance.getMessageById(tempId, chatKey) ?? tempMessage;
-      final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
-      await ChatManager.instance.saveMessage(latest.copyWith(id: offlineId, status: 'pending'));
-      await ChatManager.instance.deleteMessage(tempId, chatKey);
+      await ChatManager.instance.markMessagePending(tempId, chatKey);
     }
   }
 
@@ -960,6 +1094,7 @@ class ChatManager {
 
     final tempMessage = ChatMessage(
       id: tempId,
+      localId: tempId,
       senderPubkey: myPubkey,
       receiverPubkey: receiverPubkey,
       content: '',
@@ -1003,10 +1138,7 @@ class ChatManager {
       );
     } catch (e) {
       DebugLogger.log('[Image] Send failed, queued for later | $e', type: 'WARN');
-      final latest = await ChatManager.instance.getMessageById(tempId, chatKey) ?? tempMessage;
-      final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
-      await ChatManager.instance.saveMessage(latest.copyWith(id: offlineId, status: 'pending'));
-      await ChatManager.instance.deleteMessage(tempId, chatKey);
+      await ChatManager.instance.markMessagePending(tempId, chatKey);
     }
   }
 
@@ -1038,6 +1170,7 @@ class ChatManager {
 
     final tempMessage = ChatMessage(
       id: tempId,
+      localId: tempId,
       senderPubkey: myPubkey,
       receiverPubkey: receiverPubkey,
       content: '',
@@ -1090,10 +1223,7 @@ class ChatManager {
       );
     } catch (e) {
       DebugLogger.log('[Video] Send failed, queued for later | $e', type: 'WARN');
-      final latest = await ChatManager.instance.getMessageById(tempId, chatKey) ?? tempMessage;
-      final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
-      await ChatManager.instance.saveMessage(latest.copyWith(id: offlineId, status: 'pending'));
-      await ChatManager.instance.deleteMessage(tempId, chatKey);
+      await ChatManager.instance.markMessagePending(tempId, chatKey);
     }
   }
 }

@@ -1019,6 +1019,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
     final tempMessage = ChatMessage(
       id: tempId,
+      localId: tempId,
       senderPubkey: myPubkey,
       receiverPubkey: receiver,
       content: '',
@@ -1054,18 +1055,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
       _maybeAutoScroll(force: true);
     } catch (e) {
-      final offlineId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
-
-      final pendingMessage = tempMessage.copyWith(
-        id: offlineId,
-        content: '',
-        plaintext: text,
-        status: 'pending',
-      );
-
-      await ChatManager.instance.saveMessage(pendingMessage);
-      await ChatManager.instance.deleteMessage(tempId, chatKey);
-
+      await ChatManager.instance.markMessagePending(tempId, chatKey);
       DebugLogger.log('[Chat] Message queued for offline delivery', type: 'INFO');
     } finally {
       if (mounted) setState(() => _isSending = false);

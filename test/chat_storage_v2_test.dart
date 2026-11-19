@@ -24,9 +24,11 @@ void main() {
     String? replyToId,
     Map<String, String>? file,
     String localPath = '',
+    String localId = '',
   }) =>
       ChatMessage(
         id: id,
+        localId: localId,
         senderPubkey: sender,
         receiverPubkey: receiver,
         content: '',
@@ -281,10 +283,10 @@ void main() {
       );
     });
 
-    test('updateMessageIdAndStatus moves the key and repairs replies',
+    test('updateMessageIdAndStatus keeps one stable key and repairs replies',
         () async {
-      await ChatManager.instance
-          .saveMessage(msg('temp_1', status: 'sending'));
+      await ChatManager.instance.saveMessage(
+          msg('temp_1', status: 'sending', localId: 'temp_1'));
       await ChatManager.instance
           .saveMessage(msg('r1', timestamp: 2000, replyToId: 'temp_1'));
 
@@ -297,10 +299,26 @@ void main() {
       );
 
       final box = Hive.box<ChatMessage>('chat_msgs');
+      // The storage key never changes: no put-under-new-key, no delete.
       expect(box.containsKey(ChatManager.messageStorageKey(chatKey, 'temp_1')),
+          isTrue);
+      expect(box.containsKey(ChatManager.messageStorageKey(chatKey, 'real_1')),
           isFalse);
+      expect(box.length, 2);
+
+      // Both the old local ID and the new canonical ID resolve to the same
+      // row, which now carries the Rumor ID in its `id` field.
       final moved = ChatManager.instance.getMessageByIdSync('real_1', chatKey);
+      expect(moved?.id, 'real_1');
+      expect(moved?.localId, 'temp_1');
       expect(moved?.giftWrapId, 'gw_1');
+      expect(
+        identical(
+          moved,
+          ChatManager.instance.getMessageByIdSync('temp_1', chatKey),
+        ),
+        isTrue,
+      );
 
       // The reply now points at the canonical id, and its preview can be
       // repaired from the stored original (whose plaintext is unchanged
@@ -312,6 +330,22 @@ void main() {
         ChatManager.instance.getMessageByIdSync('r1', chatKey)?.replyToContent,
         'text of temp_1',
       );
+    });
+
+    test('markMessagePending flips sending to pending in place', () async {
+      await ChatManager.instance.saveMessage(
+          msg('temp_p', status: 'sending', localId: 'temp_p'));
+      final box = Hive.box<ChatMessage>('chat_msgs');
+      final beforeLength = box.length;
+
+      await ChatManager.instance.markMessagePending('temp_p', chatKey);
+
+      expect(box.length, beforeLength);
+      expect(box.containsKey(ChatManager.messageStorageKey(chatKey, 'temp_p')),
+          isTrue);
+      final saved = ChatManager.instance.getMessageByIdSync('temp_p', chatKey);
+      expect(saved?.status, 'pending');
+      expect(saved?.localId, 'temp_p');
     });
   });
 
@@ -563,6 +597,72 @@ void main() {
     });
   });
 
+  group('A audit regressions', () {
+    test('cleanupTempMessages keeps a failed local send queued for retry',
+        () async {
+      await ChatManager.instance.saveMessage(
+          msg('temp_fail', status: 'sending', localId: 'temp_fail'));
+      await ChatManager.instance.markMessagePending('temp_fail', chatKey);
+
+      await ChatManager.instance.cleanupTempMessages();
+
+      expect(
+        ChatManager.instance.getMessageByIdSync('temp_fail', chatKey)?.status,
+        'pending',
+      );
+    });
+
+    test('reconciling a legacy pending row keeps its new ID resolvable',
+        () async {
+      // A row written by the previous app version: id == Hive key, no localId.
+      await ChatManager.instance.saveMessage(msg('pending_old', status: 'pending'));
+
+      await ChatManager.instance.updateMessageIdAndStatus(
+        'pending_old',
+        'rumor_old',
+        'sending',
+        chatKey,
+      );
+
+      final box = Hive.box<ChatMessage>('chat_msgs');
+      expect(box.length, 1);
+      expect(
+        ChatManager.instance.getMessageByIdSync('rumor_old', chatKey),
+        isNotNull,
+      );
+      final saved = ChatManager.instance.getMessageByIdSync('rumor_old', chatKey);
+      expect(saved?.id, 'rumor_old');
+      // The old key suffix becomes the permanent localId, so the canonical
+      // ID can be resolved for self-wrap dedup, receipts and replies.
+      expect(saved?.localId, 'pending_old');
+    });
+
+    test('incoming self-copy merges into the local send instead of duplicating',
+        () async {
+      await ChatManager.instance.saveMessage(
+          msg('temp_self', status: 'sending', localId: 'temp_self'));
+      await ChatManager.instance.updateMessageIdAndStatus(
+        'temp_self',
+        'rumor_self',
+        'sending',
+        chatKey,
+      );
+
+      // The self-wrap arrives as a regular incoming event carrying only the
+      // canonical ID (the FCM handoff path has no isMessageExists pre-check).
+      await ChatManager.instance.saveMessage(
+        msg('rumor_self', status: 'sent'),
+      );
+
+      final box = Hive.box<ChatMessage>('chat_msgs');
+      expect(box.length, 1);
+      expect(
+        ChatManager.instance.getMessageByIdSync('rumor_self', chatKey)?.localId,
+        'temp_self',
+      );
+    });
+  });
+
   test('messageStorageKey layout is stable', () {
     final key = ChatManager.messageStorageKey('chat_a_b', 'id1');
     expect(key, 'chat_a_b\x1fid1');
@@ -571,6 +671,29 @@ void main() {
     expect(
       key.startsWith(ChatManager.messageStorageKey('chat_a_b', '')),
       isTrue,
+    );
+    // A local send keeps its stable localId as the key suffix even after the
+    // canonical ID changes; a legacy/incoming row falls back to its event ID.
+    final local = ChatMessage(
+      id: 'rumor_1',
+      localId: 'temp_1',
+      senderPubkey: 'me',
+      receiverPubkey: 'peer',
+      content: '',
+      plaintext: '',
+      timestamp: 1,
+      status: 'sent',
+      chatKey: 'chat_a_b',
+    );
+    expect(
+      ChatManager.messageStorageKeyFor(local),
+      ChatManager.messageStorageKey('chat_a_b', 'temp_1'),
+    );
+    expect(
+      ChatManager.messageStorageKeyFor(
+        local.copyWith(localId: ''),
+      ),
+      ChatManager.messageStorageKey('chat_a_b', 'rumor_1'),
     );
   });
 }

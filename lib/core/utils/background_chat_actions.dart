@@ -201,8 +201,12 @@ class BackgroundChatActions {
   // imported here: it drags the whole relay stack into this isolate).
   static const String _messageKeySeparator = '\x1f';
 
-  static String _messageStorageKey(String chatKey, String messageId) =>
-      '$chatKey$_messageKeySeparator$messageId';
+  /// Mirrors ChatManager.messageStorageKeyFor: a locally generated reply
+  /// keeps its stable localId as the key suffix once that field is set;
+  /// relay-originated and legacy rows keep using their event ID.
+  static String _messageStorageKey(String chatKey, String messageId,
+          [String localId = '']) =>
+      '$chatKey$_messageKeySeparator${localId.isNotEmpty ? localId : messageId}';
 
   static Future<void> _prepareHive() async {
     await Hive.initFlutter();
