@@ -119,6 +119,12 @@ class MainActivity: FlutterActivity() {
                 } else {
                     result.success(false)
                 }
+            } else if (call.method == "isIgnoringBatteryOptimization") {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                result.success(
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                        powerManager.isIgnoringBatteryOptimizations(packageName)
+                )
             } else {
                 result.notImplemented()
             }

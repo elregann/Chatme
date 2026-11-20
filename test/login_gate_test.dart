@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:bip340/bip340.dart' as bip340;
+import 'package:chatme/core/crypto/key_generator.dart';
 import 'package:chatme/core/utils/sync_gate.dart';
 import 'package:chatme/services/app_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,19 +43,25 @@ void main() {
     expect(SyncGate.isActive, isFalse);
   });
 
-  test('createIdentity persists a keypair without opening the sync gate',
+  test('createIdentity persists the given phrase without opening the sync gate',
       () async {
     await AppSettings.instance.load();
     expect(AppSettings.instance.hasIdentity, isFalse);
 
-    await AppSettings.instance.createIdentity();
+    const mnemonic =
+        'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+    await AppSettings.instance.createIdentity(mnemonic);
+
+    final expectedPrivkey = ChatMeVault.deriveNostrPrivateKey(mnemonic);
 
     expect(AppSettings.instance.hasIdentity, isTrue);
-    expect(AppSettings.instance.myMnemonic.split(' '), hasLength(12));
+    expect(AppSettings.instance.myMnemonic, mnemonic);
+    expect(AppSettings.instance.myPrivkey, expectedPrivkey);
+    expect(AppSettings.instance.myPubkey, bip340.getPublicKey(expectedPrivkey));
+    expect(Hive.box('settings').get('my_mnemonic'), mnemonic);
+    expect(Hive.box('settings').get('my_privkey'), expectedPrivkey);
     expect(Hive.box('settings').get('my_pubkey'),
         AppSettings.instance.myPubkey);
-    expect(Hive.box('settings').get('my_privkey'),
-        AppSettings.instance.myPrivkey);
     expect(SyncGate.isActive, isFalse);
   });
 }

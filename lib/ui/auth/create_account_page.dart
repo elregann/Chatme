@@ -15,13 +15,14 @@ class CreateAccountPage extends StatefulWidget {
   final VoidCallback onAuthenticated;
 
   /// Injectable so widget tests can exercise the backup gate without real
-  /// disk I/O inside the fake-async test zone.
-  final Future<void> Function() createIdentity;
+  /// disk I/O inside the fake-async test zone. Takes the displayed phrase so
+  /// the stored identity always matches what the user wrote down.
+  final Future<void> Function(String mnemonic) createIdentity;
 
   CreateAccountPage({
     super.key,
     required this.onAuthenticated,
-    Future<void> Function()? createIdentity,
+    Future<void> Function(String mnemonic)? createIdentity,
   }) : createIdentity = createIdentity ?? AppSettings.instance.createIdentity;
 
   @override
@@ -54,7 +55,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
     if (!_confirmed || _isLoading) return;
     setState(() => _isLoading = true);
     try {
-      await widget.createIdentity();
+      await widget.createIdentity(_mnemonic);
       if (mounted) widget.onAuthenticated();
     } catch (e) {
       if (mounted) {

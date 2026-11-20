@@ -72,12 +72,14 @@ void main() {
   testWidgets('create account requires a backup confirmation before sign-in',
       (tester) async {
     var authenticated = 0;
+    String? capturedMnemonic;
 
     await tester.pumpWidget(
       MaterialApp(
         home: CreateAccountPage(
           onAuthenticated: () => authenticated++,
-          createIdentity: () async {
+          createIdentity: (mnemonic) async {
+            capturedMnemonic = mnemonic;
             AppSettings.instance.myPubkey = 'a' * 64;
             AppSettings.instance.myPrivkey = 'b' * 64;
           },
@@ -100,6 +102,45 @@ void main() {
 
     expect(authenticated, 1);
     expect(AppSettings.instance.hasIdentity, isTrue);
+
+    final shownWords = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .map((rich) => rich.text.toPlainText())
+        .where((text) => RegExp(r'^\d+\. \S+$').hasMatch(text))
+        .map((text) => text.split(' ').last)
+        .toList();
+    expect(shownWords, hasLength(12));
+    expect(capturedMnemonic, shownWords.join(' '));
+  });
+
+  testWidgets('restore normalizes whitespace before import', (tester) async {
+    String? capturedInput;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RestoreIdentityPage(
+          onAuthenticated: () {},
+          importAccount: (input) async => capturedInput = input,
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byType(TextField),
+      '  abandon  abandon abandon\nabandon abandon abandon\n'
+      '  abandon abandon abandon abandon abandon about  ',
+    );
+    await _pumpBriefly(tester);
+    await tester.tap(find.text('Sign in'));
+    await _pumpBriefly(tester);
+
+    expect(
+      capturedInput,
+      'abandon abandon abandon abandon abandon abandon abandon '
+      'abandon abandon abandon abandon about',
+    );
+    expect(find.text('Make sure you typed your phrase or key exactly.'),
+        findsOneWidget);
   });
 
   testWidgets('restore rejects a malformed key with an inline error',

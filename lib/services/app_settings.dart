@@ -188,13 +188,12 @@ class AppSettings {
     return result.isFound ? result.name : null;
   }
 
-  /// Creates a brand-new Nostr identity from WelcomePage.
+  /// Creates an identity from the exact phrase shown on CreateAccountPage.
   ///
-  /// This deliberately does not open the sync gate or connect relays: the
-  /// caller owns that transition, so it runs exactly once after the backup
-  /// has been confirmed.
-  Future<void> createIdentity() async {
-    final mnemonic = ChatMeVault.generateNewMnemonic();
+  /// The phrase is passed in, never regenerated here: the user must be able
+  /// to restore the same pubkey with the words they just wrote down.
+  /// The caller owns the sync gate and relay connection.
+  Future<void> createIdentity(String mnemonic) async {
     final privateKey = ChatMeVault.deriveNostrPrivateKey(mnemonic);
     final publicKey = bip340.getPublicKey(privateKey);
 
@@ -227,7 +226,7 @@ class AppSettings {
   Future<void> importAccount(String input) async {
     try {
       final settingsBox = Hive.box('settings');
-      final cleaned = input.trim();
+      final cleaned = input.trim().split(RegExp(r'\s+')).join(' ');
 
       if (cleaned.startsWith('nsec')) {
         myPrivkey = KeyUtils.fromNsec(cleaned);

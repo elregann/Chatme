@@ -56,7 +56,7 @@ class _RestoreIdentityPageState extends State<RestoreIdentityPage> {
 
   Future<void> _restore() async {
     if (_isLoading) return;
-    final input = _controller.text;
+    final input = _controller.text.trim().split(RegExp(r'\s+')).join(' ');
     final formatError = _formatError(input);
     if (formatError != null) {
       setState(() => _error = formatError);
@@ -112,8 +112,7 @@ class _RestoreIdentityPageState extends State<RestoreIdentityPage> {
           children: [
             const ChatmeNotice(
               icon: Icons.info_outline_rounded,
-              message:
-                  'Signing in replaces the account on this device. Make sure you have saved its recovery phrase first.',
+              message: 'Make sure you typed your phrase or key exactly.',
               iconColor: ChatmeColors.statusWarning,
             ),
             const SizedBox(height: 28),
@@ -141,6 +140,8 @@ class _RestoreIdentityPageState extends State<RestoreIdentityPage> {
               child: TextField(
                 controller: _controller,
                 maxLines: 5,
+                autocorrect: false,
+                enableSuggestions: false,
                 onChanged: (_) {
                   // Rebuild every time: the button's enabled state depends on
                   // the controller text, not just on the error message.
