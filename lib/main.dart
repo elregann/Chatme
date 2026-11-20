@@ -383,44 +383,36 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
     await _relayManager.sendCallSignal(target, {'type': 'hangup'});
 
-    // Explicitly save CallLog and incoming call ChatMessage so it appears in room chat and calls tab immediately
-    try {
-      if (!Hive.isBoxOpen('call_logs')) {
-        await Hive.openBox<CallLog>('call_logs');
-      }
-      final callLogEntry = CallLog(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        peerPubkey: target,
-        peerName: callerName,
-        direction: 'incoming',
-        mediaType: 'voice',
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-        durationSeconds: 0,
-      );
-      Hive.box<CallLog>('call_logs').add(callLogEntry);
-    } catch (e) {
-      debugPrint('[Call] Error saving CallLog on decline: $e');
-    }
+    // Save the room bubble first so the calls tab can never show an entry
+    // without a matching bubble.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final bubbleKey = await ChatManager.instance.saveCallBubble(
+      myPubkey: AppSettings.instance.myPubkey,
+      peerPubkey: target,
+      direction: 'incoming',
+      durationSeconds: 0,
+      timestampMs: nowMs,
+    );
 
-    try {
-      final myPubkey = AppSettings.instance.myPubkey;
-      if (myPubkey.isNotEmpty) {
-        final chatKey = ChatManager.instance.getChatKey(myPubkey, target);
-        const callMsgContent = '[CALL]:incoming:voice:duration:0';
-        final chatMsg = ChatMessage(
-          id: 'call_${DateTime.now().millisecondsSinceEpoch}',
-          senderPubkey: target,
-          receiverPubkey: myPubkey,
-          content: callMsgContent,
-          plaintext: callMsgContent,
-          timestamp: DateTime.now().millisecondsSinceEpoch,
-          status: 'read',
-          chatKey: chatKey,
-        );
-        ChatManager.instance.saveMessage(chatMsg);
+    if (bubbleKey == null) {
+      debugPrint('[Call] Skip call log on decline: room bubble was not saved');
+    } else {
+      try {
+        if (!Hive.isBoxOpen('call_logs')) {
+          await Hive.openBox<CallLog>('call_logs');
+        }
+        Hive.box<CallLog>('call_logs').add(CallLog(
+          id: nowMs.toString(),
+          peerPubkey: target,
+          peerName: callerName,
+          direction: 'incoming',
+          mediaType: 'voice',
+          timestamp: nowMs,
+          durationSeconds: 0,
+        ));
+      } catch (e) {
+        debugPrint('[Call] Error saving CallLog on decline: $e');
       }
-    } catch (e) {
-      debugPrint('[Call] Error saving ChatMessage call record on decline: $e');
     }
     CallManager.instance.clearIdleSession();
   }
@@ -707,6 +699,25 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     final contact = Hive.box<Contact>('contacts').get(peer);
     final name = contact?.displayName ?? AppSettings.formatDisplayName(peer);
 
+    final bubbleKey = await ChatManager.instance.saveCallBubble(
+      myPubkey: AppSettings.instance.myPubkey,
+      peerPubkey: peer,
+      direction: direction,
+      durationSeconds: 0,
+      timestampMs: ts,
+      notify: false,
+    );
+    if (bubbleKey == null) {
+      DebugLogger.log('[Call] Skip call log: room bubble was not saved',
+          type: 'ERROR');
+      return;
+    }
+
+    // Any notification for this call was already shown from the background.
+    try {
+      await Hive.box('settings').put('notified_call_$ts', true);
+    } catch (_) {}
+
     await Hive.box<CallLog>('call_logs').add(CallLog(
       id: ts.toString(),
       peerPubkey: peer,
@@ -715,26 +726,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
       mediaType: 'voice',
       timestamp: ts,
       durationSeconds: 0,
-    ));
-
-    final myPubkey = AppSettings.instance.myPubkey;
-    if (myPubkey.isEmpty) return;
-
-    // Any notification for this call was already shown from the background.
-    try {
-      await Hive.box('settings').put('notified_call_$ts', true);
-    } catch (_) {}
-
-    final content = '[CALL]:$direction:voice:duration:0';
-    await ChatManager.instance.saveMessage(ChatMessage(
-      id: 'call_$ts',
-      senderPubkey: peer,
-      receiverPubkey: myPubkey,
-      content: content,
-      plaintext: content,
-      timestamp: ts,
-      status: 'read',
-      chatKey: ChatManager.instance.getChatKey(myPubkey, peer),
     ));
   }
 

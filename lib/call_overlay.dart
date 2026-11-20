@@ -7,6 +7,12 @@ import 'core/theme/chatme_colors.dart';
 import 'core/utils/duration_utils.dart';
 import 'call.dart';
 
+/// Ends the floating call bar session as an explicit user action.
+Future<void> endCallFromOverlay(dynamic relay, CallManager manager) async {
+  relay.sendCallSignal(manager.activePeerPubkey ?? '', {'type': 'hangup'});
+  await manager.stopCall(sendHangupSignal: false, byUser: true);
+}
+
 class CallFloatingBar extends StatefulWidget {
   final dynamic relay;
 
@@ -152,13 +158,7 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
               ),
               const SizedBox(width: 12),
               GestureDetector(
-                onTap: () async {
-                  widget.relay.sendCallSignal(
-                    manager.activePeerPubkey ?? '',
-                    {'type': 'hangup'},
-                  );
-                  await manager.stopCall(sendHangupSignal: false);
-                },
+                onTap: () => endCallFromOverlay(widget.relay, manager),
                 child: Container(
                   width: 32,
                   height: 32,

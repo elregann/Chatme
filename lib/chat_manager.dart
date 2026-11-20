@@ -382,6 +382,45 @@ class ChatManager {
     return wasNew;
   }
 
+  /// Persists a locally generated call bubble and returns its chat key only
+  /// when the bubble really exists. Callers use the key as the go-ahead to
+  /// write a call-log row, so the two views can never drift apart.
+  Future<String?> saveCallBubble({
+    required String myPubkey,
+    required String peerPubkey,
+    required String direction,
+    required int durationSeconds,
+    required int timestampMs,
+    bool notify = true,
+  }) async {
+    if (myPubkey.isEmpty || peerPubkey.isEmpty) return null;
+
+    final chatKey = getChatKey(myPubkey, peerPubkey);
+    final id = 'call_$timestampMs';
+    final content = '[CALL]:$direction:voice:duration:$durationSeconds';
+    final isIncoming = direction == 'incoming' || direction == 'missed';
+
+    try {
+      await saveMessage(
+        ChatMessage(
+          id: id,
+          senderPubkey: isIncoming ? peerPubkey : myPubkey,
+          receiverPubkey: isIncoming ? myPubkey : peerPubkey,
+          content: content,
+          plaintext: content,
+          timestamp: timestampMs,
+          status: 'read',
+          chatKey: chatKey,
+        ),
+        notify: notify,
+      );
+      return await isMessageExists(id, chatKey) ? chatKey : null;
+    } catch (e) {
+      DebugLogger.log('[Call] Save call bubble failed | $e', type: 'ERROR');
+      return null;
+    }
+  }
+
   void _triggerNotification(ChatMessage message) async {
     if (kIsWeb) return;
 

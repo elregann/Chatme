@@ -9,7 +9,6 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:hive/hive.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'models/call_log.dart';
-import 'models/chat_message.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
 import 'services/async_toggle.dart';
@@ -1271,44 +1270,37 @@ class CallManager {
           directionStr = 'outgoing';
         }
 
-        final name = (peerName != null && peerName.isNotEmpty) ? peerName : 'Kontak';
-        final callLogEntry = CallLog(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final bubbleKey = await ChatManager.instance.saveCallBubble(
+          myPubkey: AppSettings.instance.myPubkey,
           peerPubkey: peerPubkey,
-          peerName: name,
           direction: directionStr,
-          mediaType: 'voice',
-          timestamp: DateTime.now().millisecondsSinceEpoch,
           durationSeconds: duration,
+          timestampMs: nowMs,
         );
 
-        try {
-          if (Hive.isBoxOpen('call_logs')) {
-            Hive.box<CallLog>('call_logs').add(callLogEntry);
-          }
-        } catch (e) {
-          debugPrint('[Call] Error saving CallLog: $e');
-        }
+        if (bubbleKey == null) {
+          debugPrint('[Call] Skip call log: room bubble was not saved');
+        } else {
+          final name =
+              (peerName != null && peerName.isNotEmpty) ? peerName : 'Kontak';
+          final callLogEntry = CallLog(
+            id: nowMs.toString(),
+            peerPubkey: peerPubkey,
+            peerName: name,
+            direction: directionStr,
+            mediaType: 'voice',
+            timestamp: nowMs,
+            durationSeconds: duration,
+          );
 
-        try {
-          final myPubkey = AppSettings.instance.myPubkey;
-          if (myPubkey.isNotEmpty) {
-            final chatKey = ChatManager.instance.getChatKey(myPubkey, peerPubkey);
-            final callMsgContent = '[CALL]:$directionStr:voice:duration:$duration';
-            final chatMsg = ChatMessage(
-              id: 'call_${DateTime.now().millisecondsSinceEpoch}',
-              senderPubkey: (directionStr == 'incoming' || directionStr == 'missed') ? peerPubkey : myPubkey,
-              receiverPubkey: (directionStr == 'incoming' || directionStr == 'missed') ? myPubkey : peerPubkey,
-              content: callMsgContent,
-              plaintext: callMsgContent,
-              timestamp: DateTime.now().millisecondsSinceEpoch,
-              status: 'read',
-              chatKey: chatKey,
-            );
-            ChatManager.instance.saveMessage(chatMsg);
+          try {
+            if (Hive.isBoxOpen('call_logs')) {
+              Hive.box<CallLog>('call_logs').add(callLogEntry);
+            }
+          } catch (e) {
+            debugPrint('[Call] Error saving CallLog: $e');
           }
-        } catch (e) {
-          debugPrint('[Call] Error saving ChatMessage call record: $e');
         }
       }
 

@@ -206,6 +206,9 @@ class ChatNotificationHandler {
       return;
     }
 
+    // The ringing notification and the relay signal own the live call path.
+    if (fcmType == 'call') return;
+
     if (eventId.isNotEmpty) {
       try {
         final settingsBox = Hive.box('settings');
@@ -214,6 +217,19 @@ class ChatNotificationHandler {
         }
         settingsBox.put('notified_$eventId', true);
       } catch (_) {}
+    }
+
+    // The background isolate records this note, but it is not invoked while
+    // the app is foregrounded. Keep the same fallback here so the room bubble
+    // can still be rebuilt if the relay hangup signal is missed.
+    if (fcmType == 'call_cancel') {
+      try {
+        await plugin.cancel(CallNotificationHandler.incomingCallNotificationId);
+      } catch (_) {}
+      if (senderPubkey.isNotEmpty) {
+        await BgInbox.recordMissedCall(senderPubkey);
+      }
+      return;
     }
 
     // The FCM event id is a fresh Gift Wrap id on every retry; the Rumor id
