@@ -12,7 +12,6 @@ import 'services/link_preview_service.dart';
 import 'core/utils/key_utils.dart';
 import 'ui/profile/security_vault.dart';
 import 'ui/profile/recovery_phrase.dart';
-import 'ui/profile/restore_account.dart';
 import 'core/theme/chatme_buttons.dart';
 import 'core/theme/chatme_colors.dart';
 import 'ui/profile/global_id.dart';
@@ -445,40 +444,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _currentHandle = AppSettings.instance.myNip05;
       _isEditing = _currentHandle.isEmpty;
     });
-  }
-
-  void _showRestoreDialog(BuildContext context) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            RestoreAccountPage(relayManager: widget.relayManager),
-      ),
-    );
-
-    if (mounted) {
-      final newPubkey = AppSettings.instance.myPubkey;
-      widget.relayManager.refreshProfileSubscription();
-      final photoUrl = await widget.relayManager.fetchProfilePicture(newPubkey);
-
-      if (photoUrl != null && photoUrl.isNotEmpty) {
-        await AppSettings.instance.savePhotoUrl(photoUrl);
-      } else {
-        await AppSettings.instance.savePhotoUrl('');
-      }
-      await AppSettings.instance.savePhotoPath('');
-
-      if (mounted) {
-        setState(() {
-          _currentHandle = AppSettings.instance.myNip05;
-          _isEditing = _currentHandle.isEmpty;
-          _remotePhotoUrl = AppSettings.instance.myPhotoUrl.isNotEmpty
-              ? AppSettings.instance.myPhotoUrl
-              : null;
-          _localPhotoPath = null;
-        });
-      }
-    }
   }
 
   /// Signs out of the local account after an explicit confirmation. The old
@@ -995,25 +960,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         trailing: const Icon(Icons.chevron_right_rounded,
                             color: textSecondary),
                         onTap: () => _showBackupDialog(context),
-                      ),
-                      const Divider(
-                          height: 0.5,
-                          thickness: 0.5,
-                          color: borderColor,
-                          indent: 56),
-                      ListTile(
-                        leading: const Icon(
-                            Icons.settings_backup_restore_rounded,
-                            color: textPrimary,
-                            size: 18),
-                        title: const Text('Restore Account',
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: textPrimary)),
-                        trailing: const Icon(Icons.chevron_right_rounded,
-                            color: textSecondary),
-                        onTap: () => _showRestoreDialog(context),
                       ),
                     ],
                   ),

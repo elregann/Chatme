@@ -256,4 +256,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Log out?'), findsOneWidget);
   });
+
+  testWidgets('profile keeps Security Vault but has no restore shortcut',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: ProfileScreen(relayManager: _FakeRelay())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Security Vault'), findsOneWidget);
+    expect(find.text('Restore Account'), findsNothing);
+  });
 }
