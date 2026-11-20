@@ -14,6 +14,7 @@ import 'chat_notification_handler.dart' as chat_notif;
 import 'core/utils/background_call_signal.dart';
 import 'core/utils/background_chat_actions.dart';
 import 'core/utils/bg_inbox.dart';
+import 'core/utils/debug_logger.dart';
 import 'core/utils/main_isolate_ping.dart';
 
 /// Entry point for FCM messages received while the app is in background or
@@ -134,11 +135,8 @@ class NotificationHandler {
       if (Firebase.apps.isEmpty) await Firebase.initializeApp();
       final FirebaseMessaging messaging = FirebaseMessaging.instance;
 
-      // Permissions
-      await _plugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
-      await messaging.requestPermission(alert: true, badge: true, sound: true);
+      // Runtime prompts are owned by PermissionSetup: they must follow an
+      // in-app explanation that matches the system window being opened.
       await messaging.setForegroundNotificationPresentationOptions(
         alert: true,
         badge: true,
@@ -228,6 +226,23 @@ class NotificationHandler {
       _initialized = true;
     } catch (e) {
       debugPrint('[Notification] Init failed | $e');
+    }
+  }
+
+  /// Requests notification access after the user has seen an explanation.
+  /// Kept out of [init] so no system dialog appears before the app UI.
+  static Future<void> requestPermissions() async {
+    if (kIsWeb) return;
+    try {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+      await FirebaseMessaging.instance
+          .requestPermission(alert: true, badge: true, sound: true);
+    } catch (e) {
+      DebugLogger.log('[Notification] Permission request failed | $e',
+          type: 'ERROR');
     }
   }
 

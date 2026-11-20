@@ -12,7 +12,6 @@ import '../core/utils/bio_text.dart';
 import '../core/utils/shortcut_helper.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
-import '../core/utils/sync_gate.dart';
 import '../models/contact.dart';
 import 'server_lists.dart';
 
@@ -22,6 +21,10 @@ class AppSettings {
   AppSettings._internal();
 
   static AppSettings get instance => _instance;
+
+  /// True only after WelcomePage has created or restored an identity.
+  /// Signed-out devices have an empty keypair and must not connect or sync.
+  bool get hasIdentity => myPubkey.isNotEmpty && myPrivkey.isNotEmpty;
 
   bool isNip05Verified = false;
   String myPubkey = '';
@@ -78,22 +81,9 @@ class AppSettings {
       isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
       myAbout = settingsBox.get('my_about', defaultValue: '');
 
-      // Generate new identity if first launch
-      if (myPubkey.isEmpty) {
-        final keypair = _generateNostrKeypair();
-        myPubkey = keypair['public']!;
-        myPrivkey = keypair['private']!;
-
-        await settingsBox.put('my_pubkey', myPubkey);
-        await settingsBox.put('my_privkey', myPrivkey);
-
-        // The very first login is an initial sync too: open the gate
-        // before anything connects, so the first relay round-trip stays
-        // silent. It closes as soon as every relay sends EOSE.
-        SyncGate.start('fresh install');
-
-        DebugLogger.log('[Settings] Generated new Nostr identity: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
-      }
+      // No identity is created here. A signed-out device stays signed out
+      // until WelcomePage creates or restores one; that flow owns the sync
+      // gate and the relay connection.
 
       linkPreviewsEnabled = settingsBox.get('link_previews_enabled', defaultValue: false);
       readReceiptsEnabled = settingsBox.get('read_receipts_enabled', defaultValue: true);
@@ -110,7 +100,9 @@ class AppSettings {
 
       blossomServers = BlossomLists.fromStored(settingsBox.get('blossom_servers'));
 
-      DebugLogger.log('[Settings] Loaded. Pubkey: ${myPubkey.substring(0, 16)}...', type: 'SETUP');
+      final pubkeyLabel =
+          myPubkey.isEmpty ? 'none' : '${myPubkey.substring(0, 16)}...';
+      DebugLogger.log('[Settings] Loaded. Pubkey: $pubkeyLabel', type: 'SETUP');
     } catch (e) {
       DebugLogger.log('[Settings] Load failed | $e', type: 'ERROR');
       rethrow;
@@ -194,6 +186,42 @@ class AppSettings {
   Future<String?> _fetchNameFromFirebase(String pubkey) async {
     final result = await lookupDirectoryIdentity(pubkey);
     return result.isFound ? result.name : null;
+  }
+
+  /// Creates a brand-new Nostr identity from WelcomePage.
+  ///
+  /// This deliberately does not open the sync gate or connect relays: the
+  /// caller owns that transition, so it runs exactly once after the backup
+  /// has been confirmed.
+  Future<void> createIdentity() async {
+    final mnemonic = ChatMeVault.generateNewMnemonic();
+    final privateKey = ChatMeVault.deriveNostrPrivateKey(mnemonic);
+    final publicKey = bip340.getPublicKey(privateKey);
+
+    myMnemonic = mnemonic;
+    myPrivkey = privateKey;
+    myPubkey = publicKey;
+    myNip05 = '';
+    myAbout = '';
+    myPhotoPath = '';
+    myPhotoUrl = '';
+    isNip05Verified = false;
+
+    await Hive.box('settings').putAll({
+      'my_mnemonic': mnemonic,
+      'my_privkey': privateKey,
+      'my_pubkey': publicKey,
+      'my_nip05': '',
+      'is_nip05_verified': false,
+      'my_about': '',
+      'my_photo_url': '',
+      'my_photo_path': '',
+    });
+
+    DebugLogger.log(
+      '[Settings] New identity created: ${publicKey.substring(0, 16)}...',
+      type: 'SETUP',
+    );
   }
 
   Future<void> importAccount(String input) async {
@@ -337,26 +365,6 @@ Private Key: $myPrivkey
 Name: $myName
 Backup Date: ${DateTime.now().toString()}
 ''';
-  }
-
-  Map<String, String> _generateNostrKeypair() {
-    try {
-      final mnemonic = ChatMeVault.generateNewMnemonic();
-      myMnemonic = mnemonic;
-
-      final privateKey = ChatMeVault.deriveNostrPrivateKey(mnemonic);
-      final publicKey = bip340.getPublicKey(privateKey);
-
-      final settingsBox = Hive.box('settings');
-      settingsBox.put('my_mnemonic', mnemonic);
-      settingsBox.put('my_pubkey', publicKey);
-      settingsBox.put('my_privkey', privateKey);
-
-      return {'private': privateKey, 'public': publicKey};
-    } catch (e) {
-      DebugLogger.log('[Settings] Generate keypair failed | $e', type: 'ERROR');
-      rethrow;
-    }
   }
 
   static String getContactDisplayName(Contact contact) {

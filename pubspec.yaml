@@ -2,7 +2,7 @@ name: chatme
 description: "Chat App with Nostr"
 publish_to: 'none'
 
-version: 2.14.5+57
+version: 2.15.0+58
 
 environment:
   sdk: '>=3.4.4 <4.0.0'
@@ -78,6 +78,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/discovery_icons/
+    - assets/icon_cyan.png
 
 flutter_launcher_icons:
   android: true

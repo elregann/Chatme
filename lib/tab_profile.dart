@@ -482,8 +482,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Signs out of the local account after an explicit confirmation. The old
-  /// account itself is not touched: only this device's data is erased, then a
-  /// new account is generated in place.
+  /// account itself is not touched: only this device's data is erased, then
+  /// the user returns to the Welcome screen to create or restore an account.
   Future<void> _confirmLogout() async {
     if (_isLoggingOut) return;
 
@@ -491,7 +491,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       title: 'Log out?',
       message:
-          'All chats, contacts and settings on this device will be erased and a new account will be created. Your old account and its profile stay online and can be restored with your backup phrase or nsec.',
+          'All chats, contacts and settings on this device will be erased and you will return to the login screen. Your old account and its profile stay online and can be restored with your backup phrase or nsec.',
       confirmLabel: 'Log out',
     );
     if (!confirmed || !mounted) return;

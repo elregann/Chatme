@@ -188,18 +188,18 @@ void main() {
     await File('${voiceDir.path}/note.m4a').create();
   });
 
-  test('sign out wipes local data and creates a fresh account', () async {
+  test('sign out wipes local data and leaves the app signed out', () async {
     final relay = _FakeRelay();
 
     await AccountLogout.signOut(relay);
 
-    expect(relay.disconnects, 1);
-    expect(relay.connects, 1);
+    expect(AppSettings.instance.myPubkey, isEmpty);
+    expect(AppSettings.instance.myPrivkey, isEmpty);
+    expect(AppSettings.instance.myMnemonic, isEmpty);
 
-    final newPubkey = AppSettings.instance.myPubkey;
-    expect(newPubkey.isNotEmpty, isTrue);
-    expect(newPubkey, isNot('old_account_pubkey'));
-    expect(AppSettings.instance.myPrivkey, isNotEmpty);
+    expect(relay.disconnects, 1);
+    expect(relay.connects, 0);
+
     expect(AppSettings.instance.myNip05, '');
     expect(AppSettings.instance.myAbout, '');
     expect(AppSettings.instance.myPhotoPath, '');
@@ -207,7 +207,7 @@ void main() {
     expect(AppSettings.instance.readReceiptsEnabled, isTrue);
     expect(AppSettings.instance.inboxRelays,
         isNot(['wss://old.example']));
-    expect(Hive.box('settings').get('my_pubkey'), newPubkey);
+    expect(Hive.box('settings').get('my_pubkey'), isNull);
 
     expect(Hive.box<Contact>('contacts').isEmpty, isTrue);
     expect(Hive.box('chats').isEmpty, isTrue);
@@ -224,8 +224,8 @@ void main() {
     expect(await mediaDir.exists(), isFalse);
     expect(await voiceDir.exists(), isFalse);
 
-    expect(SyncGate.isActive, isTrue);
-    expect(SyncGate.useFreshWindow, isTrue);
+    expect(SyncGate.isActive, isFalse);
+    expect(SyncGate.useFreshWindow, isFalse);
   });
 
   testWidgets('profile app bar has QR on the left and a logout menu',

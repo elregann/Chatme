@@ -11,7 +11,6 @@ import 'package:remixicon/remixicon.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'services/link_preview_service.dart';
 import 'widgets/user_avatar.dart';
@@ -42,8 +41,16 @@ import 'tab_discovery.dart';
 import 'call.dart';
 import 'call_manager.dart';
 import 'call_notification_handler.dart';
+import 'ui/auth/create_account_page.dart';
+import 'ui/auth/permission_setup.dart';
+import 'ui/auth/restore_identity_page.dart';
+import 'ui/auth/welcome_page.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Bumped when an identity is created, restored or removed. The root widget
+/// rebuilds route '/' so the Welcome gate always reflects the current account.
+final ValueNotifier<int> authRevision = ValueNotifier<int>(0);
 
 /// Unread rule for the FCM handoff drain.
 ///
@@ -129,12 +136,8 @@ void main() async {
       }
     }
 
-    if (!kIsWeb) {
-      await FlutterLocalNotificationsPlugin()
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
-    }
-
+    // Notification and battery windows are opened by PermissionSetup, after
+    // the UI is up and each window has an explanation that matches it.
     runApp(const ChatMeApp());
 
   } catch (e) {
@@ -159,6 +162,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    authRevision.addListener(_onAuthChanged);
 
     // Notification bar
     if (!kIsWeb) {
@@ -259,6 +263,13 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
         }
       };
       _networkManager.initialize();
+
+      // Existing accounts need the same explanation as a fresh sign-in, but
+      // only once the UI is visible. Signed-out devices see none of it.
+      Future.delayed(
+        const Duration(milliseconds: 900),
+        _maybeShowPermissionSetup,
+      );
     });
 
     _relayManager.precacheAllProfilePictures();
@@ -280,23 +291,65 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     // The app may have been started by tapping a launcher shortcut.
     _openShortcutChat();
 
-    _requestIgnoreBatteryOptimization();
-
     Future.delayed(const Duration(seconds: 4), () {
       AppSettings.hydrateMissingContactNames();
     });
   }
 
-  Future<void> _requestIgnoreBatteryOptimization() async {
-    if (kIsWeb) return;
-    try {
-      if (Platform.isAndroid) {
-        const channel = MethodChannel('com.chatme.app/battery');
-        await channel.invokeMethod('requestIgnoreBatteryOptimization');
+  void _onAuthChanged() {
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) return;
+    navigator.pushNamedAndRemoveUntil('/', (route) => false);
+    Future.delayed(
+      const Duration(milliseconds: 500),
+      _maybeShowPermissionSetup,
+    );
+  }
+
+  void _maybeShowPermissionSetup() {
+    if (!mounted || !AppSettings.instance.hasIdentity) return;
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    PermissionSetup.maybeShow(context);
+  }
+
+  /// Shared finish line for create-account and restore.
+  ///
+  /// The gate opens before any relay traffic; FCM follows the new key; then
+  /// the root route rebuilds into MainScreen and the relay connects.
+  void _completeSignIn(String reason) {
+    SyncGate.start(reason);
+    if (!kIsWeb) {
+      final pubkey = AppSettings.instance.myPubkey;
+      if (pubkey.isNotEmpty) {
+        FirebaseMessaging.instance
+            .subscribeToTopic(pubkey)
+            .timeout(const Duration(seconds: 8))
+            .catchError((_) {});
       }
-    } catch (e) {
-      DebugLogger.log("Battery optimization request failed: $e", type: 'ERROR');
     }
+    _relayManager.connect();
+    authRevision.value++;
+  }
+
+  void _openCreateAccount() {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => CreateAccountPage(
+          onAuthenticated: () => _completeSignIn('new account'),
+        ),
+      ),
+    );
+  }
+
+  void _openRestoreAccount() {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => RestoreIdentityPage(
+          onAuthenticated: () => _completeSignIn('account restore'),
+        ),
+      ),
+    );
   }
 
   void _answerPendingCall({String? callerPubkey}) {
@@ -813,6 +866,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    authRevision.removeListener(_onAuthChanged);
     _notificationPort?.close();
     WidgetsBinding.instance.removeObserver(this);
     _relayManager.dispose();
@@ -838,6 +892,12 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
         initialRoute: '/',
         routes: {
           '/': (context) {
+            if (!AppSettings.instance.hasIdentity) {
+              return WelcomePage(
+                onCreateAccount: _openCreateAccount,
+                onRestoreAccount: _openRestoreAccount,
+              );
+            }
             final callerPubkey = CallManager.instance.launchCallerPubkey;
             if (callerPubkey != null && callerPubkey.isNotEmpty) {
               final contact = Hive.box<Contact>('contacts').get(callerPubkey);
@@ -980,6 +1040,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             onResetComplete: () {
               setState(() => _selectedIndex = 0);
               _pageController.jumpToPage(0);
+              // signOut() left the device signed out; rebuild route '/'.
+              authRevision.value++;
             },
           ),
         ],

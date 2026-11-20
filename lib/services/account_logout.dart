@@ -1,9 +1,9 @@
 // account_logout.dart
 //
 // Signs the user out of the local account. Everything stored on this device is
-// wiped and AppSettings.load() generates a brand-new keypair, exactly like a
-// fresh install. The old account itself is untouched: no directory release and
-// no profile broadcast, so its profile stays intact when restored elsewhere.
+// wiped, then AppSettings.load() refreshes the in-memory defaults so the
+// device stays signed out. The old account itself is untouched: no directory
+// release and no profile broadcast, so its profile stays intact when restored.
 
 import 'dart:io';
 
@@ -37,7 +37,10 @@ class AccountLogout {
   /// tests only record that the step ran (no native WebView in widget tests).
   static Future<void> Function() clearWebViewData = _clearWebViewData;
 
-  /// Wipes local state, creates the new account, and reconnects in place.
+  /// Wipes local state and leaves the device signed out.
+  ///
+  /// WelcomePage decides what happens next: create a new identity, or restore
+  /// an existing one. No key is generated and no relay is connected here.
   static Future<void> signOut(RelayManager relayManager) async {
     final oldPubkey = AppSettings.instance.myPubkey;
 
@@ -66,13 +69,9 @@ class AccountLogout {
     SyncGate.finish('logout');
     await _wipeLocalData();
 
-    // Empty my_pubkey makes load() generate a keypair and start a fresh sync
-    // gate — the same path as the very first launch.
+    // The settings box is empty now, so load() only refreshes in-memory
+    // defaults. It no longer generates an identity or starts a sync gate.
     await AppSettings.instance.load();
-
-    final newPubkey = AppSettings.instance.myPubkey;
-    await _guard('FCM subscribe', () => _subscribe(newPubkey));
-    await _guard('relay connect', () async => relayManager.connect());
   }
 
   /// Downloads and voice notes live in their own folders outside Hive.
@@ -93,13 +92,6 @@ class AccountLogout {
     if (kIsWeb || pubkey.isEmpty) return;
     await FirebaseMessaging.instance
         .unsubscribeFromTopic(pubkey)
-        .timeout(const Duration(seconds: 8));
-  }
-
-  static Future<void> _subscribe(String pubkey) async {
-    if (kIsWeb || pubkey.isEmpty) return;
-    await FirebaseMessaging.instance
-        .subscribeToTopic(pubkey)
         .timeout(const Duration(seconds: 8));
   }
 
