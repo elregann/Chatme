@@ -90,24 +90,36 @@ void main() {
     expect(find.text('YOUR RECOVERY PHRASE'), findsOneWidget);
     expect(find.text('Enter Chatme'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Enter Chatme'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Enter Chatme'));
     await _pumpBriefly(tester);
     expect(authenticated, 0);
     expect(AppSettings.instance.hasIdentity, isFalse);
 
+    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox));
     await _pumpBriefly(tester);
+    await tester.ensureVisible(find.text('Enter Chatme'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Enter Chatme'));
     await _pumpBriefly(tester);
 
     expect(authenticated, 1);
     expect(AppSettings.instance.hasIdentity, isTrue);
 
+    expect(find.byType(GridView), findsOneWidget);
+
     final shownWords = tester
-        .widgetList<RichText>(find.byType(RichText))
-        .map((rich) => rich.text.toPlainText())
-        .where((text) => RegExp(r'^\d+\. \S+$').hasMatch(text))
-        .map((text) => text.split(' ').last)
+        .widgetList<Text>(
+          find.descendant(
+            of: find.byType(GridView),
+            matching: find.byType(Text),
+          ),
+        )
+        .map((text) => text.data ?? '')
+        .where((text) => !RegExp(r'^\d+$').hasMatch(text))
         .toList();
     expect(shownWords, hasLength(12));
     expect(capturedMnemonic, shownWords.join(' '));

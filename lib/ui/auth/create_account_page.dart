@@ -6,6 +6,7 @@ import '../../core/theme/chatme_buttons.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../services/app_settings.dart';
 import '../../widgets/chatme_notice.dart';
+import '../../widgets/recovery_phrase_words.dart';
 
 /// Creates an identity locally, but only lets the user leave after they
 /// explicitly confirm that the recovery phrase was saved.
@@ -133,14 +134,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                   width: 0.5,
                 ),
               ),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (var i = 0; i < words.length; i++)
-                    _WordChip(index: i + 1, word: words[i]),
-                ],
-              ),
+              child: RecoveryPhraseWords(words: words),
             ),
             const SizedBox(height: 12),
             Align(
@@ -183,43 +177,6 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
               onTap: _continue,
             ),
             const SizedBox(height: 32),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WordChip extends StatelessWidget {
-  final int index;
-  final String word;
-
-  const _WordChip({required this.index, required this.word});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: ChatmeButtonStyles.chipDecoration(),
-      child: RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: '$index. ',
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: ChatmeColors.textSubtle,
-              ),
-            ),
-            TextSpan(
-              text: word,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-                color: ChatmeColors.textPrimary,
-              ),
-            ),
           ],
         ),
       ),

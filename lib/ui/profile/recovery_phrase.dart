@@ -5,6 +5,7 @@ import 'package:remixicon/remixicon.dart';
 import '../../core/theme/chatme_buttons.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../widgets/chatme_notice.dart';
+import '../../widgets/recovery_phrase_words.dart';
 
 class RecoveryPhrasePage extends StatefulWidget {
   const RecoveryPhrasePage({super.key});
@@ -97,7 +98,7 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
             ),
             const SizedBox(height: 8),
 
-            // Words grid atau placeholder
+            // Word chips or placeholder
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -108,52 +109,7 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
               ),
               child: hasMnemonic
                   ? _isRevealed
-                      ? GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
-                            childAspectRatio: 2.8,
-                          ),
-                          itemCount: words.length,
-                          itemBuilder: (context, index) {
-                            return Container(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: ChatmeColors.surfaceRaised,
-                                borderRadius: BorderRadius.circular(8),
-                                border:
-                                    Border.all(color: borderColor, width: 0.5),
-                              ),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    '${index + 1}',
-                                    style: const TextStyle(
-                                        fontSize: 10,
-                                        color: textSecondary,
-                                        fontWeight: FontWeight.w500),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      words[index],
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: textPrimary,
-                                          fontWeight: FontWeight.w500),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        )
+                      ? RecoveryPhraseWords(words: words)
                       : GestureDetector(
                           onTap: () => setState(() => _isRevealed = true),
                           child: Container(
