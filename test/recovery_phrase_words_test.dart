@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:chatme/ui/profile/recovery_phrase.dart';
+import 'package:chatme/widgets/recovery_phrase_words.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -36,6 +37,13 @@ void main() {
 
     expect(find.byType(GridView), findsOneWidget);
     expect(find.byType(Wrap), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(FittedBox),
+      ),
+      findsNWidgets(12),
+    );
 
     final gridTexts = tester.widgetList<Text>(
       find.descendant(
@@ -49,5 +57,51 @@ void main() {
         .toList();
 
     expect(words, mnemonic.split(' '));
+    expect(
+      gridTexts.any((text) => text.overflow == TextOverflow.ellipsis),
+      isFalse,
+    );
+  });
+
+  testWidgets('long words shrink instead of truncating in a narrow grid',
+      (tester) async {
+    const words = [
+      'abandon', 'abandon', 'abandon', 'abandon',
+      'abandon', 'abandon', 'abandon', 'abandon',
+      'abandon', 'abandon', 'abandon', 'surround',
+    ];
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              child: RecoveryPhraseWords(words: words),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final gridTexts = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(Text),
+      ),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(FittedBox),
+      ),
+      findsNWidgets(12),
+    );
+    expect(
+      gridTexts.any((text) => text.overflow == TextOverflow.ellipsis),
+      isFalse,
+    );
+    expect(gridTexts.map((text) => text.data).toList(), contains('surround'));
   });
 }

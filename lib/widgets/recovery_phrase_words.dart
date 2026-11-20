@@ -40,13 +40,16 @@ class RecoveryPhraseWords extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Flexible(
-                child: Text(
-                  words[index],
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: ChatmeColors.textPrimary,
-                    fontWeight: FontWeight.w500,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    words[index],
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: ChatmeColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
