@@ -211,11 +211,9 @@ class ChatNotificationHandler {
 
     if (eventId.isNotEmpty) {
       try {
-        final settingsBox = Hive.box('settings');
-        if (settingsBox.get('notified_$eventId') == true) {
+        if (Hive.box('settings').get('notified_$eventId') == true) {
           return;
         }
-        settingsBox.put('notified_$eventId', true);
       } catch (_) {}
     }
 
@@ -223,6 +221,12 @@ class ChatNotificationHandler {
     // the app is foregrounded. Keep the same fallback here so the room bubble
     // can still be rebuilt if the relay hangup signal is missed.
     if (fcmType == 'call_cancel') {
+      // A hangup is handled right here, so it still owns the dedup flag.
+      if (eventId.isNotEmpty) {
+        try {
+          await Hive.box('settings').put('notified_$eventId', true);
+        } catch (_) {}
+      }
       try {
         await plugin.cancel(CallNotificationHandler.incomingCallNotificationId);
       } catch (_) {}
@@ -256,6 +260,15 @@ class ChatNotificationHandler {
     }
 
     if (senderPubkey.isNotEmpty && body.isNotEmpty) {
+      // Claim the event only when a notification is really attempted. The
+      // worker sends data-only pushes, so this path shows nothing and the
+      // relay delivery must stay free to notify the user.
+      if (eventId.isNotEmpty) {
+        try {
+          await Hive.box('settings').put('notified_$eventId', true);
+        } catch (_) {}
+      }
+
       await showChatNotification(
         senderPubkey: senderPubkey,
         senderName: senderName,
