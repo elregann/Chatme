@@ -1634,13 +1634,16 @@ class RelayManager {
     required String senderPubkey,
     required String eventId,
     required int timestampMs,
+    required String body,
   }) {
+    final bodyHash = sha256.convert(utf8.encode(body)).toString();
     final canonical = [
-      'chatme-push-v1',
+      'chatme-push-v2',
       receiverPubkey,
       senderPubkey,
       eventId,
       timestampMs,
+      bodyHash,
     ].join('|');
     final challenge = sha256.convert(utf8.encode(canonical)).toString();
     final signature =
@@ -1665,6 +1668,17 @@ class RelayManager {
     const workerUrl = 'https://chatme-notifier.cintanyanessa.workers.dev/';
 
     try {
+      // The worker signs over the exact bytes it receives, so encode once and
+      // reuse the same string for both the body and its hash.
+      final body = jsonEncode({
+        'receiverPubkey': receiverPubkey,
+        'senderPubkey': senderPubkey,
+        'eventId': eventId,
+        'senderName': senderName,
+        'ciphertext': ciphertext,
+        'ephemeralPubkey': ephemeralPubkey,
+        'type': type,
+      });
       final response = await http.post(
         Uri.parse(workerUrl),
         headers: buildPushHeaders(
@@ -1672,16 +1686,9 @@ class RelayManager {
           senderPubkey: senderPubkey,
           eventId: eventId,
           timestampMs: DateTime.now().millisecondsSinceEpoch,
+          body: body,
         ),
-        body: jsonEncode({
-          'receiverPubkey': receiverPubkey,
-          'senderPubkey': senderPubkey,
-          'eventId': eventId,
-          'senderName': senderName,
-          'ciphertext': ciphertext,
-          'ephemeralPubkey': ephemeralPubkey,
-          'type': type,
-        }),
+        body: body,
       ).timeout(const Duration(seconds: 10));
 
       DebugLogger.log('[Cloudflare] Status ${response.statusCode}${response.statusCode != 200 ? ' | body: ${response.body}' : ''}');
