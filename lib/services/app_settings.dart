@@ -228,54 +228,57 @@ class AppSettings {
       final settingsBox = Hive.box('settings');
       final cleaned = input.trim().split(RegExp(r'\s+')).join(' ');
 
+      final String privkey;
+      final String mnemonic;
       if (cleaned.startsWith('nsec')) {
-        myPrivkey = KeyUtils.fromNsec(cleaned);
-        myMnemonic = '';
+        privkey = KeyUtils.fromNsec(cleaned);
+        mnemonic = '';
       } else if (cleaned.split(' ').length >= 12) {
-        myPrivkey = ChatMeVault.deriveNostrPrivateKey(cleaned);
-        myMnemonic = cleaned;
+        privkey = ChatMeVault.deriveNostrPrivateKey(cleaned);
+        mnemonic = cleaned;
       } else if (cleaned.length == 64) {
-        myPrivkey = cleaned;
-        myMnemonic = '';
+        privkey = cleaned;
+        mnemonic = '';
       } else {
         throw 'Invalid input format. Use nsec, 64-char hex, or 12 words.';
       }
 
-      if (myPrivkey.length != 64) {
+      if (privkey.length != 64) {
         throw 'Invalid private key format.';
       }
 
-      myPubkey = bip340.getPublicKey(myPrivkey);
-
-      // Reset identity-specific state so a different account doesn't
-      // inherit the previous account's photo. The profile photo (and
-      // path) will be re-populated automatically once the relay
-      // delivers the account's kind-0 event.
-      myPhotoUrl = '';
-      myPhotoPath = '';
-      myAbout = '';
+      final pubkey = bip340.getPublicKey(privkey);
 
       // Try to fetch existing display name from Firebase
-      final fetchedName = await _fetchNameFromFirebase(myPubkey);
+      final fetchedName = await _fetchNameFromFirebase(pubkey);
+      final nip05 = fetchedName != null ? '$fetchedName@chatme' : '';
+      final nip05Verified = fetchedName != null;
 
-      if (fetchedName != null) {
-        myNip05 = '$fetchedName@chatme';
-        isNip05Verified = true;
-      } else {
-        myNip05 = '';
-        isNip05Verified = false;
-      }
-
+      // Keep every fallback in local variables until the write succeeds. A
+      // failure above must not leave the in-memory key on a different account
+      // than the key persisted on disk.
       await settingsBox.putAll({
-        'my_pubkey': myPubkey,
-        'my_privkey': myPrivkey,
-        'my_mnemonic': myMnemonic,
-        'my_nip05': myNip05,
-        'is_nip05_verified': isNip05Verified,
+        'my_pubkey': pubkey,
+        'my_privkey': privkey,
+        'my_mnemonic': mnemonic,
+        'my_nip05': nip05,
+        'is_nip05_verified': nip05Verified,
         'my_about': '',
         'my_photo_url': '',
         'my_photo_path': '',
       });
+
+      myPubkey = pubkey;
+      myPrivkey = privkey;
+      myMnemonic = mnemonic;
+      myNip05 = nip05;
+      isNip05Verified = nip05Verified;
+      // Reset identity-specific state so a different account doesn't inherit
+      // the previous account's photo. It is re-populated once the relay
+      // delivers the account's kind-0 event.
+      myAbout = '';
+      myPhotoUrl = '';
+      myPhotoPath = '';
 
       // The restored account may already have a contact row from an older
       // session. Its handle comes from the directory, never from a kind 0.
