@@ -2,7 +2,7 @@ name: chatme
 description: "Chat App with Nostr"
 publish_to: 'none'
 
-version: 2.15.7+65
+version: 2.16.0+66
 
 environment:
   sdk: '>=3.4.4 <4.0.0'
@@ -58,6 +58,7 @@ dependencies:
   just_audio: ^0.10.6
   record: ^6.2.1
   video_player: ^2.10.0
+  video_trimmer: ^6.0.0
   package_info_plus: ^10.2.2
   video_thumbnail: ^0.5.6
   webview_flutter: ^4.14.1

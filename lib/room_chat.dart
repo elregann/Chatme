@@ -24,6 +24,7 @@ import 'package:remixicon/remixicon.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/duration_utils.dart';
 import 'ui/chat_image_crop_page.dart';
+import 'ui/chat_video_trim_page.dart';
 import 'widgets/user_avatar.dart';
 import 'ui/contacts/contact_profile.dart';
 import 'core/utils/shortcut_helper.dart';
@@ -814,7 +815,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
       final videoType = videoMimeTypeFor(picked.path, picked.mimeType);
       if (videoType != null) {
-        await _sendPickedVideo(picked.path, videoType);
+        final trimmedPath = await ChatVideoTrimPage.open(context, picked.path);
+        if (trimmedPath == null || !mounted) return;
+        final trimmedType = videoMimeTypeFor(trimmedPath, null) ?? videoType;
+        await _sendPickedVideo(trimmedPath, trimmedType);
         return;
       }
 
