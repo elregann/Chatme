@@ -7,6 +7,7 @@ import 'package:video_trimmer/video_trimmer.dart';
 
 import '../core/theme/chatme_colors.dart';
 import '../core/utils/debug_logger.dart';
+import '../core/utils/trim_playback_guard.dart';
 
 class ChatVideoTrimPage extends StatefulWidget {
   final String videoPath;
@@ -51,6 +52,8 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
   bool _isPlaying = false;
   bool _isReady = false;
   bool _isSaving = false;
+  bool _reachedEnd = false;
+  bool _playCommandInFlight = false;
 
   @override
   void initState() {
@@ -91,16 +94,42 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
   }
 
   Future<void> _togglePlayback() async {
-    if (!_isReady || _isSaving) return;
+    if (!_isReady || _isSaving || _playCommandInFlight) return;
+    final controller = _trimmer.videoPlayerController;
+    if (controller == null) return;
+
+    // Ignore a second tap while pause()/seek()/play() is still in flight. The
+    // controller would otherwise report the old isPlaying value and interpret
+    // the tap as the opposite command.
+    _playCommandInFlight = true;
     try {
-      final playing = await _trimmer.videoPlaybackControl(
-        startValue: _startValue,
-        endValue: _endValue,
-      );
+      if (controller.value.isPlaying) {
+        await controller.pause();
+        if (!mounted) return;
+        setState(() => _isPlaying = false);
+        return;
+      }
+
+      final shouldRestart = _reachedEnd ||
+          shouldRestartTrimPlayback(
+            value: controller.value,
+            startValue: _startValue,
+            endValue: _endValue,
+          );
+      if (shouldRestart) {
+        await controller.seekTo(
+          Duration(milliseconds: _startValue.round()),
+        );
+        _reachedEnd = false;
+      }
+
+      await controller.play();
       if (!mounted) return;
-      setState(() => _isPlaying = playing);
+      setState(() => _isPlaying = true);
     } catch (e) {
       DebugLogger.log('[Video] Trim playback failed | $e', type: 'ERROR');
+    } finally {
+      _playCommandInFlight = false;
     }
   }
 
@@ -185,7 +214,22 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
                         onChangeEnd: (value) => _endValue = value,
                         onChangePlaybackState: (playing) {
                           if (!mounted) return;
-                          setState(() => _isPlaying = playing);
+                          setState(() {
+                            _isPlaying = playing;
+                            if (playing) {
+                              _reachedEnd = false;
+                              return;
+                            }
+                            final controller = _trimmer.videoPlayerController;
+                            if (controller != null &&
+                                shouldRestartTrimPlayback(
+                                  value: controller.value,
+                                  startValue: _startValue,
+                                  endValue: _endValue,
+                                )) {
+                              _reachedEnd = true;
+                            }
+                          });
                         },
                         editorProperties: const TrimEditorProperties(
                           borderPaintColor: ChatmeColors.accentPrimary,
@@ -217,9 +261,8 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     TextButton(
-                      onPressed: _isSaving
-                          ? null
-                          : () => Navigator.of(context).pop(),
+                      onPressed:
+                          _isSaving ? null : () => Navigator.of(context).pop(),
                       child: const Text(
                         'Cancel',
                         style: TextStyle(color: accent, fontSize: 16),
