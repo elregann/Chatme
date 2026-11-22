@@ -5,6 +5,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'core/theme/chatme_colors.dart';
 import 'core/utils/notification_profile.dart';
+import 'core/utils/ongoing_call_style_channel.dart';
+import 'core/utils/ongoing_call_style_payload.dart';
 import 'core/utils/shortcut_helper.dart';
 
 class CallNotificationHandler {
@@ -253,6 +255,7 @@ class CallNotificationHandler {
       ],
     );
 
+    var foregroundStarted = false;
     try {
       await android.startForegroundService(
         activeCallNotificationId,
@@ -265,13 +268,37 @@ class CallNotificationHandler {
           AndroidServiceForegroundType.foregroundServiceTypeMicrophone,
         },
       );
+      foregroundStarted = true;
     } catch (e) {
       debugPrint('[Notification] Ongoing call start failed | $e');
+    }
+    if (!foregroundStarted || seq != _ongoingSeq) return;
+
+    // On Android 12+ the platform call chip is driven by Notification.CallStyle.
+    // Restyle only the connected call; every other state keeps the plugin's
+    // notification exactly as before.
+    final callStyle = OngoingCallStylePayload.forActiveCall(
+      channelId: activeCallChannelId,
+      notificationId: activeCallNotificationId,
+      endActionId: endCallActionId,
+      accentArgb: ChatmeColors.notificationAccent.toARGB32(),
+      status: status,
+      title: displayName,
+      peerPubkey: peerPubkey,
+      startedAtMs: startedAtMs,
+    );
+    if (callStyle == null) return;
+
+    await OngoingCallStyleChannel.apply(callStyle);
+    if (seq != _ongoingSeq) {
+      await OngoingCallStyleChannel.clear(
+        notificationId: activeCallNotificationId,
+      );
     }
   }
 
   static Future<void> stopOngoingCall(FlutterLocalNotificationsPlugin plugin) async {
-    _ongoingSeq++;
+    final seq = ++_ongoingSeq;
     final android = plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     try {
@@ -279,5 +306,12 @@ class CallNotificationHandler {
     } catch (e) {
       debugPrint('[Notification] Ongoing call stop failed | $e');
     }
+    if (seq != _ongoingSeq || android == null) return;
+
+    // The shim posts with the same id as the foreground notification, so make
+    // sure a stopped call never leaves a stale chip behind.
+    await OngoingCallStyleChannel.clear(
+      notificationId: activeCallNotificationId,
+    );
   }
 }

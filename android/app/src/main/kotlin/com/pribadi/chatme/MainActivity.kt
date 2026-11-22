@@ -249,6 +249,9 @@ class MainActivity: FlutterActivity() {
             }
         }
 
+        // Restyles the active-call notification with Android's CallStyle on 12+.
+        OngoingCallStyleChannel.register(flutterEngine, applicationContext)
+
         scheduleNostrWorker()
     }
 
