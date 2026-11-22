@@ -7,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/browser_input.dart';
+import '../../core/utils/debug_logger.dart';
 import '../../data/discovery_apps.dart';
 import '../../widgets/chatme_menu.dart';
 
@@ -40,6 +41,24 @@ class BrowserUrlSubtitle extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Back handling for the in-app browser. WebView history comes first; the
+/// route is closed only when there is nothing left to go back to.
+enum BrowserBackAction { goBack, close }
+
+/// Resolves a back action from the WebView history probe. A failed probe is
+/// treated as empty history so the user can always leave the browser.
+Future<BrowserBackAction> resolveBrowserBack(
+  Future<bool> Function() canGoBackProbe,
+) async {
+  try {
+    final hasHistory = await canGoBackProbe();
+    return hasHistory ? BrowserBackAction.goBack : BrowserBackAction.close;
+  } catch (e) {
+    DebugLogger.log('[Browser] History check failed | $e', type: 'ERROR');
+    return BrowserBackAction.close;
   }
 }
 
@@ -173,6 +192,20 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
     }
   }
 
+  Future<void> _handleBack() async {
+    final action = await resolveBrowserBack(_controller.canGoBack);
+    if (action == BrowserBackAction.close) {
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+    try {
+      await _controller.goBack();
+    } catch (e) {
+      DebugLogger.log('[Browser] Go back failed | $e', type: 'ERROR');
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
   Widget _buildTitle() {
     final app = widget.app;
     final icon = app == null
@@ -225,92 +258,101 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded,
-              color: ChatmeColors.textPrimary, size: 18),
-          onPressed: () => Navigator.pop(context),
+    return PopScope<bool>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_rounded,
+                color: ChatmeColors.textPrimary, size: 18),
+            onPressed: _handleBack,
+          ),
+          centerTitle: false,
+          titleSpacing: 16,
+          title: _buildTitle(),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              icon: const Icon(Icons.refresh, color: ChatmeColors.textPrimary),
+              onPressed: () => _controller.reload(),
+            ),
+            ChatmeMenuButton<String>(
+              icon:
+                  const Icon(Icons.more_vert, color: ChatmeColors.textPrimary),
+              entries: const [
+                ChatmeMenuEntry(
+                    value: 'open_browser', label: 'Open in browser'),
+                ChatmeMenuEntry(value: 'copy_link', label: 'Copy link'),
+              ],
+              onSelected: (value) {
+                if (value == 'open_browser') _openInBrowser();
+                if (value == 'copy_link') _copyLink();
+              },
+            ),
+          ],
+          elevation: 0,
         ),
-        centerTitle: false,
-        titleSpacing: 16,
-        title: _buildTitle(),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh, color: ChatmeColors.textPrimary),
-            onPressed: () => _controller.reload(),
-          ),
-          ChatmeMenuButton<String>(
-            icon: const Icon(Icons.more_vert,
-                color: ChatmeColors.textPrimary),
-            entries: const [
-              ChatmeMenuEntry(value: 'open_browser', label: 'Open in browser'),
-              ChatmeMenuEntry(value: 'copy_link', label: 'Copy link'),
-            ],
-            onSelected: (value) {
-              if (value == 'open_browser') _openInBrowser();
-              if (value == 'copy_link') _copyLink();
-            },
-          ),
-        ],
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          // The progress strip and the error strip stay in the tree at a fixed
-          // slot count. Changing Column's children count would remount the
-          // platform view and reset the page mid-scroll.
-          SizedBox(
-            height: 3,
-            child: ValueListenableBuilder<bool>(
-              valueListenable: _loading,
-              builder: (_, loading, __) => Opacity(
-                opacity: loading ? 1 : 0,
-                child: ValueListenableBuilder<int>(
-                  valueListenable: _progress,
-                  builder: (_, progress, __) => LinearProgressIndicator(
-                    value: progress > 0 ? progress / 100 : null,
-                    backgroundColor: ChatmeColors.surfaceRaised,
-                    color: ChatmeColors.accentPrimary,
+        body: Column(
+          children: [
+            // The progress strip and the error strip stay in the tree at a fixed
+            // slot count. Changing Column's children count would remount the
+            // platform view and reset the page mid-scroll.
+            SizedBox(
+              height: 3,
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _loading,
+                builder: (_, loading, __) => Opacity(
+                  opacity: loading ? 1 : 0,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _progress,
+                    builder: (_, progress, __) => LinearProgressIndicator(
+                      value: progress > 0 ? progress / 100 : null,
+                      backgroundColor: ChatmeColors.surfaceRaised,
+                      color: ChatmeColors.accentPrimary,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _loadFailed,
-            builder: (_, failed, __) {
-              if (!failed) return const SizedBox.shrink();
-              return Container(
-                width: double.infinity,
-                color: ChatmeColors.surfaceAction,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline,
-                        size: 18, color: ChatmeColors.statusWarning),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'This site did not load',
-                        style: TextStyle(
-                          color: ChatmeColors.textPrimary,
-                          fontSize: 13,
+            ValueListenableBuilder<bool>(
+              valueListenable: _loadFailed,
+              builder: (_, failed, __) {
+                if (!failed) return const SizedBox.shrink();
+                return Container(
+                  width: double.infinity,
+                  color: ChatmeColors.surfaceAction,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline,
+                          size: 18, color: ChatmeColors.statusWarning),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'This site did not load',
+                          style: TextStyle(
+                            color: ChatmeColors.textPrimary,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: _openInBrowser,
-                      child: const Text('Open in browser'),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          Expanded(child: _webView),
-        ],
+                      TextButton(
+                        onPressed: _openInBrowser,
+                        child: const Text('Open in browser'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            Expanded(child: _webView),
+          ],
+        ),
       ),
     );
   }

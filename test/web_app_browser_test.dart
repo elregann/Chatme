@@ -14,4 +14,24 @@ void main() {
     expect(tester.widget<Text>(find.text(url)).maxLines, 1);
     expect(tester.widget<Tooltip>(find.byType(Tooltip)).message, url);
   });
+
+  group('browser back', () {
+    test('uses WebView history before closing the browser', () async {
+      expect(
+        await resolveBrowserBack(() async => true),
+        BrowserBackAction.goBack,
+      );
+      expect(
+        await resolveBrowserBack(() async => false),
+        BrowserBackAction.close,
+      );
+    });
+
+    test('closes the browser when the history check fails', () async {
+      expect(
+        await resolveBrowserBack(() async => throw StateError('no view')),
+        BrowserBackAction.close,
+      );
+    });
+  });
 }
