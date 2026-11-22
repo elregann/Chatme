@@ -183,7 +183,12 @@ class CallNotificationHandler {
     if (peerPubkey.isNotEmpty) {
       try {
         final profile = await NotificationProfile.resolve(peerPubkey);
-        displayName = profile.name;
+        // Keep the exact name shown on the call screen. The profile name is
+        // only a fallback when the session did not provide one.
+        displayName = OngoingCallStylePayload.displayName(
+          sessionName: peerName,
+          fallbackName: profile.name,
+        );
         avatarBytes = profile.avatarPng;
       } catch (e) {
         debugPrint('[Notification] Ongoing call profile failed | $e');
@@ -286,6 +291,7 @@ class CallNotificationHandler {
       title: displayName,
       peerPubkey: peerPubkey,
       startedAtMs: startedAtMs,
+      avatar: avatarBytes,
     );
     if (callStyle == null) return;
 

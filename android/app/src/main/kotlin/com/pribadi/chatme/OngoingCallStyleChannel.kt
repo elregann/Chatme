@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.app.Person
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver
@@ -29,6 +30,7 @@ object OngoingCallStyleChannel {
     private const val KEY_STARTED_AT = "startedAtMs"
     private const val KEY_ACCENT_ARGB = "accentArgb"
     private const val KEY_END_ACTION = "endActionId"
+    private const val KEY_AVATAR = "avatar"
 
     // Mirrors flutter_local_notifications' broadcast contract so END_CALL_ACTION
     // keeps flowing through the same Dart handler as the plugin's own action.
@@ -68,14 +70,18 @@ object OngoingCallStyleChannel {
         val startedAtMs = (map[KEY_STARTED_AT] as? Number)?.toLong() ?: return false
         val accentArgb = (map[KEY_ACCENT_ARGB] as? Number)?.toInt() ?: return false
         val endActionId = map[KEY_END_ACTION] as? String ?: return false
+        val avatar = map[KEY_AVATAR] as? ByteArray
         if (title.isBlank() || startedAtMs <= 0L || notificationId == 0) return false
 
         return try {
-            val person = Person.Builder()
+            val personBuilder = Person.Builder()
                 .setName(title)
                 .setImportant(true)
                 .apply { if (peerPubkey.isNotEmpty()) setKey(peerPubkey) }
-                .build()
+            if (avatar != null && avatar.isNotEmpty()) {
+                personBuilder.setIcon(Icon.createWithData(avatar, 0, avatar.size))
+            }
+            val person = personBuilder.build()
 
             val hangUpIntent = Intent(context, ActionBroadcastReceiver::class.java).apply {
                 action = ACTION_TAPPED

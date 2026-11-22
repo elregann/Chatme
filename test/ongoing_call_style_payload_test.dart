@@ -8,6 +8,7 @@ OngoingCallStylePayload? payloadFor({
   String title = 'Rina',
   String peerPubkey = 'npub1rina',
   int startedAtMs = 1700000000000,
+  Uint8List? avatar,
 }) {
   return OngoingCallStylePayload.forActiveCall(
     channelId: 'chatme_active_call_channel',
@@ -18,6 +19,7 @@ OngoingCallStylePayload? payloadFor({
     title: title,
     peerPubkey: peerPubkey,
     startedAtMs: startedAtMs,
+    avatar: avatar,
   );
 }
 
@@ -62,13 +64,52 @@ void main() {
         'startedAtMs': 1700000000000,
         'accentArgb': 0xFF50D2C1,
         'endActionId': 'END_CALL_ACTION',
+        'avatar': null,
       });
+    });
+
+    test('sends the avatar bytes unchanged to the native shim', () {
+      final avatar = Uint8List.fromList(<int>[137, 80, 78, 71, 1, 2, 3]);
+
+      final map = payloadFor(avatar: avatar)!.toMap();
+
+      expect(map['avatar'], same(avatar));
+      expect(map['avatar'], isA<Uint8List>());
     });
 
     test('keeps an empty peer key because it is only an identity hint', () {
       final map = payloadFor(peerPubkey: '')!.toMap();
 
       expect(map['peerPubkey'], '');
+    });
+  });
+
+  group('OngoingCallStylePayload.displayName', () {
+    test('uses the call screen session name when there is one', () {
+      expect(
+        OngoingCallStylePayload.displayName(
+          sessionName: 'Rina',
+          fallbackName: 'npub1abc...xyz',
+        ),
+        'Rina',
+      );
+    });
+
+    test('falls back to the profile name when the session has no name', () {
+      expect(
+        OngoingCallStylePayload.displayName(
+          sessionName: '',
+          fallbackName: 'npub1abc...xyz',
+        ),
+        'npub1abc...xyz',
+      );
+      expect(
+        OngoingCallStylePayload.displayName(
+          sessionName: '   ',
+          fallbackName: 'npub1abc...xyz',
+        ),
+        'npub1abc...xyz',
+      );
     });
   });
 
