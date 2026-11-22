@@ -67,7 +67,8 @@ class VoicePlayer {
     }));
   }
 
-  /// Gives the engine a moment to actually start before the clock moves.
+  /// Gives the engine a moment to actually start on fresh playback or seek.
+  /// Resuming from a pause must not restart this, or repeated taps accumulate lag.
   static const _playSettle = Duration(milliseconds: 300);
   static const _tickInterval = Duration(milliseconds: 40);
 
@@ -94,10 +95,10 @@ class VoicePlayer {
     state.value = state.value.copyWith(position: position);
   }
 
-  void _startClock(Duration from) {
+  void _startClock(Duration from, {bool settle = true}) {
     _ticker?.cancel();
     _anchor = from;
-    _startsAt = DateTime.now().add(_playSettle);
+    _startsAt = DateTime.now().add(settle ? _playSettle : Duration.zero);
     _running = true;
     _publishPosition(from);
     _ticker = Timer.periodic(_tickInterval, (_) => _publishPosition(_progress));
@@ -138,7 +139,8 @@ class VoicePlayer {
       state.value = state.value.copyWith(playing: true, position: from);
       if (restart) await _backend.seek(Duration.zero);
       await _backend.play();
-      _startClock(from);
+      // A resumed pause continues immediately; a completed note plays fresh.
+      _startClock(from, settle: restart);
       return;
     }
 

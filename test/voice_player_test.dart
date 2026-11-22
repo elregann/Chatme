@@ -142,6 +142,20 @@ void main() {
     expect(player.state.value.position > Duration.zero, isTrue);
   });
 
+  test('repeated pause and resume keeps progress aligned with played audio', () async {
+    await player.toggle('a', '/x/a.m4a');
+
+    // Short play bursts must not restart the settle delay on every resume.
+    for (var i = 0; i < 6; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await player.toggle('a', '/x/a.m4a');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await player.toggle('a', '/x/a.m4a');
+    }
+
+    expect(player.state.value.position > Duration.zero, isTrue);
+  });
+
   test('when the note ends it goes back to the start and stops', () async {
     await player.toggle('a', '/x/a.m4a');
     backend.positionCtl.add(const Duration(seconds: 29));
