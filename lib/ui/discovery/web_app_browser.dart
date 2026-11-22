@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/theme/chatme_colors.dart';
+import '../../core/utils/browser_input.dart';
 import '../../data/discovery_apps.dart';
 import '../../widgets/chatme_menu.dart';
 
@@ -18,15 +19,24 @@ String? browserHostFromUrl(String? url) {
   return host;
 }
 
-/// A minimal in-app browser for the web apps listed in Discovery.
+/// A minimal in-app browser for curated web apps and search results.
 ///
 /// The page is opened as a normal route, so the user stays inside Chatme and
-/// can come back with the standard back button. No account or relay state is
-/// shared with the page: this is only a plain web view.
+/// can come back with the standard back button. Only https navigation is
+/// allowed; no account or relay state is shared with the page.
 class WebAppBrowser extends StatefulWidget {
-  const WebAppBrowser({super.key, required this.app});
+  const WebAppBrowser({
+    super.key,
+    required this.initialUrl,
+    this.app,
+  });
 
-  final DiscoveryApp app;
+  /// The URL to load. Curated apps pass their homepage; searches pass the
+  /// resolved search-engine URL.
+  final String initialUrl;
+
+  /// Present for curated apps, absent for free-form searches.
+  final DiscoveryApp? app;
 
   @override
   State<WebAppBrowser> createState() => _WebAppBrowserState();
@@ -47,27 +57,42 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _loadFailed = ValueNotifier<bool>(false);
   late final ValueNotifier<String> _host;
+  late final ValueNotifier<String> _currentUrl;
 
   @override
   void initState() {
     super.initState();
-    _host = ValueNotifier<String>(widget.app.host);
+    _host = ValueNotifier<String>(
+      widget.app?.host ?? browserHostFromUrl(widget.initialUrl) ?? '',
+    );
+    _currentUrl = ValueNotifier<String>(widget.initialUrl);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(ChatmeColors.backgroundPrimary)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            return isAllowedBrowserNavigation(uri ?? Uri())
+                ? NavigationDecision.navigate
+                : NavigationDecision.prevent;
+          },
           onProgress: (progress) {
             if (mounted) _progress.value = progress;
           },
-          onPageStarted: (_) {
+          onPageStarted: (url) {
+            _updateUrl(url);
             if (!mounted) return;
             _loading.value = true;
             _progress.value = 0;
             _loadFailed.value = false;
           },
-          onUrlChange: (change) => _updateHost(change.url),
+          onUrlChange: (change) {
+            _updateUrl(change.url);
+            _updateHost(change.url);
+          },
           onPageFinished: (url) {
+            _updateUrl(url);
             _updateHost(url);
             _finishLoading();
           },
@@ -86,7 +111,7 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
       ),
     );
 
-    _controller.loadRequest(Uri.parse(widget.app.url));
+    _controller.loadRequest(Uri.parse(widget.initialUrl));
   }
 
   @override
@@ -95,6 +120,7 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
     _loading.dispose();
     _loadFailed.dispose();
     _host.dispose();
+    _currentUrl.dispose();
     super.dispose();
   }
 
@@ -104,6 +130,15 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
     _host.value = host;
   }
 
+  void _updateUrl(String? url) {
+    if (!mounted || url == null || url.isEmpty || url == _currentUrl.value) {
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (!isAllowedBrowserNavigation(uri ?? Uri())) return;
+    _currentUrl.value = url;
+  }
+
   void _finishLoading() {
     if (!mounted) return;
     _loading.value = false;
@@ -111,7 +146,7 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
   }
 
   Future<void> _openInBrowser() async {
-    final uri = Uri.parse(widget.app.url);
+    final uri = Uri.tryParse(_currentUrl.value) ?? Uri.parse(widget.initialUrl);
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -121,12 +156,70 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
   }
 
   Future<void> _copyLink() async {
-    await Clipboard.setData(ClipboardData(text: widget.app.url));
+    await Clipboard.setData(ClipboardData(text: _currentUrl.value));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Link copied')),
       );
     }
+  }
+
+  Widget _buildTitle() {
+    final app = widget.app;
+    final icon = app == null
+        ? const Icon(
+            Icons.language,
+            size: 28,
+            color: ChatmeColors.accentPrimary,
+          )
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              app.iconAsset,
+              width: 28,
+              height: 28,
+              fit: BoxFit.cover,
+              cacheWidth: 84,
+              cacheHeight: 84,
+            ),
+          );
+
+    return Row(
+      children: [
+        icon,
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                app?.name ?? 'Browser',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                  color: ChatmeColors.textPrimary,
+                ),
+              ),
+              ValueListenableBuilder<String>(
+                valueListenable: _host,
+                builder: (_, host, __) => Text(
+                  host,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: ChatmeColors.textSubtle,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -140,52 +233,7 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
         ),
         centerTitle: false,
         titleSpacing: 16,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                widget.app.iconAsset,
-                width: 28,
-                height: 28,
-                fit: BoxFit.cover,
-                cacheWidth: 84,
-                cacheHeight: 84,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.app.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
-                      color: ChatmeColors.textPrimary,
-                    ),
-                  ),
-                  ValueListenableBuilder<String>(
-                    valueListenable: _host,
-                    builder: (_, host, __) => Text(
-                      host,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: ChatmeColors.textSubtle,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        title: _buildTitle(),
         actions: [
           IconButton(
             tooltip: 'Refresh',

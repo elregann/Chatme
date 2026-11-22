@@ -15,6 +15,8 @@ class ChatmeSearchBar extends StatelessWidget {
     required this.hintText,
     required this.onChanged,
     required this.onClear,
+    this.leading,
+    this.onSubmitted,
   });
 
   static const double height = 48;
@@ -25,6 +27,11 @@ class ChatmeSearchBar extends StatelessWidget {
   final String hintText;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
+
+  /// Replaces the search icon. Defaults to the icon used on Chats/Contacts.
+  final Widget? leading;
+
+  final ValueChanged<String>? onSubmitted;
 
   void _clear() {
     controller.clear();
@@ -48,19 +55,21 @@ class ChatmeSearchBar extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: _sideWidth,
-                child: Icon(
-                  Icons.search_rounded,
-                  color: ChatmeColors.textMuted,
-                  size: 20,
-                ),
+                child: leading ??
+                    const Icon(
+                      Icons.search_rounded,
+                      color: ChatmeColors.textMuted,
+                      size: 20,
+                    ),
               ),
               Expanded(
                 child: TextField(
                   controller: controller,
                   focusNode: focusNode,
                   onChanged: onChanged,
+                  onSubmitted: onSubmitted,
                   decoration: InputDecoration(
                     hintText: hintText,
                     hintStyle: const TextStyle(
