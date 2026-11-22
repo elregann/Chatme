@@ -10,13 +10,37 @@ import '../../core/utils/browser_input.dart';
 import '../../data/discovery_apps.dart';
 import '../../widgets/chatme_menu.dart';
 
-/// The host shown under an app's name follows the page actually on screen.
-/// Web apps commonly redirect or navigate to another domain after loading, so
-/// the curated entry's host is only the starting point.
+/// Extracts a host from a URL. Kept as a small pure helper for URL parsing;
+/// the browser subtitle itself now shows the full current URL.
 String? browserHostFromUrl(String? url) {
   final host = Uri.tryParse(url ?? '')?.host;
   if (host == null || host.isEmpty) return null;
   return host;
+}
+
+/// The small single-line second line under the browser title. It shows the
+/// exact URL on screen, not just the host, with a tooltip for addresses that
+/// get ellipsized.
+class BrowserUrlSubtitle extends StatelessWidget {
+  const BrowserUrlSubtitle(this.url, {super.key});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: url,
+      child: Text(
+        url,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 11,
+          color: ChatmeColors.textSubtle,
+        ),
+      ),
+    );
+  }
 }
 
 /// A minimal in-app browser for curated web apps and search results.
@@ -56,15 +80,11 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
   final ValueNotifier<int> _progress = ValueNotifier<int>(0);
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _loadFailed = ValueNotifier<bool>(false);
-  late final ValueNotifier<String> _host;
   late final ValueNotifier<String> _currentUrl;
 
   @override
   void initState() {
     super.initState();
-    _host = ValueNotifier<String>(
-      widget.app?.host ?? browserHostFromUrl(widget.initialUrl) ?? '',
-    );
     _currentUrl = ValueNotifier<String>(widget.initialUrl);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -87,13 +107,9 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
             _progress.value = 0;
             _loadFailed.value = false;
           },
-          onUrlChange: (change) {
-            _updateUrl(change.url);
-            _updateHost(change.url);
-          },
+          onUrlChange: (change) => _updateUrl(change.url),
           onPageFinished: (url) {
             _updateUrl(url);
-            _updateHost(url);
             _finishLoading();
           },
           onWebResourceError: (error) {
@@ -119,15 +135,8 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
     _progress.dispose();
     _loading.dispose();
     _loadFailed.dispose();
-    _host.dispose();
     _currentUrl.dispose();
     super.dispose();
-  }
-
-  void _updateHost(String? url) {
-    final host = browserHostFromUrl(url);
-    if (!mounted || host == null || host == _host.value) return;
-    _host.value = host;
   }
 
   void _updateUrl(String? url) {
@@ -204,16 +213,8 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
                 ),
               ),
               ValueListenableBuilder<String>(
-                valueListenable: _host,
-                builder: (_, host, __) => Text(
-                  host,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: ChatmeColors.textSubtle,
-                  ),
-                ),
+                valueListenable: _currentUrl,
+                builder: (_, url, __) => BrowserUrlSubtitle(url),
               ),
             ],
           ),
