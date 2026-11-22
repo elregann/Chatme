@@ -58,6 +58,10 @@ void main() {
     player = VoicePlayer(backend);
   });
 
+  tearDown(() async {
+    await player.dispose();
+  });
+
   test('tapping a new note loads it and starts playing', () async {
     await player.toggle('a', '/x/a.m4a');
     await pumpEventQueue();
@@ -94,14 +98,48 @@ void main() {
     expect(player.state.value.position, Duration.zero);
   });
 
-  test('position and duration reach the state', () async {
+  test('seek updates the local position and native position events are ignored', () async {
     await player.toggle('a', '/x/a.m4a');
     backend.durationCtl.add(const Duration(seconds: 30));
-    backend.positionCtl.add(const Duration(seconds: 4));
+    await player.seek('a', const Duration(seconds: 4));
     await pumpEventQueue();
 
     expect(player.state.value.duration, const Duration(seconds: 30));
     expect(player.state.value.position, const Duration(seconds: 4));
+  });
+
+  test('a stale native anchor after seek never moves progress backward', () async {
+    await player.toggle('a', '/x/a.m4a');
+    await player.seek('a', const Duration(seconds: 10));
+    backend.positionCtl.add(const Duration(seconds: 10));
+    await pumpEventQueue();
+
+    backend.positionCtl.add(const Duration(milliseconds: 200));
+    await pumpEventQueue();
+
+    expect(player.state.value.position,
+        greaterThanOrEqualTo(const Duration(seconds: 10)));
+  });
+
+  test('pausing freezes progress and ignores stale native position', () async {
+    await player.toggle('a', '/x/a.m4a');
+    await player.seek('a', const Duration(seconds: 8));
+    backend.positionCtl.add(const Duration(seconds: 8));
+    await pumpEventQueue();
+
+    await player.toggle('a', '/x/a.m4a');
+    backend.positionCtl.add(Duration.zero);
+    await pumpEventQueue();
+
+    expect(player.state.value.playing, isFalse);
+    expect(player.state.value.position, const Duration(seconds: 8));
+  });
+
+  test('local clock advances while playing without native position events', () async {
+    await player.toggle('a', '/x/a.m4a');
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+
+    expect(player.state.value.position > Duration.zero, isTrue);
   });
 
   test('when the note ends it goes back to the start and stops', () async {
