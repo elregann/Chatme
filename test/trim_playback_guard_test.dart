@@ -85,4 +85,39 @@ void main() {
       expect(restart(_value(7699)), isFalse);
     });
   });
+
+  group('shouldSnapTrimPlaybackToEnd', () {
+    bool snap(
+      int positionMs, {
+      double startValue = start,
+      double endValue = end,
+    }) {
+      return shouldSnapTrimPlaybackToEnd(
+        position: Duration(milliseconds: positionMs),
+        startValue: startValue,
+        endValue: endValue,
+      );
+    }
+
+    test('snaps when the player stops just before the trim end', () {
+      expect(snap(7700), isTrue);
+    });
+
+    test('does not snap when playback stops in the middle', () {
+      expect(snap(7699), isFalse);
+    });
+
+    test('caps the tolerance for a very short selection', () {
+      // A 300 ms tolerance would snap from 800 ms onward and swallow the
+      // whole 100 ms selection. The cap keeps the threshold at 1050 ms.
+      expect(
+        snap(1049, startValue: 1000, endValue: 1100),
+        isFalse,
+      );
+      expect(
+        snap(1050, startValue: 1000, endValue: 1100),
+        isTrue,
+      );
+    });
+  });
 }

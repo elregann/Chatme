@@ -7,6 +7,8 @@ import 'package:video_trimmer/video_trimmer.dart';
 
 import '../core/theme/chatme_colors.dart';
 import '../core/utils/debug_logger.dart';
+import '../core/utils/trim_playback_clock.dart';
+import '../core/utils/trim_playback_geometry.dart';
 import '../core/utils/trim_playback_guard.dart';
 
 class ChatVideoTrimPage extends StatefulWidget {
@@ -47,13 +49,19 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
   final Trimmer _trimmer = Trimmer();
 
   StreamSubscription<TrimmerEvent>? _readySubscription;
+  final TrimPlaybackClock _clock = TrimPlaybackClock();
+  final ValueNotifier<Duration> _scrubPosition = ValueNotifier(Duration.zero);
+
+  Timer? _scrubTicker;
   double _startValue = 0;
   double _endValue = 0;
+  double _totalMs = 0;
   bool _isPlaying = false;
   bool _isReady = false;
   bool _isSaving = false;
   bool _reachedEnd = false;
   bool _playCommandInFlight = false;
+  bool _nextPlaySettles = true;
 
   @override
   void initState() {
@@ -72,8 +80,12 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
       if (!mounted) return;
       final totalMs =
           _trimmer.videoPlayerController?.value.duration.inMilliseconds ?? 0;
+      _clock.reset();
+      _publishScrubPosition();
       setState(() {
         _isReady = _trimmer.isVideoInitialized;
+        _totalMs = totalMs.toDouble();
+        _startValue = 0;
         _endValue = totalMs.toDouble();
       });
     } catch (e) {
@@ -89,8 +101,50 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
   @override
   void dispose() {
     _readySubscription?.cancel();
+    _scrubTicker?.cancel();
+    _scrubPosition.dispose();
     _trimmer.dispose();
     super.dispose();
+  }
+
+  void _publishScrubPosition() {
+    final position = _clock.position;
+    if (position != _scrubPosition.value) _scrubPosition.value = position;
+  }
+
+  void _startScrubTicker() {
+    _scrubTicker?.cancel();
+    _publishScrubPosition();
+    _scrubTicker = Timer.periodic(TrimPlaybackClock.tickInterval, (_) {
+      _publishScrubPosition();
+    });
+  }
+
+  void _stopScrubTicker() {
+    _scrubTicker?.cancel();
+    _scrubTicker = null;
+    _publishScrubPosition();
+  }
+
+  void _clampClockToRange() {
+    if (_clock.running) return;
+    final start = Duration(milliseconds: _startValue.round());
+    final end = Duration(milliseconds: _endValue.round());
+    final position = _clock.position;
+    if (position < start) {
+      _clock.seek(start);
+    } else if (position > end) {
+      _clock.seek(end);
+    } else {
+      return;
+    }
+    _publishScrubPosition();
+  }
+
+  static String _format(Duration duration) {
+    final minutes = duration.inMinutes.toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   Future<void> _togglePlayback() async {
@@ -104,6 +158,9 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
     _playCommandInFlight = true;
     try {
       if (controller.value.isPlaying) {
+        // Freeze the line before native pause can report a stale position.
+        _clock.pause();
+        _stopScrubTicker();
         await controller.pause();
         if (!mounted) return;
         setState(() => _isPlaying = false);
@@ -117,16 +174,29 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
             endValue: _endValue,
           );
       if (shouldRestart) {
-        await controller.seekTo(
-          Duration(milliseconds: _startValue.round()),
-        );
+        final start = Duration(milliseconds: _startValue.round());
+        _clock.seek(start);
+        _publishScrubPosition();
+        _nextPlaySettles = true;
+        await controller.seekTo(start);
         _reachedEnd = false;
+      } else {
+        _nextPlaySettles = false;
       }
 
       await controller.play();
       if (!mounted) return;
+      // onChangePlaybackState normally starts the clock. This covers engines
+      // that do not emit that callback for a play() they already reported.
+      if (!_clock.running) {
+        _clock.start(_clock.position, withSettle: _nextPlaySettles);
+        _startScrubTicker();
+      }
+      _nextPlaySettles = false;
       setState(() => _isPlaying = true);
     } catch (e) {
+      _clock.pause();
+      _stopScrubTicker();
       DebugLogger.log('[Video] Trim playback failed | $e', type: 'ERROR');
     } finally {
       _playCommandInFlight = false;
@@ -178,6 +248,7 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
   @override
   Widget build(BuildContext context) {
     const accent = ChatmeColors.accentPrimary;
+    const labelStyle = TextStyle(color: ChatmeColors.textPrimary, fontSize: 12);
 
     return PopScope(
       canPop: !_isSaving,
@@ -201,54 +272,196 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _isReady
-                    ? TrimViewer(
-                        trimmer: _trimmer,
-                        viewerWidth: MediaQuery.sizeOf(context).width - 32,
-                        viewerHeight: 56,
-                        durationStyle: DurationStyle.FORMAT_MM_SS,
-                        durationTextStyle: const TextStyle(
-                          color: ChatmeColors.textPrimary,
-                          fontSize: 12,
-                        ),
-                        onChangeStart: (value) => _startValue = value,
-                        onChangeEnd: (value) => _endValue = value,
-                        onChangePlaybackState: (playing) {
-                          if (!mounted) return;
-                          setState(() {
-                            _isPlaying = playing;
-                            if (playing) {
-                              _reachedEnd = false;
-                              return;
-                            }
-                            final controller = _trimmer.videoPlayerController;
-                            if (controller != null &&
-                                shouldRestartTrimPlayback(
-                                  value: controller.value,
-                                  startValue: _startValue,
-                                  endValue: _endValue,
-                                )) {
-                              _reachedEnd = true;
-                            }
-                          });
+                    ? LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (!constraints.hasBoundedWidth) {
+                            return const SizedBox(height: trimViewerHeight);
+                          }
+                          final requestedWidth = constraints.maxWidth;
+                          final stripWidth = trimStripWidth(requestedWidth);
+                          if (stripWidth <= 0) {
+                            return const SizedBox(
+                              height: trimViewerHeight,
+                            );
+                          }
+
+                          final startX = trimHandleX(
+                            stripWidth: stripWidth,
+                            positionMs: _startValue,
+                            totalMs: _totalMs,
+                          );
+                          final endX = trimHandleX(
+                            stripWidth: stripWidth,
+                            positionMs: _endValue,
+                            totalMs: _totalMs,
+                          );
+
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: stripWidth,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _format(Duration(
+                                          milliseconds: _startValue.round(),
+                                        )),
+                                        style: labelStyle,
+                                      ),
+                                      ValueListenableBuilder<Duration>(
+                                        valueListenable: _scrubPosition,
+                                        builder: (_, position, __) => Text(
+                                          _format(position),
+                                          style: labelStyle,
+                                        ),
+                                      ),
+                                      Text(
+                                        _format(Duration(
+                                          milliseconds: _endValue.round(),
+                                        )),
+                                        style: labelStyle,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: stripWidth,
+                                height: trimViewerHeight,
+                                child: Stack(
+                                  children: [
+                                    TrimViewer(
+                                      trimmer: _trimmer,
+                                      viewerWidth: stripWidth,
+                                      viewerHeight: trimViewerHeight,
+                                      showDuration: false,
+                                      onChangeStart: (value) {
+                                        if (!mounted) return;
+                                        setState(() {
+                                          _startValue = value;
+                                          _reachedEnd = false;
+                                        });
+                                        _clampClockToRange();
+                                      },
+                                      onChangeEnd: (value) {
+                                        if (!mounted) return;
+                                        setState(() {
+                                          _endValue = value;
+                                          _reachedEnd = false;
+                                        });
+                                        _clampClockToRange();
+                                      },
+                                      onChangePlaybackState: (playing) {
+                                        if (!mounted) return;
+                                        if (playing) {
+                                          // A resume must not restart the
+                                          // settle delay; a fresh play or seek
+                                          // may.
+                                          if (!_clock.running) {
+                                            _clock.start(
+                                              _clock.position,
+                                              withSettle: _nextPlaySettles,
+                                            );
+                                            _startScrubTicker();
+                                          }
+                                          _nextPlaySettles = false;
+                                          setState(() {
+                                            _isPlaying = true;
+                                            _reachedEnd = false;
+                                          });
+                                          return;
+                                        }
+
+                                        // The package pauses up to 120 ms
+                                        // before the video's last frame. Snap
+                                        // the app-owned line to the visible
+                                        // end so it reaches the boundary.
+                                        if (_clock.running) {
+                                          final nearEnd =
+                                              shouldSnapTrimPlaybackToEnd(
+                                            position: _clock.position,
+                                            startValue: _startValue,
+                                            endValue: _endValue,
+                                          );
+                                          if (nearEnd) {
+                                            _clock.snapTo(Duration(
+                                              milliseconds: _endValue.round(),
+                                            ));
+                                            _reachedEnd = true;
+                                          } else {
+                                            _clock.pause();
+                                          }
+                                          _stopScrubTicker();
+                                        }
+                                        setState(() => _isPlaying = false);
+                                      },
+                                      editorProperties: const TrimEditorProperties(
+                                        borderPaintColor: ChatmeColors.accentPrimary,
+                                        borderWidth: 2,
+                                        borderRadius: 0,
+                                        scrubberPaintColor: Colors.transparent,
+                                        scrubberWidth: trimPlayheadWidth,
+                                        circlePaintColor: ChatmeColors.textPrimary,
+                                        handleStyle: TrimHandleStyle.line,
+                                        handleHeight: TrimHandleHeight.percent(50),
+                                      ),
+                                      areaProperties: const TrimAreaProperties(
+                                        blurEdges: true,
+                                        blurColor: ChatmeColors.backgroundPrimary,
+                                        borderRadius: 0,
+                                        thumbnailFit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    if (endX > startX)
+                                      Positioned(
+                                        left: startX,
+                                        top: 0,
+                                        width: endX - startX,
+                                        height: trimViewerHeight,
+                                        child: ClipRect(
+                                          child: ValueListenableBuilder<Duration>(
+                                            valueListenable: _scrubPosition,
+                                            builder: (_, position, __) {
+                                              final left = trimPlayheadLeft(
+                                                startX: 0,
+                                                endX: endX - startX,
+                                                startMs: _startValue,
+                                                endMs: _endValue,
+                                                positionMs:
+                                                    position.inMilliseconds
+                                                        .toDouble(),
+                                              );
+                                              return Stack(
+                                                children: [
+                                                  const SizedBox.expand(),
+                                                  Positioned(
+                                                    left: left,
+                                                    top: 0,
+                                                    width: trimPlayheadWidth,
+                                                    height: trimViewerHeight,
+                                                    child: Container(
+                                                      color: accent,
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
                         },
-                        editorProperties: const TrimEditorProperties(
-                          borderPaintColor: ChatmeColors.accentPrimary,
-                          borderWidth: 2,
-                          borderRadius: 4,
-                          scrubberPaintColor: ChatmeColors.accentPrimary,
-                          scrubberWidth: 2,
-                          circlePaintColor: ChatmeColors.textPrimary,
-                          handleStyle: TrimHandleStyle.line,
-                          handleHeight: TrimHandleHeight.percent(50),
-                        ),
-                        areaProperties: const TrimAreaProperties(
-                          blurEdges: true,
-                          blurColor: ChatmeColors.backgroundPrimary,
-                          borderRadius: 4,
-                          thumbnailFit: BoxFit.cover,
-                        ),
                       )
-                    : const SizedBox(height: 56),
+                    : const SizedBox(height: trimViewerHeight),
               ),
               if (_isSaving)
                 const LinearProgressIndicator(

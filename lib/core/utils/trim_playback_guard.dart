@@ -34,3 +34,24 @@ bool shouldRestartTrimPlayback({
       trimEndToleranceMs < halfSpanMs ? trimEndToleranceMs : halfSpanMs;
   return positionMs >= endMs - toleranceMs;
 }
+
+/// The package pauses up to 120 ms before the video's last frame. Once that
+/// stop is seen, the app-owned scrubber snaps to the visible end so the line
+/// still reaches the trim boundary.
+const int trimEndSnapToleranceMs = 300;
+
+bool shouldSnapTrimPlaybackToEnd({
+  required Duration position,
+  required double startValue,
+  required double endValue,
+}) {
+  final startMs = startValue.round();
+  final endMs = endValue.round();
+  if (endMs <= startMs) return false;
+
+  // Never let the tolerance swallow a very short selection.
+  final halfSpanMs = (endMs - startMs) ~/ 2;
+  final toleranceMs =
+      trimEndSnapToleranceMs < halfSpanMs ? trimEndSnapToleranceMs : halfSpanMs;
+  return position.inMilliseconds >= endMs - toleranceMs;
+}
