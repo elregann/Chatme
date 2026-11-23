@@ -40,12 +40,16 @@ class NotificationProfile {
   /// [allowDownload] false uses only the already cached photo (never waits on
   /// the network) and falls back to the initials avatar, for callers that must
   /// stay fast, such as launcher shortcuts pushed from the UI.
+  ///
+  /// [nameHint] is the sender's own name carried by a push. It only replaces
+  /// the name of an unsaved contact, see [pickName].
   static Future<NotificationProfile> resolve(
     String pubkey, {
     bool allowDownload = true,
+    String? nameHint,
   }) async {
     await _ensureBoxes();
-    final name = _resolveName(pubkey);
+    final name = _resolveName(pubkey, nameHint);
     final photoUrl = _photoUrl(pubkey);
     // Cache separately so a cached-only avatar never hides a later download.
     final cacheKey =
@@ -91,12 +95,46 @@ class NotificationProfile {
 
   // ---------------------------------------------------------------- name
 
-  static String _resolveName(String pubkey) {
+  static String _resolveName(String pubkey, String? nameHint) {
+    Contact? contact;
     try {
-      final contact = Hive.box<Contact>('contacts').get(pubkey);
-      if (contact != null) return contact.displayName;
+      contact = Hive.box<Contact>('contacts').get(pubkey);
     } catch (_) {}
-    return KeyUtils.formatDisplayName(pubkey);
+    return pickName(pubkey: pubkey, contact: contact, hint: nameHint);
+  }
+
+  /// A name the user saved always wins. For an unsaved contact the hint is the
+  /// sender's current name, fresher than a profile this device has not fetched
+  /// yet. Strangers (no contact row) and unusable hints keep the old rules.
+  static String pickName({
+    required String pubkey,
+    Contact? contact,
+    String? hint,
+  }) {
+    if (contact == null) return KeyUtils.formatDisplayName(pubkey);
+    if (!contact.isSaved) {
+      final fresh = cleanNameHint(hint, pubkey);
+      if (fresh != null) return fresh;
+    }
+    return contact.displayName;
+  }
+
+  static const int _maxHintRunes = 64;
+
+  /// Returns a notification-safe name, or null when the hint is empty or only
+  /// a placeholder such as an npub stub.
+  static String? cleanNameHint(String? hint, String pubkey) {
+    if (hint == null) return null;
+    final cleaned = hint
+        .replaceAll(RegExp(r'[\u0000-\u001F\u007F]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty || Contact.isPlaceholderName(cleaned, pubkey)) {
+      return null;
+    }
+    final runes = cleaned.runes;
+    if (runes.length <= _maxHintRunes) return cleaned;
+    return String.fromCharCodes(runes.take(_maxHintRunes)).trim();
   }
 
   // -------------------------------------------------------------- avatar

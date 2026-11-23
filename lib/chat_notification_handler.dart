@@ -44,6 +44,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       plugin: callPlugin,
       callerPubkey: senderPubkey,
       callerName: senderName,
+      nameHint: ChatNotificationHandler.pushNameHint(message.data),
     );
     return;
   }
@@ -69,6 +70,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       replyOnly: true,
       messageId: eventId,
       pluginInstance: cancelPlugin,
+      nameHint: ChatNotificationHandler.pushNameHint(message.data),
     );
     return;
   }
@@ -158,6 +160,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       eventId: eventId,
     ),
     pluginInstance: plugin,
+    nameHint: ChatNotificationHandler.pushNameHint(message.data),
   );
 }
 
@@ -278,8 +281,19 @@ class ChatNotificationHandler {
           eventId: eventId,
         ),
         pluginInstance: plugin,
+        nameHint: pushNameHint(message.data),
       );
     }
+  }
+
+  /// The sender's own name from a push, or null when it carries none. A
+  /// legacy cancel push using the fixed "ChatMe" label never hints.
+  static String? pushNameHint(Map<String, dynamic> data) {
+    final name = data['senderName'];
+    if (name is! String || name.trim().isEmpty) return null;
+    final trimmed = name.trim();
+    if (trimmed.toLowerCase() == 'chatme') return null;
+    return trimmed;
   }
 
   /// Stable notification ID derived from pubkey (survives app restarts).
@@ -307,12 +321,14 @@ class ChatNotificationHandler {
     bool showActions = true,
     bool replyOnly = false,
     FlutterLocalNotificationsPlugin? pluginInstance,
+    String? nameHint,
   }) async {
     if (shouldSuppressNotification(senderPubkey)) {
       return;
     }
 
-    final profile = await NotificationProfile.resolve(senderPubkey);
+    final profile =
+        await NotificationProfile.resolve(senderPubkey, nameHint: nameHint);
     final String displayName = profile.name;
     final ByteArrayAndroidIcon? avatarIcon = profile.avatarPng != null
         ? ByteArrayAndroidIcon(profile.avatarPng!)

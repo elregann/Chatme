@@ -1572,7 +1572,7 @@ class RelayManager {
         }
       }
 
-      final senderName = _currentSenderName();
+      final senderName = currentSenderName();
 
       _triggerCloudflareNotification(
         receiverPubkey: receiverPubkey,
@@ -1620,13 +1620,11 @@ class RelayManager {
 
   /// Sender label shown in the receiver's push notification. Shared by the
   /// direct send path and the offline queue so both produce identical pushes.
-  String _currentSenderName() {
-    final myPubkey = AppSettings.instance.myPubkey;
-    final myContact = Hive.box<Contact>('contacts').get(myPubkey);
-    return (myContact != null && myContact.isSaved)
-        ? myContact.displayName
-        : AppSettings.formatDisplayName(myPubkey);
-  }
+  /// The name pushed with a message or call. It follows the global ID, the
+  /// same source the published profile uses, because our own contact row does
+  /// not exist in a normal account.
+  @visibleForTesting
+  String currentSenderName() => AppSettings.instance.myName;
 
   @visibleForTesting
   Map<String, String> buildPushHeaders({
@@ -2191,11 +2189,7 @@ class RelayManager {
       // Wake up the receiver's device when it is closed or in background.
       // Only the offer rings a phone; other signals stay relay-only.
       if (signalData['type'] == 'offer') {
-        final contactsBox = Hive.box<Contact>('contacts');
-        final myContact = contactsBox.get(myPubkey);
-        final callerName = (myContact != null && myContact.isSaved)
-            ? myContact.displayName
-            : AppSettings.formatDisplayName(myPubkey);
+        final callerName = currentSenderName();
 
         _triggerCloudflareNotification(
           receiverPubkey: recipientPubkey,
@@ -2216,7 +2210,7 @@ class RelayManager {
           receiverPubkey: recipientPubkey,
           senderPubkey: myPubkey,
           eventId: 'cancel_${DateTime.now().millisecondsSinceEpoch}',
-          senderName: 'ChatMe',
+          senderName: currentSenderName(),
           ciphertext: '',
           ephemeralPubkey: '',
           type: 'call_cancel',
@@ -2671,7 +2665,7 @@ class RelayManager {
               receiverPubkey: msg.receiverPubkey,
               senderPubkey: AppSettings.instance.myPubkey,
               eventId: wrappedRecipient.giftWrapId,
-              senderName: _currentSenderName(),
+              senderName: currentSenderName(),
               ciphertext: wrappedRecipient.giftWrap['content']?.toString() ?? '',
               ephemeralPubkey: wrappedRecipient.giftWrap['pubkey']?.toString() ?? '',
             );

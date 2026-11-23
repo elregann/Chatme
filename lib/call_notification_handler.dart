@@ -61,6 +61,7 @@ class CallNotificationHandler {
     required FlutterLocalNotificationsPlugin plugin,
     required String callerPubkey,
     required String callerName,
+    String? nameHint,
   }) async {
     const AndroidNotificationAction answerAction = AndroidNotificationAction(
       answerActionId,
@@ -82,7 +83,8 @@ class CallNotificationHandler {
     String displayName = callerName;
     Uint8List? avatarBytes;
     try {
-      final profile = await NotificationProfile.resolve(callerPubkey);
+      final profile =
+          await NotificationProfile.resolve(callerPubkey, nameHint: nameHint);
       displayName = profile.name;
       avatarBytes = profile.avatarPng;
     } catch (e) {
@@ -252,7 +254,7 @@ class CallNotificationHandler {
       actions: const [
         AndroidNotificationAction(
           endCallActionId,
-          'End call',
+          'Hang Up',
           showsUserInterface: false,
           cancelNotification: false,
           titleColor: ChatmeColors.callEnd,
