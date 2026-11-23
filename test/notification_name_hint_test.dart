@@ -152,4 +152,45 @@ void main() {
       );
     });
   });
+
+  group('ChatNotificationHandler.pushAvatarHint & cleanAvatarHint', () {
+    test('a valid https avatar url is returned as hint', () {
+      const url = 'https://example.com/avatar.jpg';
+      expect(
+        ChatNotificationHandler.pushAvatarHint({'senderAvatar': url}),
+        url,
+      );
+      expect(
+        NotificationProfile.cleanAvatarHint('  $url  '),
+        url,
+      );
+    });
+
+    test('non-https or malformed urls are rejected', () {
+      for (final bad in [
+        '',
+        '   ',
+        'http://example.com/avatar.jpg',
+        'ftp://example.com/avatar.jpg',
+        'not a url',
+        'https://',
+      ]) {
+        expect(
+          ChatNotificationHandler.pushAvatarHint({'senderAvatar': bad}),
+          isNull,
+          reason: 'avatar "$bad"',
+        );
+        expect(
+          NotificationProfile.cleanAvatarHint(bad),
+          isNull,
+          reason: 'cleanAvatarHint "$bad"',
+        );
+      }
+    });
+
+    test('null or missing avatar gives no hint', () {
+      expect(ChatNotificationHandler.pushAvatarHint({}), isNull);
+      expect(NotificationProfile.cleanAvatarHint(null), isNull);
+    });
+  });
 }

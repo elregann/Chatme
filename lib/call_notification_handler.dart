@@ -62,6 +62,7 @@ class CallNotificationHandler {
     required String callerPubkey,
     required String callerName,
     String? nameHint,
+    String? avatarHint,
   }) async {
     const AndroidNotificationAction answerAction = AndroidNotificationAction(
       answerActionId,
@@ -83,8 +84,11 @@ class CallNotificationHandler {
     String displayName = callerName;
     Uint8List? avatarBytes;
     try {
-      final profile =
-          await NotificationProfile.resolve(callerPubkey, nameHint: nameHint);
+      final profile = await NotificationProfile.resolve(
+        callerPubkey,
+        nameHint: nameHint,
+        avatarHint: avatarHint,
+      );
       displayName = profile.name;
       avatarBytes = profile.avatarPng;
     } catch (e) {

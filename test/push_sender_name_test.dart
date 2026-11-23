@@ -15,11 +15,13 @@ void main() {
   setUp(() {
     settings.myPubkey = pubkey;
     settings.myNip05 = '';
+    settings.myPhotoUrl = '';
   });
 
   tearDown(() {
     settings.myPubkey = '';
     settings.myNip05 = '';
+    settings.myPhotoUrl = '';
   });
 
   test('the pushed name is the global ID username', () {
@@ -42,5 +44,41 @@ void main() {
     settings.myNip05 = '';
 
     expect(RelayManager().currentSenderName(), isNot('edwards'));
+  });
+
+  group('RelayManager.currentSenderAvatar', () {
+    test('uses AppSettings.myPhotoUrl when present', () {
+      settings.myPhotoUrl = 'https://nostr.build/i/me.png';
+      final avatar = RelayManager().currentSenderAvatar();
+      expect(avatar, isNotNull);
+      expect(avatar, contains('https://wsrv.nl/?url='));
+      expect(avatar, contains('nostr.build'));
+    });
+
+    test('returns null when no photo is set', () {
+      settings.myPhotoUrl = '';
+      expect(RelayManager().currentSenderAvatar(), isNull);
+    });
+  });
+
+  group('RelayManager.buildAvatarThumbnailUrl', () {
+    test('wraps raw photo url in lightweight wsrv.nl thumbnail', () {
+      const original = 'https://nostr.build/i/pfp.jpg';
+      final thumb = RelayManager.buildAvatarThumbnailUrl(original);
+      expect(thumb, contains('https://wsrv.nl/?url='));
+      expect(thumb, contains('w=128'));
+      expect(thumb, contains('h=128'));
+      expect(thumb, contains('output=webp'));
+    });
+
+    test('does not double wrap an already-wrapped thumbnail url', () {
+      const wrapped = 'https://wsrv.nl/?url=https%3A%2F%2Fnostr.build%2Fi%2Fpfp.jpg&w=128&h=128&fit=cover&output=webp&q=75';
+      expect(RelayManager.buildAvatarThumbnailUrl(wrapped), wrapped);
+    });
+
+    test('empty url returns empty string', () {
+      expect(RelayManager.buildAvatarThumbnailUrl(''), '');
+      expect(RelayManager.buildAvatarThumbnailUrl('   '), '');
+    });
   });
 }

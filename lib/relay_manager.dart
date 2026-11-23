@@ -1581,6 +1581,7 @@ class RelayManager {
         senderName: senderName,
         ciphertext: wrappedRecipient.giftWrap['content']?.toString() ?? '',
         ephemeralPubkey: wrappedRecipient.giftWrap['pubkey']?.toString() ?? '',
+        senderAvatar: currentSenderAvatar(),
       );
 
       return {
@@ -1626,6 +1627,36 @@ class RelayManager {
   @visibleForTesting
   String currentSenderName() => AppSettings.instance.myName;
 
+  /// Avatar thumbnail URL pushed with a message or call. Uses the user's
+  /// cached profile picture resized via wsrv.nl so the receiver downloads a
+  /// tiny (~5 KB) WebP image instead of an uncompressed original.
+  @visibleForTesting
+  String? currentSenderAvatar() {
+    try {
+      final myPhoto = AppSettings.instance.myPhotoUrl.trim();
+      final myPubkey = AppSettings.instance.myPubkey;
+      String? rawUrl = myPhoto.isNotEmpty ? myPhoto : null;
+      if (rawUrl == null && myPubkey.isNotEmpty) {
+        try {
+          rawUrl = Hive.box<String>('profile_pictures').get(myPubkey);
+        } catch (_) {}
+      }
+      if (rawUrl == null || rawUrl.trim().isEmpty) return null;
+      return buildAvatarThumbnailUrl(rawUrl.trim());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Wraps a photo URL into a lightweight (128x128 WebP) thumbnail via wsrv.nl.
+  static String buildAvatarThumbnailUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('https://wsrv.nl/?url=')) return trimmed;
+    final encoded = Uri.encodeComponent(trimmed);
+    return 'https://wsrv.nl/?url=$encoded&w=128&h=128&fit=cover&output=webp&q=75';
+  }
+
   @visibleForTesting
   Map<String, String> buildPushHeaders({
     required String receiverPubkey,
@@ -1661,6 +1692,7 @@ class RelayManager {
     required String senderName,
     required String ciphertext,
     required String ephemeralPubkey,
+    String? senderAvatar,
     String type = 'chat',
   }) async {
     const workerUrl = 'https://chatme-notifier.cintanyanessa.workers.dev/';
@@ -1668,15 +1700,18 @@ class RelayManager {
     try {
       // The worker signs over the exact bytes it receives, so encode once and
       // reuse the same string for both the body and its hash.
-      final body = jsonEncode({
+      final payload = <String, dynamic>{
         'receiverPubkey': receiverPubkey,
         'senderPubkey': senderPubkey,
         'eventId': eventId,
         'senderName': senderName,
+        if (senderAvatar != null && senderAvatar.isNotEmpty)
+          'senderAvatar': senderAvatar,
         'ciphertext': ciphertext,
         'ephemeralPubkey': ephemeralPubkey,
         'type': type,
-      });
+      };
+      final body = jsonEncode(payload);
       final response = await http.post(
         Uri.parse(workerUrl),
         headers: buildPushHeaders(
@@ -2199,6 +2234,7 @@ class RelayManager {
           ciphertext: '',
           ephemeralPubkey: '',
           type: 'call',
+          senderAvatar: currentSenderAvatar(),
         );
       }
 
@@ -2214,6 +2250,7 @@ class RelayManager {
           ciphertext: '',
           ephemeralPubkey: '',
           type: 'call_cancel',
+          senderAvatar: currentSenderAvatar(),
         );
       }
 
@@ -2668,6 +2705,7 @@ class RelayManager {
               senderName: currentSenderName(),
               ciphertext: wrappedRecipient.giftWrap['content']?.toString() ?? '',
               ephemeralPubkey: wrappedRecipient.giftWrap['pubkey']?.toString() ?? '',
+              senderAvatar: currentSenderAvatar(),
             );
             DebugLogger.log('[Queue] Sent, awaiting OK: ${wrappedRecipient.giftWrapId}');
           } else {

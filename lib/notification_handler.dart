@@ -267,6 +267,8 @@ class NotificationHandler {
     required String messageId,
     bool showActions = true,
     bool replyOnly = false,
+    String? nameHint,
+    String? avatarHint,
   }) async {
     if (kIsWeb) return;
     await chat_notif.ChatNotificationHandler.showChatNotification(
@@ -277,6 +279,8 @@ class NotificationHandler {
       showActions: showActions,
       replyOnly: replyOnly,
       pluginInstance: _plugin,
+      nameHint: nameHint,
+      avatarHint: avatarHint,
     );
   }
 

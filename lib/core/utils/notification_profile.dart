@@ -13,6 +13,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:hive/hive.dart';
+import 'package:http/http.dart' as http;
 import '../../models/contact.dart';
 import 'key_utils.dart';
 import 'ui_utils.dart';
@@ -43,14 +44,17 @@ class NotificationProfile {
   ///
   /// [nameHint] is the sender's own name carried by a push. It only replaces
   /// the name of an unsaved contact, see [pickName].
+  ///
+  /// [avatarHint] is the sender's thumbnail URL carried by a push.
   static Future<NotificationProfile> resolve(
     String pubkey, {
     bool allowDownload = true,
     String? nameHint,
+    String? avatarHint,
   }) async {
     await _ensureBoxes();
     final name = _resolveName(pubkey, nameHint);
-    final photoUrl = _photoUrl(pubkey);
+    final photoUrl = _resolvePhotoUrl(pubkey, avatarHint);
     // Cache separately so a cached-only avatar never hides a later download.
     final cacheKey =
         '$pubkey|$name|${photoUrl ?? ''}${allowDownload ? '' : '|cached'}';
@@ -139,6 +143,22 @@ class NotificationProfile {
 
   // -------------------------------------------------------------- avatar
 
+  static String? _resolvePhotoUrl(String pubkey, String? avatarHint) {
+    final fresh = cleanAvatarHint(avatarHint);
+    if (fresh != null) return fresh;
+    return _photoUrl(pubkey);
+  }
+
+  /// Returns a valid https avatar URL, or null when the hint is absent or malformed.
+  static String? cleanAvatarHint(String? hint) {
+    if (hint == null) return null;
+    final trimmed = hint.trim();
+    if (trimmed.isEmpty) return null;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    return trimmed;
+  }
+
   static String? _photoUrl(String pubkey) {
     try {
       final url = Hive.box<String>('profile_pictures').get(pubkey);
@@ -165,20 +185,39 @@ class NotificationProfile {
     }
   }
 
-  /// Photo from the same cache cached_network_image uses (key = url).
-  /// If it is not cached yet, tries to download for at most 3 seconds, unless
-  /// [allowDownload] is false, in which case the caller falls back to initials.
+  /// Photo from network or cache.
+  /// Downloads directly via HTTP so it works reliably in both the foreground
+  /// and the background FCM isolate without depending on sqflite.
   static Future<Uint8List?> _circlePhoto(
     String url, {
     required bool allowDownload,
   }) async {
     try {
-      final manager = DefaultCacheManager();
-      final file = allowDownload
-          ? await manager.getSingleFile(url).timeout(const Duration(seconds: 3))
-          : (await manager.getFileFromCache(url))?.file;
-      if (file == null) return null;
-      final bytes = await file.readAsBytes();
+      Uint8List? bytes;
+      if (allowDownload) {
+        try {
+          final res = await http
+              .get(Uri.parse(url))
+              .timeout(const Duration(seconds: 3));
+          if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+            bytes = res.bodyBytes;
+            // Best effort cache population for in-app widgets
+            try {
+              DefaultCacheManager().putFile(url, bytes);
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+
+      if (bytes == null) {
+        try {
+          final file =
+              (await DefaultCacheManager().getFileFromCache(url))?.file;
+          bytes = await file?.readAsBytes();
+        } catch (_) {}
+      }
+
+      if (bytes == null || bytes.isEmpty) return null;
 
       final codec = await ui.instantiateImageCodec(bytes, targetWidth: 512);
       final frame = await codec.getNextFrame();

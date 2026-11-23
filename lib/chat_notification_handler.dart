@@ -45,6 +45,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       callerPubkey: senderPubkey,
       callerName: senderName,
       nameHint: ChatNotificationHandler.pushNameHint(message.data),
+      avatarHint: ChatNotificationHandler.pushAvatarHint(message.data),
     );
     return;
   }
@@ -71,6 +72,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       messageId: eventId,
       pluginInstance: cancelPlugin,
       nameHint: ChatNotificationHandler.pushNameHint(message.data),
+      avatarHint: ChatNotificationHandler.pushAvatarHint(message.data),
     );
     return;
   }
@@ -161,6 +163,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     ),
     pluginInstance: plugin,
     nameHint: ChatNotificationHandler.pushNameHint(message.data),
+    avatarHint: ChatNotificationHandler.pushAvatarHint(message.data),
   );
 }
 
@@ -282,6 +285,7 @@ class ChatNotificationHandler {
         ),
         pluginInstance: plugin,
         nameHint: pushNameHint(message.data),
+        avatarHint: pushAvatarHint(message.data),
       );
     }
   }
@@ -294,6 +298,13 @@ class ChatNotificationHandler {
     final trimmed = name.trim();
     if (trimmed.toLowerCase() == 'chatme') return null;
     return trimmed;
+  }
+
+  /// The sender's avatar URL carried by a push, or null when absent or malformed.
+  static String? pushAvatarHint(Map<String, dynamic> data) {
+    final avatar = data['senderAvatar'];
+    if (avatar is! String || avatar.trim().isEmpty) return null;
+    return NotificationProfile.cleanAvatarHint(avatar);
   }
 
   /// Stable notification ID derived from pubkey (survives app restarts).
@@ -322,13 +333,17 @@ class ChatNotificationHandler {
     bool replyOnly = false,
     FlutterLocalNotificationsPlugin? pluginInstance,
     String? nameHint,
+    String? avatarHint,
   }) async {
     if (shouldSuppressNotification(senderPubkey)) {
       return;
     }
 
-    final profile =
-        await NotificationProfile.resolve(senderPubkey, nameHint: nameHint);
+    final profile = await NotificationProfile.resolve(
+      senderPubkey,
+      nameHint: nameHint,
+      avatarHint: avatarHint,
+    );
     final String displayName = profile.name;
     final ByteArrayAndroidIcon? avatarIcon = profile.avatarPng != null
         ? ByteArrayAndroidIcon(profile.avatarPng!)
