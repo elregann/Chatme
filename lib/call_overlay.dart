@@ -18,6 +18,19 @@ class CallFloatingBar extends StatefulWidget {
 
   const CallFloatingBar({super.key, required this.relay});
 
+  /// Compact mute button colors, matching the full call screen.
+  static ({Color surface, Color icon}) muteColors({required bool isMuted}) {
+    return isMuted
+        ? (
+            surface: ChatmeColors.callControlSurfaceActiveSolid,
+            icon: ChatmeColors.callControlMuteIconOnActive,
+          )
+        : (
+            surface: ChatmeColors.callControlSurface,
+            icon: ChatmeColors.callControlIcon,
+          );
+  }
+
   @override
   State<CallFloatingBar> createState() => _CallFloatingBarState();
 }
@@ -84,6 +97,7 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
   @override
   Widget build(BuildContext context) {
     final manager = CallManager.instance;
+    final muteColors = CallFloatingBar.muteColors(isMuted: manager.isMuted);
 
     return GestureDetector(
       onTap: () {
@@ -117,13 +131,13 @@ class _CallFloatingBarState extends State<CallFloatingBar> {
                 child: Container(
                   width: 32,
                   height: 32,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: ChatmeColors.callControlSurfaceActive,
+                    color: muteColors.surface,
                   ),
                   child: Icon(
                     manager.isMuted ? Icons.mic_off : Icons.mic,
-                    color: ChatmeColors.callControlIcon,
+                    color: muteColors.icon,
                     size: 16,
                   ),
                 ),
