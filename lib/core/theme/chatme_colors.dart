@@ -48,9 +48,11 @@ class ChatmeColors {
   // Call UI surfaces
   static const Color callControlSurface = Color(0x14FFFFFF);
   static const Color callControlSurfaceActive = Color(0x33FFFFFF);
+  static const Color callControlSurfaceActiveSolid = Color(0xFFFFFFFF);
   static const Color callControlBorder = Color(0x1FFFFFFF);
   static const Color callControlIcon = Color(0xEBFFFFFF);
   static const Color callControlIconOnActive = Color(0xFF04060C);
+  static const Color callControlMuteIconOnActive = statusDanger;
 
   // Dividers and borders
   static const Color dividerSubtle = Color(0x1FFFFFFF);

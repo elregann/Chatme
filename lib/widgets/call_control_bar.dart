@@ -85,6 +85,7 @@ class CallControlBar extends StatelessWidget {
                       key: muteKey,
                       icon: isMuted ? Icons.mic_off : Icons.mic,
                       isActive: isMuted,
+                      activeIconColor: ChatmeColors.callControlMuteIconOnActive,
                       onTap: onMute,
                       isDark: isDark,
                     ),
@@ -139,6 +140,7 @@ class CallControlButton extends StatelessWidget {
   final bool isActive;
   final bool isHangup;
   final Color? color;
+  final Color? activeIconColor;
   final VoidCallback onTap;
   final bool isDark;
 
@@ -150,6 +152,7 @@ class CallControlButton extends StatelessWidget {
     this.isActive = false,
     this.isHangup = false,
     this.color,
+    this.activeIconColor,
   });
 
   @override
@@ -160,7 +163,7 @@ class CallControlButton extends StatelessWidget {
     } else if (isHangup) {
       background = ChatmeColors.callEnd;
     } else if (isActive) {
-      background = ChatmeColors.callControlSurfaceActive;
+      background = ChatmeColors.callControlSurfaceActiveSolid;
     } else {
       background = ChatmeColors.callControlSurface;
     }
@@ -169,7 +172,7 @@ class CallControlButton extends StatelessWidget {
     if (color != null || isHangup) {
       foreground = ChatmeColors.textPrimary;
     } else if (isActive) {
-      foreground = ChatmeColors.callControlIconOnActive;
+      foreground = activeIconColor ?? ChatmeColors.callControlIconOnActive;
     } else {
       foreground = ChatmeColors.callControlIcon;
     }
