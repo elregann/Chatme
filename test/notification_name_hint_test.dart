@@ -154,24 +154,64 @@ void main() {
   });
 
   group('ChatNotificationHandler.pushAvatarHint & cleanAvatarHint', () {
-    test('a valid https avatar url is returned as hint', () {
-      const url = 'https://example.com/avatar.jpg';
+    const proxied =
+        'https://wsrv.nl/?url=https%3A%2F%2Fnostr.build%2Fi%2Fa.png&w=128&h=128&fit=cover&output=webp&q=75';
+
+    test('a wsrv.nl thumbnail url is returned as hint', () {
       expect(
-        ChatNotificationHandler.pushAvatarHint({'senderAvatar': url}),
-        url,
+        ChatNotificationHandler.pushAvatarHint({'senderAvatar': proxied}),
+        proxied,
       );
-      expect(
-        NotificationProfile.cleanAvatarHint('  $url  '),
-        url,
-      );
+      expect(NotificationProfile.cleanAvatarHint('  $proxied  '), proxied);
+    });
+
+    test('any host other than wsrv.nl is rejected', () {
+      for (final bad in [
+        'https://example.com/avatar.jpg',
+        'https://evil.com/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'https://wsrv.nl.evil.com/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'https://evilwsrv.nl/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'https://wsrv.nl@evil.com/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'https://evil.com/wsrv.nl/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'https://evil.com/?next=https://wsrv.nl/?url=a',
+      ]) {
+        expect(
+          ChatNotificationHandler.pushAvatarHint({'senderAvatar': bad}),
+          isNull,
+          reason: 'avatar "$bad"',
+        );
+        expect(
+          NotificationProfile.cleanAvatarHint(bad),
+          isNull,
+          reason: 'cleanAvatarHint "$bad"',
+        );
+      }
+    });
+
+    test('a wsrv.nl url with a port, credentials or no source url is rejected',
+        () {
+      for (final bad in [
+        'https://wsrv.nl:8443/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'https://user:pw@wsrv.nl/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'https://wsrv.nl/',
+        'https://wsrv.nl/?w=128',
+        'https://wsrv.nl/?url=',
+        'https://wsrv.nl/other?url=https%3A%2F%2Fnostr.build%2Fa.png',
+      ]) {
+        expect(
+          NotificationProfile.cleanAvatarHint(bad),
+          isNull,
+          reason: 'cleanAvatarHint "$bad"',
+        );
+      }
     });
 
     test('non-https or malformed urls are rejected', () {
       for (final bad in [
         '',
         '   ',
-        'http://example.com/avatar.jpg',
-        'ftp://example.com/avatar.jpg',
+        'http://wsrv.nl/?url=https%3A%2F%2Fnostr.build%2Fa.png',
+        'ftp://wsrv.nl/?url=https%3A%2F%2Fnostr.build%2Fa.png',
         'not a url',
         'https://',
       ]) {

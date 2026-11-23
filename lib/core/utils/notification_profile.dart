@@ -149,13 +149,21 @@ class NotificationProfile {
     return _photoUrl(pubkey);
   }
 
-  /// Returns a valid https avatar URL, or null when the hint is absent or malformed.
+  static const String _avatarProxyHost = 'wsrv.nl';
+
+  /// Returns the avatar URL only when it points at the wsrv.nl thumbnail
+  /// proxy, so a push can never make this device contact another server.
   static String? cleanAvatarHint(String? hint) {
     if (hint == null) return null;
     final trimmed = hint.trim();
     if (trimmed.isEmpty) return null;
     final uri = Uri.tryParse(trimmed);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    if (uri == null) return null;
+    if (uri.scheme != 'https' || uri.host != _avatarProxyHost) return null;
+    if (uri.hasPort || uri.userInfo.isNotEmpty) return null;
+    if (uri.path != '/' && uri.path.isNotEmpty) return null;
+    final source = uri.queryParameters['url'];
+    if (source == null || source.trim().isEmpty) return null;
     return trimmed;
   }
 
