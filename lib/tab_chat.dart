@@ -12,6 +12,11 @@ import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'package:flutter/services.dart';
 import 'services/app_settings.dart';
+import 'story/story_manager.dart';
+import 'story/story_strip.dart';
+import 'story/story_viewer_page.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'models/call_log.dart';
@@ -29,7 +34,8 @@ import 'tab_calls.dart';
 /// batched local status write per chat, receipts only for the newest few
 /// messages, then the badge and notification are cleared.
 Future<void> markAllChatsAsRead(RelayManager relayManager) async {
-  final peers = Hive.box<Contact>('contacts').values
+  final peers = Hive.box<Contact>('contacts')
+      .values
       .where((contact) => contact.unreadCount > 0)
       .map((contact) => contact.pubkey)
       .toList();
@@ -65,8 +71,15 @@ class ChatsScreen extends StatefulWidget {
 class _ChatsScreenState extends State<ChatsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _chatScrollController = ScrollController();
   String _searchQuery = "";
   bool _isMarkingAllRead = false;
+  bool _storyStripRevealed = false;
+  double? _storyPullStartY;
+  double _storyPullDistance = 0;
+  bool _storyPullHapticFired = false;
+
+  static const double _storyPullThreshold = 56;
 
   @override
   void initState() {
@@ -78,13 +91,73 @@ class _ChatsScreenState extends State<ChatsScreen> {
     widget.relayManager.onMessageDelivered = (eventId) {
       if (mounted) setState(() {});
     };
+
+    StoryManager.instance.revision.addListener(_onStoryRevisionChanged);
   }
 
   @override
   void dispose() {
+    StoryManager.instance.revision.removeListener(_onStoryRevisionChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _chatScrollController.dispose();
     super.dispose();
+  }
+
+  void _onStoryRevisionChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  bool get _hasActiveStories => Hive.isBoxOpen('stories') &&
+      StoryManager.instance.activeStories().isNotEmpty;
+
+  bool get _storyStripVisible => _storyStripRevealed || _hasActiveStories;
+
+  bool get _canRevealStoryStrip => !_storyStripVisible && _searchQuery.isEmpty;
+
+  bool get _isChatListAtTop =>
+      !_chatScrollController.hasClients || _chatScrollController.offset <= 0;
+
+  void _onPullDownStart(PointerDownEvent event) {
+    if (!_canRevealStoryStrip) return;
+    _storyPullStartY = event.position.dy;
+    _storyPullDistance = 0;
+    _storyPullHapticFired = false;
+  }
+
+  void _onPullDownMove(PointerMoveEvent event) {
+    final startY = _storyPullStartY;
+    if (startY == null || !_canRevealStoryStrip) return;
+    if (!_isChatListAtTop) {
+      _resetPullDown();
+      return;
+    }
+
+    final dy = event.position.dy - startY;
+    if (dy <= 0) return;
+    _storyPullDistance = dy;
+    if (_storyPullDistance >= _storyPullThreshold && !_storyPullHapticFired) {
+      HapticFeedback.mediumImpact();
+      _storyPullHapticFired = true;
+    }
+  }
+
+  void _onPullDownEnd(PointerUpEvent event) => _finishPullDown();
+
+  void _onPullDownCancel(PointerCancelEvent event) => _finishPullDown();
+
+  void _finishPullDown() {
+    if (_canRevealStoryStrip && _storyPullDistance >= _storyPullThreshold) {
+      setState(() => _storyStripRevealed = true);
+    }
+    _resetPullDown();
+  }
+
+  void _resetPullDown() {
+    _storyPullStartY = null;
+    _storyPullDistance = 0;
+    _storyPullHapticFired = false;
   }
 
   Future<void> _markAllChatsAsRead() {
@@ -234,10 +307,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       label: 'Calls History',
                       dot: _hasUnseenMissedCalls(logs),
                     ),
+                    const ChatmeMenuEntry(
+                      value: 'add_story',
+                      label: 'Add story',
+                    ),
                   ],
                   onSelected: (value) {
                     if (value == 'mark_all_read') _markAllChatsAsRead();
                     if (value == 'calls_history') _openCallsHistory();
+                    if (value == 'add_story') _addStory();
                   },
                 );
               },
@@ -247,6 +325,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
         ),
         body: Column(
           children: [
+            if (_searchQuery.isEmpty && _storyStripVisible)
+              StoryStrip(
+                relayManager: widget.relayManager,
+                onAddStory: _addStory,
+                onOpenAuthor: _openStoryAuthor,
+              ),
             ChatmeSearchBar(
               controller: _searchController,
               focusNode: _searchFocusNode,
@@ -271,7 +355,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
               },
             ),
             Expanded(
-              child: ValueListenableBuilder<Box<Contact>>(
+              child: Listener(
+                onPointerDown: _onPullDownStart,
+                onPointerMove: _onPullDownMove,
+                onPointerUp: _onPullDownEnd,
+                onPointerCancel: _onPullDownCancel,
+                child: ValueListenableBuilder<Box<Contact>>(
                 valueListenable: Hive.box<Contact>('contacts').listenable(),
                 builder: (context, contactBox, _) {
                   return ValueListenableBuilder(
@@ -302,7 +391,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             AppSettings.getContactDisplayName(contact);
 
                         bool nameMatches = _searchQuery.isNotEmpty &&
-                            (displayName.toLowerCase().contains(_searchQuery) ||
+                              (displayName
+                                      .toLowerCase()
+                                      .contains(_searchQuery) ||
                                 contact.pubkey
                                     .toLowerCase()
                                     .contains(_searchQuery));
@@ -348,6 +439,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       }
 
                       return ListView(
+                          controller: _chatScrollController,
                         keyboardDismissBehavior:
                             ScrollViewKeyboardDismissBehavior.onDrag,
                         children: [
@@ -363,8 +455,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                       fontSize: 11,
                                       letterSpacing: 1.2)),
                             ),
-                            ...filteredSavedContacts.map(
-                                (contact) => _buildContactItem(contact, null)),
+                              ...filteredSavedContacts.map((contact) =>
+                                  _buildContactItem(contact, null)),
                             const Padding(
                                 padding: EdgeInsets.symmetric(horizontal: 16),
                                 child: Divider(height: 1, thickness: 0.1)),
@@ -388,7 +480,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             if (_searchQuery.isNotEmpty &&
                                 messageResults.isNotEmpty)
                               const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 16),
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 16),
                                   child: Divider(height: 1, thickness: 0.1)),
                           ],
 
@@ -423,7 +516,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                     if (msg.senderPubkey == myPubkey)
                                       const Text("You: ",
                                           style: TextStyle(
-                                              color: ChatmeColors.accentPrimary,
+                                                color:
+                                                    ChatmeColors.accentPrimary,
                                               fontWeight: FontWeight.bold,
                                               fontSize: 14)),
                                     Expanded(
@@ -453,6 +547,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   );
                 },
               ),
+            ),
             ),
           ],
         ),
@@ -615,6 +710,57 @@ class _ChatsScreenState extends State<ChatsScreen> {
         );
       },
     );
+  }
+
+  Future<void> _addStory() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickMedia();
+    if (picked == null) return;
+    final file = File(picked.path);
+    final mimeType = _mimeFromPath(picked.path);
+    if (!mounted) return;
+    try {
+      await StoryManager.instance.createStory(
+        relay: widget.relayManager,
+        file: file,
+        mimeType: mimeType,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Story posted')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Story failed: $e')),
+      );
+    }
+  }
+
+  void _openStoryAuthor(String authorPubkey) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => StoryViewerPage(
+          relayManager: widget.relayManager,
+          initialAuthorPubkey: authorPubkey,
+        ),
+      ),
+    );
+  }
+
+  String _mimeFromPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    return lower.contains('.mp4') ||
+            lower.contains('.mov') ||
+            lower.contains('.webm')
+        ? 'video/mp4'
+        : 'image/jpeg';
   }
 
   Widget _buildEmptyState() {

@@ -10,6 +10,8 @@ import 'package:chatme/services/account_logout.dart';
 import 'package:chatme/services/app_settings.dart';
 import 'package:chatme/services/identity_secret_store.dart';
 import 'package:chatme/services/link_preview_service.dart';
+import 'package:chatme/story/story_item.dart';
+import 'package:chatme/story/story_manager.dart';
 import 'package:chatme/tab_profile.dart';
 import 'package:chatme/widgets/chatme_menu.dart';
 import 'package:flutter/material.dart';
@@ -82,6 +84,7 @@ void main() {
     await Hive.openBox('profile_meta');
     await Hive.openBox<CallLog>('call_logs');
     await Hive.openBox('processed_events');
+    await Hive.openBox<Map>('stories');
     await LinkPreviewService.instance.init();
 
     // BgInbox appends /bg_inbox to its base directory itself.
@@ -192,6 +195,21 @@ void main() {
     await voiceDir.create(recursive: true);
     await File('${mediaDir.path}/photo.jpg').create();
     await File('${voiceDir.path}/note.m4a').create();
+
+    final oldStory = StoryItem(
+      id: 'old_account_story',
+      authorPubkey: 'old_account_pubkey',
+      createdAt: 100,
+      expiresAt: DateTime.now().millisecondsSinceEpoch + 3600000,
+      mediaUrl: 'https://example.com/blob.enc',
+      mimeType: 'image/jpeg',
+      encryptionKey: 'k',
+      encryptionNonce: 'n',
+      fileHash: 'h',
+      originalHash: 'oh',
+      localPath: '${mediaDir.path}/stories/old_account_story.jpg',
+    );
+    await Hive.box<Map>('stories').put(oldStory.id, oldStory.toMap());
   });
 
   test('sign out wipes local data and leaves the app signed out', () async {
@@ -225,6 +243,8 @@ void main() {
     expect(Hive.box<CallLog>('call_logs').isEmpty, isTrue);
     expect(Hive.box('processed_events').isEmpty, isTrue);
     expect(Hive.box<String>('link_previews').isEmpty, isTrue);
+    expect(Hive.box<Map>('stories').isEmpty, isTrue);
+    expect(StoryManager.instance.activeStories(), isEmpty);
     expect(webViewClears, 1);
 
     final files = await bgDir.list().toList();

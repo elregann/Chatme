@@ -19,6 +19,7 @@ import 'models/chat_message.dart';
 import 'models/call_log.dart';
 import 'services/app_settings.dart';
 import 'services/profile_meta_store.dart';
+import 'story/story_manager.dart';
 import 'notification_handler.dart';
 import 'services/network_manager.dart';
 import 'services/background_service.dart';
@@ -102,6 +103,7 @@ void main() async {
     await Hive.openBox('profile_meta');
     await Hive.openBox<CallLog>('call_logs');
     await Hive.openBox('processed_events');
+    await Hive.openBox<Map>('stories');
     await LinkPreviewService.instance.init();
 
     await AppSettings.instance.load();
@@ -111,6 +113,7 @@ void main() async {
     // so there is no race with incoming events. Idempotent — an
     // interrupted run resumes on the next start.
     await ChatManager.instance.migrateLegacyChats();
+    StoryManager.instance.startExpirySweep();
 
     // CRITICAL: Set both launch flags BEFORE runApp() to avoid race condition with build()
     CallManager.instance.launchCallerPubkey = await NotificationHandler.peekCallLaunchPubkey();
@@ -593,7 +596,6 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
             giftWrapId: item.eventId,
             file: fileMap,
           );
-
           final wasNew = await ChatManager.instance.saveMessage(
             message,
             touchChatList: false,
@@ -869,6 +871,7 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
     authRevision.removeListener(_onAuthChanged);
     _notificationPort?.close();
     WidgetsBinding.instance.removeObserver(this);
+    StoryManager.instance.dispose();
     _relayManager.dispose();
     _networkManager.dispose();
     super.dispose();

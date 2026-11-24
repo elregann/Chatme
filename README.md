@@ -46,6 +46,15 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - Both are sent as NIP-17 file messages (kind `15`) to a Blossom server, the same way as voice notes. The key travels only inside the gift wrapped message.
 - In the contact profile, the Media tab is a grid of every picture and video of the conversation. It opens a swipeable gallery where a video starts playing as soon as its page is on screen.
 
+### Stories (prototype)
+> **Prototype:** Nostr has no standard story kind yet. Chatme uses its own internal rumor kind (`3331`), so stories only appear in other Chatme apps and the format may change in a later release.
+
+- Share a picture or video that disappears after 24 hours. Stories go only to saved Chatme contacts, plus a copy to your own account.
+- Media is encrypted on the device with a fresh AES-GCM key and uploaded to a Blossom server; the key travels inside the NIP-17 gift wrap.
+- In the viewer, **hold** the media to pause and **release** to resume from the same point. A **short tap** on the left half goes to the previous story and on the right half to the next one; a swipe left or right does the same. Photos stay for five seconds, videos use their own duration, and neither loops when it advances by itself.
+- The header shows the author's name and upload time, a back button and an overflow button with no menu. Your own story is labelled **Your story**.
+- Logging out wipes the story cache and local media, so another account cannot see the previous account's stories.
+
 ### Contacts
 - Add a contact with an `npub`, an `nprofile`, a `nostr:` link or a QR code.
 - Your own QR code is one tap away from the Me tab, and each contact profile has one too. Scanning a code fills in the add contact form.
@@ -93,7 +102,7 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 | [04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted direct messages (legacy) | Partial | Receive only (kind `4`), so older conversations stay readable. New messages never use it. |
 | [05](https://github.com/nostr-protocol/nips/blob/master/05.md) | DNS-based identifiers | Partial | The `nip05` field is published in the profile. The `username@chatme` handle is verified through Chatme's own backend, not a `.well-known/nostr.json` lookup. |
 | [06](https://github.com/nostr-protocol/nips/blob/master/06.md) | Key derivation from mnemonic seed phrase | Yes | 12 word BIP-39 phrase, derived with BIP-32 at `m/44'/1237'/0'/0/0`. The same phrase gives the same account in other NIP-06 clients. |
-| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Partial | Rumor (kind `14`), file message (kind `15`, used for voice notes, pictures and videos), seal (kind `13`), gift wrap (kind `1059`). Publishes your Inbox relays as the DM relay list (kind `10050`), and again whenever you change them, so other clients such as Amethyst can reach Chatme. It does not read the recipient's kind `10050` yet, so messages go to the relays Chatme is connected to. |
+| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Partial | Rumor (kind `14`), file message (kind `15`, used for voice notes, pictures and videos), seal (kind `13`), gift wrap (kind `1059`). Publishes your Inbox relays as the DM relay list (kind `10050`), and again whenever you change them, so other clients such as Amethyst can reach Chatme. It does not read the recipient's kind `10050` yet, so messages go to the relays Chatme is connected to. Stories use a Chatme-only rumor kind (`3331`) as a prototype, not a standard NIP-17 kind. |
 | [19](https://github.com/nostr-protocol/nips/blob/master/19.md) | bech32 encoded entities | Partial | `npub` and `nsec` (view, export, convert, add contact), plus `nprofile` for contact QR codes and when adding a contact. Other entities such as `nevent` and `naddr` are not handled. |
 | [21](https://github.com/nostr-protocol/nips/blob/master/21.md) | `nostr:` URI scheme | Partial | Contact QR codes hold a `nostr:nprofile` link, and `nostr:npub` and `nostr:nprofile` are accepted when adding a contact. Secret keys are refused. Other entities are not handled. |
 | [24](https://github.com/nostr-protocol/nips/blob/master/24.md) | Extra metadata fields | Partial | The `display_name` field is read from kind `0` search results and used as a label when `name` is empty. Contacts and Me use `name`; other extra fields such as `website`, `banner`, `bot` and `birthday` are not displayed. |
@@ -101,7 +110,7 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 | [42](https://github.com/nostr-protocol/nips/blob/master/42.md) | Authentication of clients to relays | Yes | Answers `AUTH` challenges (kind `22242`) for relays that require it. |
 | [44](https://github.com/nostr-protocol/nips/blob/master/44.md) | Versioned encryption | Yes | Encrypts both the seal and the gift wrap. |
 | [50](https://github.com/nostr-protocol/nips/blob/master/50.md) | Search capability | Partial | Global search sends kind `0` filters with a `search` term to the relays listed under Search relays. Results are signature checked, deduplicated by public key, and the newest kind `0` wins. An `npub` or hex key is looked up with an `authors` filter instead. Only profile search is used, not note search. |
-| [59](https://github.com/nostr-protocol/nips/blob/master/59.md) | Gift wrap | Yes | Wraps every private message, reaction, receipt and call signal. |
+| [59](https://github.com/nostr-protocol/nips/blob/master/59.md) | Gift wrap | Yes | Wraps every private message, reaction, receipt, call signal and story post. |
 | [98](https://github.com/nostr-protocol/nips/blob/master/98.md) | HTTP auth | Yes | Kind `27235`, used to authorize profile photo uploads and Global ID requests. |
 
 Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
@@ -130,8 +139,9 @@ Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
 | `27235` | HTTP auth | Sent to HTTP server | Authorizes photo uploads and Global ID requests. |
 | `3329` | Read receipt (custom) | Inside gift wrap | Chatme specific. Marks a message as read. |
 | `3330` | Call signal (custom) | Inside gift wrap | Chatme specific. WebRTC offer, answer, ICE candidate, ICE restart offer and hang up. |
+| `3331` | Story post (custom, prototype) | Inside gift wrap | Chatme specific. A picture or video for contacts only, with an `expiration` hint. Unsigned rumor. |
 
-Kinds `3329` and `3330` are Chatme's own conventions and are not part of any NIP. Other clients ignore them, and a call or read receipt only works between two Chatme users. Voice notes add one extra tag, `duration` (in seconds), to the standard kind `15` tags. A video adds an `alg` tag with the value `aes-gcm-chunked`, which is Chatme's own chunked layout, so other clients cannot open it. Other clients ignore the extra tags.
+Kinds `3329`, `3330` and `3331` are Chatme's own conventions and are not part of any NIP. Other clients ignore them, and a call, read receipt or story only works between two Chatme users. Kind `3331` is a prototype: Nostr has no standard story kind yet, so Chatme keeps this format internal and it may change in a later release. Voice notes add one extra tag, `duration` (in seconds), to the standard kind `15` tags. A video adds an `alg` tag with the value `aes-gcm-chunked`, which is Chatme's own chunked layout, so other clients cannot open it. Other clients ignore the extra tags.
 
 ---
 
@@ -184,6 +194,7 @@ flutter run
 - Messages are encrypted on your device before sending. Private keys never leave it.
 - Relays see encrypted events, not message content.
 - Voice notes, pictures and videos are encrypted on your device with a fresh key before upload, and the key is sent only inside the gift wrapped message. File servers see the encrypted file, its size, the time and your IP address, but not the content. Uploads are signed with a throwaway key, so the signature does not link them to your account or to each other, although the IP address and timing still can.
+- Stories use the same encryption and gift wraps, and are delivered only to your saved Chatme contacts and your own account. The `expiration` tag is a hint other clients may ignore; Chatme hides and deletes stories locally after 24 hours, and logout clears them too. The encrypted upload on the Blossom server is not deleted yet.
 - Downloaded files are kept decrypted on your device. Deleting a message removes it from the chat, but does not remove a file that was already downloaded.
 - Link previews are off by default. When you turn them on, your device fetches the linked page directly, so that website can see your IP address.
 - A QR code holds only your public key and two relay hints. Read receipts can be turned off.

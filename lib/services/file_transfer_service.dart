@@ -19,6 +19,16 @@ class FileTransferException implements Exception {
 
 /// Downloads a kind 15 file, checks it, decrypts it and saves it in the app folder.
 class FileTransferService {
+  static Uint8List decryptBytes(Uint8List encrypted, FileMessage file) {
+    return FileCrypto.decrypt(
+      encrypted,
+      key: file.key,
+      nonce: file.nonce,
+      hash: file.hash,
+      originalHash: file.originalHash,
+    );
+  }
+
   static String extensionFor(String mimeType) {
     switch (mimeType.toLowerCase().split(';').first.trim()) {
       case 'audio/mp4':

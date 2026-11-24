@@ -29,6 +29,7 @@ import 'link_preview_service.dart';
 import 'media_storage.dart';
 import 'profile_meta_store.dart';
 import 'voice_storage.dart';
+import '../story/story_manager.dart';
 
 class AccountLogout {
   AccountLogout._();
@@ -126,6 +127,7 @@ class AccountLogout {
         await Hive.box('processed_events').clear();
       }
     });
+    await _guard('clear stories', StoryManager.instance.clearAll);
     await _guard('clear profile cache', ProfileMetaStore.clearAll);
     await _guard('clear link previews', LinkPreviewService.instance.clear);
     await _guard('clear WebView data', clearWebViewData);

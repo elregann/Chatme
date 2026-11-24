@@ -25,6 +25,7 @@ class Nip17 {
   // Chatme custom rumor kind, not part of any NIP.
   static const int kindReadReceipt = 3329;
   static const int kindCallSignal = 3330;
+  static const int kindStoryPost = 3331;
   // NIP-17 DM relay list: the relays where a user receives gift wraps.
   static const int kindDmRelayList = 10050;
 
@@ -194,7 +195,8 @@ class Nip17 {
           rumorKind != kindFile &&
           rumorKind != kindReaction &&
           rumorKind != kindReadReceipt &&
-          rumorKind != kindCallSignal) {
+          rumorKind != kindCallSignal &&
+          rumorKind != kindStoryPost) {
         throw Exception(
           'Innermost event kind ${rumor['kind']} is not a supported Rumor',
         );

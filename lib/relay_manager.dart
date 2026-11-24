@@ -32,6 +32,7 @@ import 'services/profile_meta_store.dart';
 import 'models/chat_message.dart';
 import 'models/contact.dart';
 import 'services/server_lists.dart';
+import 'story/story_manager.dart';
 
 class RelayManager {
   Function? onMessageReceived;
@@ -1322,6 +1323,23 @@ class RelayManager {
         return true;
       }
 
+      // Story post (Chatme custom kind)
+      if (nip17Result != null && nip17Result.rumorKind == Nip17.kindStoryPost) {
+        try {
+          final handled = await StoryManager.instance.handleIncomingRumor(
+            rumorId: nip17Result.rumorId,
+            senderPubkey: actualSenderPubkey,
+            timestampMs: nip17Result.timestamp,
+            tags: nip17Result.rumorTags,
+            content: nip17Result.plaintext,
+          );
+          if (handled) onMessageReceived?.call();
+        } catch (e) {
+          DebugLogger.log('[Story] Incoming rumor failed | $e', type: 'ERROR');
+        }
+        return true;
+      }
+
       // File message (NIP-17 kind 15), shown as a voice note or a file
       Map<String, String> fileMap = const {};
       if (nip17Result != null && nip17Result.rumorKind == Nip17.kindFile) {
@@ -1381,7 +1399,6 @@ class RelayManager {
         giftWrapId: eventId,
         file: fileMap,
       );
-
       // Defer the per-chat side effects (registry touch, reply repairs,
       // contact preview, callbacks) to the end of the batch — during a
       // 1000-message restore they would otherwise fire once per message.
@@ -2068,6 +2085,18 @@ class RelayManager {
       _dmRelayListRetryTimer = Timer(const Duration(seconds: 20), publishDmRelayList);
     } catch (e) {
       DebugLogger.log('[DM relays] Publish kind 10050 failed | $e', type: 'ERROR');
+    }
+  }
+
+  /// Publishes an already-signed event to all connected relays.
+  void publishSignedEvent(Map<String, dynamic> event) {
+    final payload = jsonEncode(['EVENT', event]);
+    for (final entry in _connections.entries) {
+      if (_connectionStatus[entry.key] == true) {
+        try {
+          entry.value.sink.add(payload);
+        } catch (_) {}
+      }
     }
   }
 

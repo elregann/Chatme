@@ -10,6 +10,7 @@ import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'core/theme/chatme_colors.dart';
 import 'core/utils/ui_utils.dart';
+import 'core/utils/time_utils.dart';
 import 'core/utils/key_utils.dart';
 import 'widgets/chatme_menu.dart';
 import 'widgets/confirm_dialog.dart';
@@ -26,50 +27,10 @@ class CallsScreen extends StatefulWidget {
 
 class _CallsScreenState extends State<CallsScreen> {
   String _formatCallTimestamp(BuildContext context, int timestampMs) {
-    final date = DateTime.fromMillisecondsSinceEpoch(timestampMs);
-    final now = DateTime.now();
-
-    final is24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
-
-    String timeStr;
-    if (is24Hour) {
-      timeStr =
-      '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    } else {
-      final hour12 =
-      date.hour == 0 ? 12 : (date.hour > 12 ? date.hour - 12 : date.hour);
-      final period = date.hour >= 12 ? 'PM' : 'AM';
-      timeStr = '$hour12:${date.minute.toString().padLeft(2, '0')} $period';
-    }
-
-    if (date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day) {
-      return 'Today, $timeStr';
-    }
-
-    final yesterday = now.subtract(const Duration(days: 1));
-    if (date.year == yesterday.year &&
-        date.month == yesterday.month &&
-        date.day == yesterday.day) {
-      return 'Yesterday, $timeStr';
-    }
-
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    return '${date.day} ${months[date.month - 1]}, $timeStr';
+    return TimeUtils.formatDayAndTime(
+      timestampMs,
+      alwaysUse24Hour: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
   }
 
   void _callPeer(BuildContext context, String peerPubkey, String peerName) {

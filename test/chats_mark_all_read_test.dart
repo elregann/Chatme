@@ -100,12 +100,14 @@ void main() {
 
     final button = tester.widget<ChatmeMenuButton<String>>(
         find.byType(ChatmeMenuButton<String>));
-    expect(button.entries, hasLength(2));
+    expect(button.entries, hasLength(3));
     expect(button.entries.first.value, 'mark_all_read');
     expect(button.entries.first.label, 'Mark all as read');
     expect(button.entries.first.icon, isNull);
-    expect(button.entries.last.value, 'calls_history');
-    expect(button.entries.last.label, 'Calls History');
+    expect(button.entries[1].value, 'calls_history');
+    expect(button.entries[1].label, 'Calls History');
+    expect(button.entries.last.value, 'add_story');
+    expect(button.entries.last.label, 'Add story');
   });
 
   testWidgets('mark all as read clears badges and message statuses',
