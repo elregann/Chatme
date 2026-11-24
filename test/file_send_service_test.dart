@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:bip340/bip340.dart' as bip340;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -156,6 +157,50 @@ void main() {
         ),
         throwsA(isA<BlossomException>()),
       );
+    });
+  });
+
+  group('encryptAndUploadWithKey', () {
+    test('uses the supplied upload key instead of making a throwaway one',
+        () async {
+      const uploadPrivkey =
+          '0000000000000000000000000000000000000000000000000000000000000003';
+      final uploadPubkey = bip340.getPublicKey(uploadPrivkey);
+      final seenPubkeys = <String>[];
+      final stored = <Uint8List>[];
+      final client = MockClient((request) async {
+        final encoded = request.headers['Authorization']!.substring(6);
+        final event = jsonDecode(
+          utf8.decode(
+            base64Url.decode(
+              encoded.padRight((encoded.length + 3) ~/ 4 * 4, '='),
+            ),
+          ),
+        ) as Map<String, dynamic>;
+        seenPubkeys.add(event['pubkey'] as String);
+        stored.add(request.bodyBytes);
+        return stored200(request);
+      });
+
+      final file = await FileSendService.encryptAndUploadWithKey(
+        source: recorded,
+        mimeType: 'audio/mp4',
+        key: (privkey: uploadPrivkey, pubkey: uploadPubkey),
+        servers: ['https://files.example'],
+        client: client,
+      );
+
+      expect(seenPubkeys, [uploadPubkey]);
+      expect(file.url, startsWith('https://files.example/'));
+
+      final opened = FileCrypto.decrypt(
+        stored.single,
+        key: file.key,
+        nonce: file.nonce,
+        hash: file.hash,
+        originalHash: file.originalHash,
+      );
+      expect(opened, plain);
     });
   });
 

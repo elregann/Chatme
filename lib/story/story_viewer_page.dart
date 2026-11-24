@@ -9,6 +9,7 @@ import '../core/utils/time_utils.dart';
 import '../models/contact.dart';
 import '../relay_manager.dart';
 import '../services/app_settings.dart';
+import '../widgets/chatme_menu.dart';
 import '../widgets/user_avatar.dart';
 import 'story_item.dart';
 import 'story_manager.dart';
@@ -231,6 +232,21 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
     }
   }
 
+  /// Deletes the current story without a snackbar or a dialog. The viewer
+  /// simply moves to the next story, or closes when there is none left.
+  Future<void> _deleteCurrentStory() async {
+    final stories = _stories;
+    if (stories.isEmpty) return;
+    final story = stories[_index.clamp(0, stories.length - 1)];
+    _stopProgress();
+    _disposeVideo();
+    if (!mounted) return;
+    setState(() => _loadingMedia = true);
+    await StoryManager.instance.deleteStory(story, relay: widget.relayManager);
+    if (!mounted) return;
+    _loadCurrent();
+  }
+
   String _displayName(String pubkey) {
     final contact = Hive.box<Contact>('contacts').get(pubkey);
     if (contact == null) return AppSettings.formatDisplayName(pubkey);
@@ -367,9 +383,9 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
                       ],
                     ),
                     actions: [
-                      IconButton(
-                        icon: const Icon(Icons.more_vert, color: Colors.white),
-                        onPressed: () {},
+                      StoryMoreMenu(
+                        canDelete: isMine,
+                        onDelete: _deleteCurrentStory,
                       ),
                     ],
                   ),
@@ -405,6 +421,35 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The existing three-dot button on the story header. Only my own story gets
+/// a delete entry; somebody else's story has no menu at all.
+class StoryMoreMenu extends StatelessWidget {
+  final bool canDelete;
+  final VoidCallback onDelete;
+
+  const StoryMoreMenu({
+    super.key,
+    required this.canDelete,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!canDelete) return const SizedBox.shrink();
+    return ChatmeMenuButton<int>(
+      icon: const Icon(Icons.more_vert, color: Colors.white),
+      entries: const [
+        ChatmeMenuEntry<int>(
+          value: 0,
+          icon: Icons.delete_outline_rounded,
+          label: 'Delete story',
+        ),
+      ],
+      onSelected: (_) => onDelete(),
     );
   }
 }

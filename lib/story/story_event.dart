@@ -2,6 +2,31 @@ import '../core/crypto/nip17_file.dart';
 import 'story_item.dart';
 
 class StoryEvent {
+  /// A retract is a story rumor carrying this tag instead of a file. It keeps
+  /// the routing kind used by the existing inbox so no chat path changes.
+  static const String deleteTag = 'story_delete';
+
+  static List<List<String>> buildDeleteTags({
+    required String receiverPubkey,
+    required String storyId,
+    required int expiresAtMs,
+  }) {
+    return [
+      ['p', receiverPubkey],
+      [deleteTag, storyId],
+      ['expiration', '${expiresAtMs ~/ 1000}'],
+    ];
+  }
+
+  static String? deleteIdFromTags(List<List<String>> tags) {
+    for (final tag in tags) {
+      if (tag.length > 1 && tag[0] == deleteTag && tag[1].isNotEmpty) {
+        return tag[1];
+      }
+    }
+    return null;
+  }
+
   static List<List<String>> buildTags({
     required String receiverPubkey,
     required FileMessage file,

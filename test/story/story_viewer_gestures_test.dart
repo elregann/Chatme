@@ -167,4 +167,52 @@ void main() {
       expect(previous, 0);
     });
   });
+
+  group('StoryMoreMenu', () {
+    testWidgets('own story offers a silent delete entry', (tester) async {
+      var deletes = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(
+              actions: [
+                StoryMoreMenu(
+                  canDelete: true,
+                  onDelete: () => deletes++,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.more_vert), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete story'), findsOneWidget);
+
+      await tester.tap(find.text('Delete story'));
+      await tester.pumpAndSettle();
+      expect(deletes, 1);
+    });
+
+    testWidgets('another person story has no delete menu', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(
+              actions: [
+                StoryMoreMenu(
+                  canDelete: false,
+                  onDelete: () => fail('delete must not be offered'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.more_vert), findsNothing);
+    });
+  });
 }

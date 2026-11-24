@@ -65,6 +65,162 @@ void main() {
     });
   });
 
+  group('delete', () {
+    final key = (privkey: privkey, pubkey: pubkey);
+
+    String decodeHeader(String header) {
+      final encoded = header.substring(6);
+      return utf8.decode(base64Url.decode(encoded.padRight(
+            (encoded.length + 3) ~/ 4 * 4,
+            '=',
+          )));
+    }
+
+    test('generateUploadKey makes a valid signing key', () {
+      final generated = BlossomService.generateUploadKey();
+
+      expect(generated.privkey, matches(RegExp(r'^[0-9a-f]{64}$')));
+      expect(generated.pubkey, bip340.getPublicKey(generated.privkey));
+    });
+
+    test('buildDeleteAuthEvent limits the token to one action, hash and server',
+        () {
+      final event = BlossomService.buildDeleteAuthEvent(
+        pubkey: pubkey,
+        privkey: privkey,
+        hash: hash.toUpperCase(),
+        server: 'https://files.example/base',
+        content: 'Delete old blobs',
+        now: 1700000000,
+      );
+
+      expect(event['kind'], 24242);
+      expect(event['content'], 'Delete old blobs');
+      expect(event['created_at'], 1699999990);
+      expect(event['tags'], [
+        ['t', 'delete'],
+        ['x', hash],
+        ['server', 'files.example'],
+        ['expiration', '1700000300'],
+      ]);
+
+      final id = NostrSigner.calculateEventId(event);
+      expect(event['id'], id);
+      expect(NostrSigner.verify(id, event['sig'], pubkey), isTrue);
+    });
+
+    test('delete header is unpadded base64url', () {
+      final event = BlossomService.buildDeleteAuthEvent(
+        pubkey: pubkey,
+        privkey: privkey,
+        hash: hash,
+        server: 'https://files.example',
+        now: 1700000000,
+      );
+
+      final header = BlossomService.deleteAuthHeader(event);
+      final encoded = header.substring(6);
+
+      expect(header, startsWith('Nostr '));
+      expect(encoded, isNot(contains('=')));
+      expect(encoded, isNot(contains('+')));
+      expect(encoded, isNot(contains('/')));
+      expect(jsonDecode(decodeHeader(header))['id'], event['id']);
+    });
+
+    test('deletes the exact blob from the server in its url', () async {
+      late http.Request seen;
+      final client = MockClient((request) async {
+        seen = request;
+        return http.Response('', 204);
+      });
+
+      await BlossomService.delete(
+        'https://files.example/$hash.enc',
+        hash: hash,
+        key: key,
+        client: client,
+      );
+
+      expect(seen.method, 'DELETE');
+      expect(seen.url.toString(), 'https://files.example/$hash');
+      expect(seen.headers['User-Agent'], startsWith('Chatme'));
+
+      final event = jsonDecode(decodeHeader(seen.headers['Authorization']!))
+          as Map<String, dynamic>;
+      expect(event['pubkey'], pubkey);
+      expect(
+            (event['tags'] as List).any(
+              (t) => t[0] == 't' && t[1] == 'delete',
+            ),
+        isTrue,
+      );
+      expect(
+            (event['tags'] as List).any(
+              (t) => t[0] == 'x' && t[1] == hash,
+            ),
+        isTrue,
+      );
+      expect(
+            (event['tags'] as List).any(
+              (t) => t[0] == 'server' && t[1] == 'files.example',
+            ),
+        isTrue,
+      );
+      expect(NostrSigner.verify(event['id'], event['sig'], pubkey), isTrue);
+    });
+
+    test('a rejected delete becomes a BlossomException with the reason',
+        () async {
+      final client = MockClient(
+            (_) async => http.Response('', 403, headers: {'x-reason': 'not owner'}),
+      );
+
+      await expectLater(
+        BlossomService.delete(
+          'https://files.example/$hash.enc',
+          hash: hash,
+          key: key,
+          client: client,
+        ),
+        throwsA(
+          isA<BlossomException>().having(
+                (e) => e.message,
+            'message',
+            allOf(contains('403'), contains('not owner')),
+          ),
+        ),
+      );
+    });
+
+    test('a bad hash or address is refused before any request', () async {
+      var calls = 0;
+      final client = MockClient((_) async {
+        calls++;
+        return http.Response('', 204);
+      });
+
+      for (final bad in ['http://files.example/$hash', 'not a url', '']) {
+        await expectLater(
+          BlossomService.delete(bad, hash: hash, key: key, client: client),
+          throwsA(isA<BlossomException>()),
+        );
+      }
+      for (final badHash in ['abc', 'z' * 64]) {
+        await expectLater(
+          BlossomService.delete(
+            'https://files.example/$hash.enc',
+            hash: badHash,
+            key: key,
+            client: client,
+          ),
+          throwsA(isA<BlossomException>()),
+        );
+      }
+      expect(calls, 0);
+    });
+  });
+
   group('upload key', () {
     Map<String, dynamic> authEventOf(http.Request request) {
       final encoded = request.headers['Authorization']!.substring(6);

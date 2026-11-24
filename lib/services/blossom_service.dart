@@ -84,8 +84,49 @@ class BlossomService {
     return (privkey: privkey, pubkey: bip340.getPublicKey(privkey));
   }
 
+  /// A one-use upload key that the caller keeps when it needs to delete the
+  /// blob later. Chat uses [_throwawayKey] instead and forgets the key.
+  static ({String privkey, String pubkey}) generateUploadKey() => _throwawayKey();
+
+  /// Signed kind 24242 event authorizing one delete on one server. BUD-11
+  /// server scoping keeps a leaked token useless anywhere else.
+  static Map<String, dynamic> buildDeleteAuthEvent({
+    required String pubkey,
+    required String privkey,
+    required String hash,
+    required String server,
+    String content = 'Delete file',
+    int? now,
+  }) {
+    final serverHost = Uri.tryParse(server)?.host ?? '';
+    if (serverHost.isEmpty) {
+      throw const BlossomException('delete server must be a URL');
+    }
+    final seconds = now ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final unsigned = <String, dynamic>{
+      'kind': 24242,
+      'pubkey': pubkey,
+      'created_at': seconds - _authBackdateSeconds,
+      'tags': [
+        ['t', 'delete'],
+        ['x', hash.toLowerCase()],
+        ['server', serverHost],
+        ['expiration', '${seconds + _authTtlSeconds}'],
+      ],
+      'content': content,
+    };
+    final id = NostrSigner.calculateEventId(unsigned);
+    return {...unsigned, 'id': id, 'sig': NostrSigner.sign(id, privkey)};
+  }
+
   static String authHeader(Map<String, dynamic> event) {
     return 'Nostr ${base64.encode(utf8.encode(jsonEncode(event)))}';
+  }
+
+  /// BUD-11 asks for unpadded base64url, unlike the older header [authHeader].
+  static String deleteAuthHeader(Map<String, dynamic> event) {
+    final encoded = base64Url.encode(utf8.encode(jsonEncode(event)));
+    return 'Nostr ${encoded.replaceAll('=', '')}';
   }
 
   static const String _userAgent = 'Chatme/1.0 (Flutter)';
@@ -105,6 +146,56 @@ class BlossomService {
       }) async {
     final hash = FileCrypto.sha256Hex(bytes);
     final key = _throwawayKey();
+    final event = buildAuthEvent(
+      pubkey: key.pubkey,
+      privkey: key.privkey,
+      hash: hash,
+      content: description,
+    );
+    final http.Client httpClient = client ?? http.Client();
+
+    try {
+      final response = await httpClient
+          .put(
+        Uri.parse('${_base(server)}/upload'),
+        headers: {
+          'Authorization': authHeader(event),
+          'Content-Type': contentType,
+          'X-SHA-256': hash,
+          if (!kIsWeb) 'User-Agent': _userAgent,
+        },
+        body: bytes,
+      )
+          .timeout(_timeout);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final reason = response.headers['x-reason'];
+        throw BlossomException(
+          'upload failed (${response.statusCode})${reason == null ? '' : ': $reason'}',
+        );
+      }
+
+      return _storedBlob(response.body, hash);
+    } on BlossomException {
+      rethrow;
+    } catch (e) {
+      throw BlossomException('upload failed: $e');
+    } finally {
+      if (client == null) httpClient.close();
+    }
+  }
+
+  /// Same upload as [upload], but with a caller-owned key so the caller can
+  /// sign a delete later. Normal chat uploads keep using [upload].
+  static Future<BlossomBlob> uploadWithKey(
+    Uint8List bytes, {
+    required ({String privkey, String pubkey}) key,
+    String contentType = 'application/octet-stream',
+    String server = defaultServer,
+    String description = 'Upload file',
+    http.Client? client,
+  }) async {
+    final hash = FileCrypto.sha256Hex(bytes);
     final event = buildAuthEvent(
       pubkey: key.pubkey,
       privkey: key.privkey,
@@ -293,6 +384,85 @@ class BlossomService {
       }
     }
     throw last ?? const BlossomException('no upload server configured');
+  }
+
+  /// Tries [servers] in order with one caller-owned upload key, for uploads
+  /// whose blob may have to be deleted later.
+  static Future<BlossomBlob> uploadToAnyWithKey(
+    Uint8List bytes, {
+    required ({String privkey, String pubkey}) key,
+    List<String> servers = defaultServers,
+    String description = 'Upload file',
+    http.Client? client,
+  }) async {
+    BlossomException? last;
+    for (final server in servers) {
+      try {
+        return await uploadWithKey(
+          bytes,
+          key: key,
+          server: server,
+          description: description,
+          client: client,
+        );
+      } on BlossomException catch (e) {
+        last = BlossomException('${Uri.tryParse(server)?.host ?? server}: ${e.message}');
+      }
+    }
+    throw last ?? const BlossomException('no upload server configured');
+  }
+
+  /// Asks the server named in [url] to delete the blob [hash]. The signed key
+  /// must be the one that uploaded it. This best-effort call only removes the
+  /// server's record; mirrors and events already on relays are untouched.
+  static Future<void> delete(
+    String url, {
+    required String hash,
+    required ({String privkey, String pubkey}) key,
+    http.Client? client,
+  }) async {
+    final blobHash = hash.toLowerCase();
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(blobHash)) {
+      throw const BlossomException('invalid blob hash');
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      throw const BlossomException('file address must be https');
+    }
+    final port = uri.hasPort ? ':${uri.port}' : '';
+    final origin = '${uri.scheme}://${uri.host}$port';
+    final event = buildDeleteAuthEvent(
+      pubkey: key.pubkey,
+      privkey: key.privkey,
+      hash: blobHash,
+      server: origin,
+      content: 'Delete story blob',
+    );
+    final http.Client httpClient = client ?? http.Client();
+
+    try {
+      final response = await httpClient
+          .delete(
+        Uri.parse('${_base(origin)}/$blobHash'),
+        headers: {
+          'Authorization': deleteAuthHeader(event),
+          if (!kIsWeb) 'User-Agent': _userAgent,
+        },
+      )
+          .timeout(_timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final reason = response.headers['x-reason'];
+        throw BlossomException(
+          'delete failed (${response.statusCode})${reason == null ? '' : ': $reason'}',
+        );
+      }
+    } on BlossomException {
+      rethrow;
+    } catch (e) {
+      throw BlossomException('delete failed: $e');
+    } finally {
+      if (client == null) httpClient.close();
+    }
   }
 
   /// Downloads [url]. The address comes from the sender, so only https is

@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:bip340/bip340.dart' as bip340;
+import 'package:chatme/core/crypto/nip17.dart';
+import 'package:chatme/core/crypto/nip17_file.dart';
 import 'package:chatme/core/utils/bg_inbox.dart';
 import 'package:chatme/core/utils/sync_gate.dart';
 import 'package:chatme/models/call_log.dart';
@@ -10,8 +15,10 @@ import 'package:chatme/services/account_logout.dart';
 import 'package:chatme/services/app_settings.dart';
 import 'package:chatme/services/identity_secret_store.dart';
 import 'package:chatme/services/link_preview_service.dart';
+import 'package:chatme/story/story_event.dart';
 import 'package:chatme/story/story_item.dart';
 import 'package:chatme/story/story_manager.dart';
+import 'package:chatme/story/story_store.dart';
 import 'package:chatme/tab_profile.dart';
 import 'package:chatme/widgets/chatme_menu.dart';
 import 'package:flutter/material.dart';
@@ -20,16 +27,28 @@ import 'package:flutter_test/flutter_test.dart';
 // ignore: depend_on_referenced_packages
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:hive/hive.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 class _FakeRelay extends RelayManager {
   int connects = 0;
   int disconnects = 0;
+  final List<Map<String, dynamic>> published = [];
+  int publishedAtDisconnect = 0;
 
   @override
   void connect() => connects++;
 
   @override
-  void disconnect() => disconnects++;
+  void disconnect() {
+    publishedAtDisconnect = published.length;
+    disconnects++;
+  }
+
+  @override
+  void publishSignedEvent(Map<String, dynamic> event) {
+    published.add(event);
+  }
 }
 
 class _SilentNotifications extends FlutterLocalNotificationsPlatform {
@@ -294,5 +313,307 @@ void main() {
 
     expect(find.text('Security Vault'), findsOneWidget);
     expect(find.text('Restore Account'), findsNothing);
+  });
+
+  group('story cleanup', () {
+    const uploadPrivkey =
+        '0000000000000000000000000000000000000000000000000000000000000003';
+    final uploadPubkey = bip340.getPublicKey(uploadPrivkey);
+    const blobHash =
+        'abababababababababababababababababababababababababababababababab';
+    const accountPrivkey =
+        '0000000000000000000000000000000000000000000000000000000000000001';
+    const peerPrivkey =
+        '0000000000000000000000000000000000000000000000000000000000000002';
+
+    Future<void> useValidIdentity() async {
+      final pubkey = bip340.getPublicKey(accountPrivkey);
+      final peerPubkey = bip340.getPublicKey(peerPrivkey);
+      await secretStore.write(
+        privkey: accountPrivkey,
+        mnemonic: 'old account words',
+      );
+      await Hive.box('settings').put('my_pubkey', pubkey);
+      await Hive.box<Contact>('contacts').clear();
+      await Hive.box<Contact>('contacts').put(
+        peerPubkey,
+        Contact(pubkey: peerPubkey, name: 'Peer'),
+      );
+      AppSettings.instance.myPubkey = pubkey;
+      await AppSettings.instance.load();
+    }
+
+    StoryItem story({required bool mine, int? expiresAt}) => StoryItem(
+          id: mine ? 'mine_story' : 'peer_story',
+          authorPubkey: mine ? AppSettings.instance.myPubkey : 'peer',
+          createdAt: 100,
+          expiresAt: expiresAt ??
+              DateTime.now().millisecondsSinceEpoch + const Duration(hours: 1).inMilliseconds,
+          mediaUrl: 'https://files.example/$blobHash.enc',
+          mimeType: 'image/jpeg',
+          encryptionKey: 'k',
+          encryptionNonce: 'n',
+          fileHash: blobHash,
+          originalHash: 'oh',
+          localPath: '${mediaDir.path}/stories/cleanup.jpg',
+          uploadPrivkey: uploadPrivkey,
+          uploadPubkey: uploadPubkey,
+        );
+
+    Map<String, dynamic> authEventOf(http.Request request) {
+      final encoded = request.headers['Authorization']!.substring(6);
+      return jsonDecode(
+        utf8.decode(
+          base64Url.decode(encoded.padRight((encoded.length + 3) ~/ 4 * 4, '=')),
+        ),
+      ) as Map<String, dynamic>;
+    }
+
+    setUp(() async {
+      await Hive.box<Map>('stories').clear();
+    });
+
+    test('manual delete drops the story without waiting for the server',
+        () async {
+      final gate = Completer<void>();
+      final seen = Completer<http.Request>();
+      final client = MockClient((request) async {
+        if (!seen.isCompleted) seen.complete(request);
+        await gate.future;
+        return http.Response('', 204);
+      });
+      final item = story(mine: true);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await StoryManager.instance
+          .deleteStory(item, client: client)
+          .timeout(const Duration(seconds: 5));
+
+      expect(Hive.box<Map>('stories').containsKey(item.id), isFalse);
+      final request = await seen.future.timeout(const Duration(seconds: 5));
+      expect(request.method, 'DELETE');
+      expect(request.url.toString(), 'https://files.example/$blobHash');
+      final event = authEventOf(request);
+      expect(event['pubkey'], uploadPubkey);
+      expect(
+            (event['tags'] as List).any(
+              (t) => t[0] == 't' && t[1] == 'delete',
+            ),
+        isTrue,
+      );
+      gate.complete();
+    });
+
+    test('manual delete ignores a story that is not mine', () async {
+      final requests = <http.Request>[];
+      final client = MockClient((request) async {
+        requests.add(request);
+        return http.Response('', 204);
+      });
+      final item = story(mine: false);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await StoryManager.instance.deleteStory(item, client: client);
+
+      expect(requests, isEmpty);
+      expect(Hive.box<Map>('stories').containsKey(item.id), isTrue);
+    });
+
+    test('expiry sweep signs a delete before dropping the story', () async {
+      final seen = Completer<http.Request>();
+      final client = MockClient((request) async {
+        if (!seen.isCompleted) seen.complete(request);
+        return http.Response('', 204);
+      });
+      final expired = DateTime.now().millisecondsSinceEpoch - 1000;
+      final item = story(mine: true, expiresAt: expired);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await StoryManager.instance.purgeExpired(client: client);
+      final request = await seen.future.timeout(const Duration(seconds: 5));
+
+      expect(request.method, 'DELETE');
+      expect(request.url.toString(), 'https://files.example/$blobHash');
+      expect(authEventOf(request)['pubkey'], uploadPubkey);
+      expect(Hive.box<Map>('stories').containsKey(item.id), isFalse);
+    });
+
+    test('logout signs a delete for a story that has not expired', () async {
+      final seen = Completer<http.Request>();
+      final client = MockClient((request) async {
+        if (!seen.isCompleted) seen.complete(request);
+        return http.Response('', 204);
+      });
+      final item = story(mine: true);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await StoryManager.instance.clearAll(client: client);
+      final request = await seen.future.timeout(const Duration(seconds: 5));
+
+      expect(request.method, 'DELETE');
+      expect(request.url.toString(), 'https://files.example/$blobHash');
+      expect(authEventOf(request)['pubkey'], uploadPubkey);
+      expect(Hive.box<Map>('stories').isEmpty, isTrue);
+    });
+
+    test('manual delete publishes retracts to contacts and self', () async {
+      await useValidIdentity();
+      final relay = _FakeRelay();
+      final client = MockClient((_) async => http.Response('', 204));
+      final item = story(mine: true);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await StoryManager.instance.deleteStory(
+        item,
+        client: client,
+        relay: relay,
+      );
+
+      expect(relay.published, hasLength(2));
+      for (final event in relay.published) {
+        expect(event['kind'], Nip17.kindGiftWrap);
+      }
+      expect(Hive.box<Map>('stories').containsKey(item.id), isFalse);
+    });
+
+    test('published retract unwraps to the story id for the recipient',
+        () async {
+      await useValidIdentity();
+      final relay = _FakeRelay();
+      final client = MockClient((_) async => http.Response('', 204));
+      final item = story(mine: true);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await StoryManager.instance.deleteStory(
+        item,
+        client: client,
+        relay: relay,
+      );
+
+      Nip17Result? opened;
+      for (final event in relay.published) {
+        try {
+          opened = await Nip17.unwrap(
+            giftWrapEvent: event,
+            receiverPrivkey: peerPrivkey,
+            receiverPubkey: bip340.getPublicKey(peerPrivkey),
+          );
+          break;
+        } catch (_) {}
+      }
+
+      expect(opened, isNotNull);
+      expect(opened!.rumorKind, Nip17.kindStoryPost);
+      expect(opened.plaintext, item.id);
+      expect(
+        opened.rumorTags.any((t) => t.length > 1 && t[0] == 'story_delete' && t[1] == item.id),
+        isTrue,
+      );
+    });
+
+    test('incoming retract drops the story and blocks a late resend', () async {
+      final item = story(mine: false);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+      final tags = StoryEvent.buildDeleteTags(
+        receiverPubkey: AppSettings.instance.myPubkey,
+        storyId: item.id,
+        expiresAtMs: DateTime.now().millisecondsSinceEpoch + 60000,
+      );
+
+      final handled = await StoryManager.instance.handleIncomingRumor(
+        rumorId: 'retract_rumor',
+        senderPubkey: 'peer',
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+        tags: tags,
+        content: item.id,
+      );
+
+      expect(handled, isTrue);
+      expect(Hive.box<Map>('stories').containsKey(item.id), isFalse);
+
+      final late = StoryItem(
+        id: item.id,
+        authorPubkey: 'peer',
+        createdAt: 100,
+        expiresAt: DateTime.now().millisecondsSinceEpoch + 60000,
+        mediaUrl: 'https://files.example/late.enc',
+        mimeType: 'image/jpeg',
+        encryptionKey: '00' * 32,
+        encryptionNonce: '00' * 12,
+        fileHash: blobHash,
+        originalHash: blobHash,
+      );
+      final file = FileMessage(
+        url: late.mediaUrl,
+        mimeType: late.mimeType,
+        key: late.encryptionKey,
+        nonce: late.encryptionNonce,
+        hash: late.fileHash,
+        originalHash: late.originalHash,
+      );
+      await StoryManager.instance.handleIncomingRumor(
+        rumorId: late.id,
+        senderPubkey: 'peer',
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+        tags: StoryEvent.buildTags(
+          receiverPubkey: AppSettings.instance.myPubkey,
+          file: file,
+          expiresAtMs: late.expiresAt,
+        ),
+        content: file.url,
+      );
+
+      expect(Hive.box<Map>('stories').containsKey(late.id), isFalse);
+    });
+
+    test('retract from a stranger leaves the story in place', () async {
+      final item = story(mine: false);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+      final tags = StoryEvent.buildDeleteTags(
+        receiverPubkey: AppSettings.instance.myPubkey,
+        storyId: item.id,
+        expiresAtMs: DateTime.now().millisecondsSinceEpoch + 60000,
+      );
+
+      await StoryManager.instance.handleIncomingRumor(
+        rumorId: 'retract_rumor',
+        senderPubkey: 'stranger',
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+        tags: tags,
+        content: item.id,
+      );
+
+      expect(Hive.box<Map>('stories').containsKey(item.id), isTrue);
+      expect(StoryManager.instance.activeStories().map((s) => s.id), contains(item.id));
+    });
+
+    test('logout retracts own stories before disconnecting', () async {
+      await useValidIdentity();
+      final relay = _FakeRelay();
+      final item = story(mine: true);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await AccountLogout.signOut(relay);
+
+      expect(relay.published, hasLength(2));
+      expect(relay.publishedAtDisconnect, 2);
+      expect(Hive.box<Map>('stories').isEmpty, isTrue);
+    });
+
+    test('expired tombstones are pruned with the stories', () async {
+      final store = StoryStore();
+      await store.putTombstone(
+        'gone_story',
+        'peer',
+        DateTime.now().millisecondsSinceEpoch - 1000,
+      );
+
+      expect(store.isTombstoned('gone_story', 'peer'), isFalse);
+      await store.purgeExpired();
+      expect(
+        Hive.box<Map>('stories').containsKey(StoryStore.tombstoneKey('gone_story')),
+        isFalse,
+      );
+    });
   });
 }

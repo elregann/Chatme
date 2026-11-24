@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:http/http.dart' as http;
 
 import '../core/crypto/nip17.dart';
 import '../core/crypto/nip17_file.dart';
@@ -42,7 +43,8 @@ class StoryManager {
 
   /// Wipes every story on this device, including the previous account's self
   /// envelope. Called by account logout before the settings box is cleared.
-  Future<void> clearAll() async {
+  /// Blobs are deleted on a best-effort basis: logout never waits on a server.
+  Future<void> clearAll({http.Client? client}) async {
     if (!Hive.isBoxOpen(StoryStore.boxName)) return;
     final box = Hive.box<Map>(StoryStore.boxName);
     final items = <StoryItem>[];
@@ -53,6 +55,7 @@ class StoryManager {
     }
     for (final story in items) {
       _deleteLocalMediaBestEffort(story.localPath);
+      _deleteRemoteBlobBestEffort(story, client: client);
     }
     await box.clear();
     notify();
@@ -78,14 +81,76 @@ class StoryManager {
     return authors;
   }
 
-  Future<void> purgeExpired() async {
+  Future<void> purgeExpired({http.Client? client}) async {
     final expired = await store.purgeExpired();
     if (expired.isEmpty) return;
     for (final story in expired) {
       _deleteLocalMediaBestEffort(story.localPath);
-      _deleteRemoteBlobBestEffort(story.mediaUrl);
+      _deleteRemoteBlobBestEffort(story, client: client);
     }
     notify();
+  }
+
+  /// Removes one of my stories from this device, tells the recipients to do
+  /// the same, and asks its server to delete the blob. Silent by design: no
+  /// snackbar, no dialog on success or failure.
+  Future<void> deleteStory(
+    StoryItem story, {
+    http.Client? client,
+    RelayManager? relay,
+  }) async {
+    final myPubkey = AppSettings.instance.myPubkey;
+    if (myPubkey.isEmpty || story.authorPubkey != myPubkey) return;
+    await store.delete(story.id);
+    _deleteLocalMediaBestEffort(story.localPath);
+    notify();
+    if (relay != null) {
+      await _publishStoryDelete(storyId: story.id, relay: relay);
+    }
+    _deleteRemoteBlobBestEffort(story, client: client);
+  }
+
+  /// Tells every recipient, plus this account's own devices, that a story is
+  /// gone. Called on logout before the relay is disconnected and the identity
+  /// is wiped. Wrap creation is local work; publishing is already best effort.
+  Future<void> publishLogoutRetracts(RelayManager relay) async {
+    final myPubkey = AppSettings.instance.myPubkey;
+    if (myPubkey.isEmpty) return;
+    for (final story in activeStories(authorPubkey: myPubkey)) {
+      await _publishStoryDelete(storyId: story.id, relay: relay);
+    }
+  }
+
+  Future<void> _publishStoryDelete({
+    required String storyId,
+    required RelayManager relay,
+  }) async {
+    final myPubkey = AppSettings.instance.myPubkey;
+    final myPrivkey = AppSettings.instance.myPrivkey;
+    if (myPubkey.isEmpty || myPrivkey.isEmpty || storyId.isEmpty) return;
+    try {
+      final expiresAtMs = DateTime.now().millisecondsSinceEpoch +
+          StoryItem.defaultDuration.inMilliseconds;
+      final wraps = await Nip17.wrapMulti(
+        plaintext: storyId,
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPubkey,
+        receiverPubkeys: _storyRecipients(),
+        rumorReceiverPubkey: myPubkey,
+        kind: Nip17.kindStoryPost,
+        customTags: StoryEvent.buildDeleteTags(
+          receiverPubkey: myPubkey,
+          storyId: storyId,
+          expiresAtMs: expiresAtMs,
+        ),
+        forcedTimestampSec: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
+      for (final wrapped in wraps) {
+        relay.publishSignedEvent(wrapped.giftWrap);
+      }
+    } catch (e) {
+      DebugLogger.log('[Story] Retract publish failed | $e', type: 'WARN');
+    }
   }
 
   void _deleteLocalMediaBestEffort(String path) {
@@ -100,11 +165,31 @@ class StoryManager {
     }());
   }
 
-  void _deleteRemoteBlobBestEffort(String url) {
-    if (url.isEmpty) return;
-    // Blossom delete is not standardized in current client/service; best-effort
-    // cleanup is limited to local expiry. Keep hook for future support.
-    DebugLogger.log('[Story] Blob delete best-effort skipped (unsupported) | $url');
+  void _deleteRemoteBlobBestEffort(StoryItem story, {http.Client? client}) {
+    if (story.uploadPrivkey.isEmpty || story.uploadPubkey.isEmpty) return;
+    unawaited(_deleteRemoteBlob(story, client: client));
+  }
+
+  Future<void> _deleteRemoteBlob(StoryItem story, {http.Client? client}) async {
+    if (story.uploadPrivkey.isEmpty || story.uploadPubkey.isEmpty) {
+      DebugLogger.log(
+        '[Story] Blob delete skipped (no upload key) | ${story.mediaUrl}',
+      );
+      return;
+    }
+    try {
+      await BlossomService.delete(
+        story.mediaUrl,
+        hash: story.fileHash,
+        key: (
+          privkey: story.uploadPrivkey,
+          pubkey: story.uploadPubkey,
+        ),
+        client: client,
+      );
+    } catch (e) {
+      DebugLogger.log('[Story] Blob delete failed | $e', type: 'WARN');
+    }
   }
 
   Future<StoryItem> createStory({
@@ -119,9 +204,13 @@ class StoryManager {
     final myPubkey = AppSettings.instance.myPubkey;
     if (myPubkey.isEmpty) throw Exception('Missing identity');
 
-    final uploaded = await FileSendService.encryptAndUpload(
+    // Only stories keep the upload key, so they can delete the blob later.
+    // Chat uploads still use FileSendService.encryptAndUpload and forget it.
+    final uploadKey = BlossomService.generateUploadKey();
+    final uploaded = await FileSendService.encryptAndUploadWithKey(
       source: file,
       mimeType: mimeType,
+      key: uploadKey,
       durationSeconds: durationSeconds,
       width: width,
       height: height,
@@ -170,6 +259,8 @@ class StoryManager {
       durationSeconds: durationSeconds,
       size: uploaded.plainSize ?? uploaded.size,
       localPath: localPath,
+      uploadPrivkey: uploadKey.privkey,
+      uploadPubkey: uploadKey.pubkey,
     );
     await store.put(item);
     notify();
@@ -230,6 +321,14 @@ class StoryManager {
     required List<List<String>> tags,
     required String content,
   }) async {
+    final deleteId = StoryEvent.deleteIdFromTags(tags);
+    if (deleteId != null) {
+      return _handleIncomingDelete(
+        storyId: deleteId,
+        authorPubkey: senderPubkey,
+      );
+    }
+
     final story = StoryEvent.fromRumor(
       rumorId: rumorId,
       authorPubkey: senderPubkey,
@@ -246,17 +345,46 @@ class StoryManager {
     }
     final now = DateTime.now().millisecondsSinceEpoch;
     if (story.isExpiredAt(now)) return true;
+    if (store.isTombstoned(story.id, story.authorPubkey)) return true;
 
     final existing = store.getById(story.id);
     if (existing != null) {
       await store.put(story.copyWith(
         localPath: existing.localPath,
         viewedBy: existing.viewedBy,
+        uploadPrivkey: existing.uploadPrivkey,
+        uploadPubkey: existing.uploadPubkey,
       ));
     } else {
       await store.put(story);
     }
     notify();
+    return true;
+  }
+
+  /// Applies a retract from the story's author. The tombstone also covers a
+  /// story copy that arrives later from a relay replay.
+  Future<bool> _handleIncomingDelete({
+    required String storyId,
+    required String authorPubkey,
+  }) async {
+    final myPubkey = AppSettings.instance.myPubkey;
+    final isKnownContact = Hive.box<Contact>('contacts').containsKey(authorPubkey);
+    if (authorPubkey != myPubkey && !isKnownContact) return true;
+    if (store.isTombstoned(storyId, authorPubkey)) return true;
+
+    final existing = store.getById(storyId);
+    if (existing != null && existing.authorPubkey == authorPubkey) {
+      await store.delete(storyId);
+      _deleteLocalMediaBestEffort(existing.localPath);
+      notify();
+    }
+    await store.putTombstone(
+      storyId,
+      authorPubkey,
+      DateTime.now().millisecondsSinceEpoch +
+          StoryItem.defaultDuration.inMilliseconds,
+    );
     return true;
   }
 

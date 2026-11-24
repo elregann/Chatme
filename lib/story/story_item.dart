@@ -19,6 +19,11 @@ class StoryItem {
   final String localPath;
   final Map<String, int> viewedBy;
 
+  /// One-use Blossom auth key kept only by stories we posted, so the blob can
+  /// be deleted at expiry, on logout or when the user deletes the story.
+  final String uploadPrivkey;
+  final String uploadPubkey;
+
   const StoryItem({
     required this.id,
     required this.authorPubkey,
@@ -37,6 +42,8 @@ class StoryItem {
     this.size,
     this.localPath = '',
     this.viewedBy = const {},
+    this.uploadPrivkey = '',
+    this.uploadPubkey = '',
   });
 
   bool get isImage => mimeType.startsWith('image/');
@@ -62,6 +69,8 @@ class StoryItem {
     int? size,
     String? localPath,
     Map<String, int>? viewedBy,
+    String? uploadPrivkey,
+    String? uploadPubkey,
   }) {
     return StoryItem(
       id: id ?? this.id,
@@ -81,6 +90,8 @@ class StoryItem {
       size: size ?? this.size,
       localPath: localPath ?? this.localPath,
       viewedBy: viewedBy ?? Map<String, int>.from(this.viewedBy),
+      uploadPrivkey: uploadPrivkey ?? this.uploadPrivkey,
+      uploadPubkey: uploadPubkey ?? this.uploadPubkey,
     );
   }
 
@@ -102,6 +113,8 @@ class StoryItem {
         'size': size,
         'localPath': localPath,
         'viewedBy': viewedBy,
+        'uploadPrivkey': uploadPrivkey,
+        'uploadPubkey': uploadPubkey,
       };
 
   factory StoryItem.fromMap(Map<dynamic, dynamic> map) {
@@ -139,6 +152,8 @@ class StoryItem {
       size: parseInt(map['size']),
       localPath: map['localPath']?.toString() ?? '',
       viewedBy: viewedBy,
+      uploadPrivkey: map['uploadPrivkey']?.toString() ?? '',
+      uploadPubkey: map['uploadPubkey']?.toString() ?? '',
     );
   }
 }

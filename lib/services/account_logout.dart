@@ -45,6 +45,13 @@ class AccountLogout {
   static Future<void> signOut(RelayManager relayManager) async {
     final oldPubkey = AppSettings.instance.myPubkey;
 
+    // Tell recipients while the identity and the relay connection still exist;
+    // after disconnect there is no way to sign or send a retract.
+    await _guard(
+      'retract stories',
+      () => StoryManager.instance.publishLogoutRetracts(relayManager),
+    );
+
     // Stop live traffic before deleting the state it writes to.
     await _guard('relay disconnect', () async => relayManager.disconnect());
     ChatScreenRegistry.clearAll();
