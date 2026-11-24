@@ -8,6 +8,7 @@ import 'package:chatme/models/contact.dart';
 import 'package:chatme/relay_manager.dart';
 import 'package:chatme/services/account_logout.dart';
 import 'package:chatme/services/app_settings.dart';
+import 'package:chatme/services/identity_secret_store.dart';
 import 'package:chatme/services/link_preview_service.dart';
 import 'package:chatme/tab_profile.dart';
 import 'package:chatme/widgets/chatme_menu.dart';
@@ -45,6 +46,7 @@ void main() {
   late Directory mediaDir;
   late Directory voiceDir;
   late Future<void> Function() originalWebViewDataCleaner;
+  late InMemoryIdentitySecretStore secretStore;
   int webViewClears = 0;
 
   setUpAll(() async {
@@ -108,13 +110,17 @@ void main() {
     AccountLogout.clearWebViewData = () async {
       webViewClears++;
     };
+    secretStore = InMemoryIdentitySecretStore();
+    AppSettings.instance.setIdentitySecretStoreForTest(secretStore);
+    await secretStore.write(
+      privkey: 'old_account_privkey',
+      mnemonic: 'old account words',
+    );
 
     final settings = Hive.box('settings');
     await settings.clear();
     await settings.putAll({
       'my_pubkey': 'old_account_pubkey',
-      'my_privkey': 'old_account_privkey',
-      'my_mnemonic': 'old account words',
       'my_nip05': 'old@chatme',
       'my_about': 'old bio',
       'my_photo_path': 'old-photo.jpg',
@@ -196,6 +202,8 @@ void main() {
     expect(AppSettings.instance.myPubkey, isEmpty);
     expect(AppSettings.instance.myPrivkey, isEmpty);
     expect(AppSettings.instance.myMnemonic, isEmpty);
+    expect(await secretStore.readPrivkey(), isNull);
+    expect(await secretStore.readMnemonic(), isNull);
 
     expect(relay.disconnects, 1);
     expect(relay.connects, 0);

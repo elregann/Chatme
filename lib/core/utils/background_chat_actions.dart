@@ -17,6 +17,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../chat_notification_handler.dart';
 import '../../models/chat_message.dart';
 import '../../models/contact.dart';
+import '../../services/identity_secret_store.dart';
 import '../crypto/nip17.dart';
 import 'bg_inbox.dart';
 
@@ -48,7 +49,7 @@ class BackgroundChatActions {
       await _prepareHive();
 
       final settingsBox = await _openBox('settings');
-      final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+      final myPrivkey = await SecureIdentitySecretStore.readPrivkeySafe();
       final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
       if (myPrivkey.isEmpty || myPubkey.isEmpty) return;
 
@@ -119,7 +120,7 @@ class BackgroundChatActions {
       await _prepareHive();
 
       final settingsBox = await _openBox('settings');
-      final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+      final myPrivkey = await SecureIdentitySecretStore.readPrivkeySafe();
       final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
       if (myPrivkey.isEmpty || myPubkey.isEmpty) return;
 

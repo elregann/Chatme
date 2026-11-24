@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:bip340/bip340.dart' as bip340;
 import 'package:chatme/models/contact.dart';
 import 'package:chatme/services/app_settings.dart';
+import 'package:chatme/services/identity_secret_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 
@@ -12,6 +13,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
+  late InMemoryIdentitySecretStore secretStore;
   const originalPrivkey =
       '1111111111111111111111111111111111111111111111111111111111111111';
 
@@ -29,11 +31,13 @@ void main() {
   });
 
   setUp(() async {
+    secretStore = InMemoryIdentitySecretStore();
+    AppSettings.instance.setIdentitySecretStoreForTest(secretStore);
     final settings = Hive.box('settings');
+    await settings.clear();
+    await secretStore.write(privkey: originalPrivkey, mnemonic: '');
     await settings.putAll({
-      'my_privkey': originalPrivkey,
       'my_pubkey': bip340.getPublicKey(originalPrivkey),
-      'my_mnemonic': '',
       'my_nip05': '',
       'is_nip05_verified': false,
       'my_about': '',
@@ -54,7 +58,8 @@ void main() {
 
     expect(AppSettings.instance.myPrivkey, originalPrivkey);
     expect(AppSettings.instance.myPubkey, bip340.getPublicKey(originalPrivkey));
-    expect(Hive.box('settings').get('my_privkey'), originalPrivkey);
+    expect(await secretStore.readPrivkey(), originalPrivkey);
+    expect(Hive.box('settings').get('my_privkey'), isNull);
   });
 
   test('a valid import still switches the identity', () async {
@@ -65,6 +70,7 @@ void main() {
 
     expect(AppSettings.instance.myPrivkey, nextPrivkey);
     expect(AppSettings.instance.myPubkey, bip340.getPublicKey(nextPrivkey));
-    expect(Hive.box('settings').get('my_privkey'), nextPrivkey);
+    expect(await secretStore.readPrivkey(), nextPrivkey);
+    expect(Hive.box('settings').get('my_privkey'), isNull);
   });
 }

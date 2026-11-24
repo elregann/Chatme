@@ -13,6 +13,7 @@ import 'package:chatme/models/call_log.dart';
 import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/models/contact.dart';
 import 'package:chatme/services/app_settings.dart';
+import 'package:chatme/services/identity_secret_store.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -40,6 +41,7 @@ void main() {
 
   late Directory tempDir;
   late Directory inboxDir;
+  late InMemoryIdentitySecretStore secretStore;
   final myPubkey = bip340.getPublicKey(_key(1));
   final peer = bip340.getPublicKey(_key(2));
 
@@ -74,7 +76,9 @@ void main() {
     await Hive.box<CallLog>('call_logs').clear();
     final settings = Hive.box('settings');
     await settings.clear();
-    await settings.put('my_privkey', _key(1));
+    secretStore = InMemoryIdentitySecretStore();
+    AppSettings.instance.setIdentitySecretStoreForTest(secretStore);
+    await secretStore.write(privkey: _key(1), mnemonic: '');
     await settings.put('my_pubkey', myPubkey);
     AppSettings.instance.myPrivkey = _key(1);
     AppSettings.instance.myPubkey = myPubkey;

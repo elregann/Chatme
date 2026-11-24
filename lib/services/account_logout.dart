@@ -129,6 +129,9 @@ class AccountLogout {
     await _guard('clear profile cache', ProfileMetaStore.clearAll);
     await _guard('clear link previews', LinkPreviewService.instance.clear);
     await _guard('clear WebView data', clearWebViewData);
+    await _guard('clear identity secrets', () async {
+      await AppSettings.instance.clearIdentitySecrets();
+    });
     await _guard('clear settings', () async {
       if (Hive.isBoxOpen('settings')) await Hive.box('settings').clear();
     });

@@ -19,6 +19,7 @@ import 'core/utils/sync_gate.dart';
 import 'core/utils/shortcut_helper.dart';
 import 'call_notification_handler.dart';
 import 'core/utils/bg_inbox.dart';
+import 'services/identity_secret_store.dart';
 
 /// Background FCM handler for chat (runs in separate isolate).
 @pragma('vm:entry-point')
@@ -92,7 +93,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   final settingsBox = await Hive.openBox('settings');
-  final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+  final myPrivkey = await SecureIdentitySecretStore.readPrivkeySafe();
   final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
 
   String plaintext = 'You have a new message';
@@ -248,7 +249,7 @@ class ChatNotificationHandler {
     if (ephemeralPubkey.isNotEmpty && ciphertext.isNotEmpty) {
       try {
         final settingsBox = Hive.box('settings');
-        final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+        final myPrivkey = await SecureIdentitySecretStore.readPrivkeySafe();
         final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
         if (myPrivkey.isNotEmpty) {
           final result = await Nip17.unwrap(

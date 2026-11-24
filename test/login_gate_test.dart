@@ -4,6 +4,7 @@ import 'package:bip340/bip340.dart' as bip340;
 import 'package:chatme/core/crypto/key_generator.dart';
 import 'package:chatme/core/utils/sync_gate.dart';
 import 'package:chatme/services/app_settings.dart';
+import 'package:chatme/services/identity_secret_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 
@@ -11,6 +12,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
+  late InMemoryIdentitySecretStore secretStore;
 
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('chatme_login_gate_test');
@@ -25,6 +27,8 @@ void main() {
 
   setUp(() async {
     SyncGate.resetForTest();
+    secretStore = InMemoryIdentitySecretStore();
+    AppSettings.instance.setIdentitySecretStoreForTest(secretStore);
     await Hive.box('settings').clear();
     AppSettings.instance.myPubkey = '';
     AppSettings.instance.myPrivkey = '';
@@ -40,6 +44,7 @@ void main() {
     expect(AppSettings.instance.myMnemonic, isEmpty);
     expect(Hive.box('settings').get('my_pubkey'), isNull);
     expect(Hive.box('settings').get('my_privkey'), isNull);
+    expect(await secretStore.readPrivkey(), isNull);
     expect(SyncGate.isActive, isFalse);
   });
 
@@ -58,8 +63,10 @@ void main() {
     expect(AppSettings.instance.myMnemonic, mnemonic);
     expect(AppSettings.instance.myPrivkey, expectedPrivkey);
     expect(AppSettings.instance.myPubkey, bip340.getPublicKey(expectedPrivkey));
-    expect(Hive.box('settings').get('my_mnemonic'), mnemonic);
-    expect(Hive.box('settings').get('my_privkey'), expectedPrivkey);
+    expect(await secretStore.readMnemonic(), mnemonic);
+    expect(await secretStore.readPrivkey(), expectedPrivkey);
+    expect(Hive.box('settings').get('my_mnemonic'), isNull);
+    expect(Hive.box('settings').get('my_privkey'), isNull);
     expect(Hive.box('settings').get('my_pubkey'),
         AppSettings.instance.myPubkey);
     expect(SyncGate.isActive, isFalse);

@@ -10,6 +10,7 @@ import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/models/contact.dart';
 import 'package:chatme/relay_manager.dart';
 import 'package:chatme/services/app_settings.dart';
+import 'package:chatme/services/identity_secret_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 
@@ -21,6 +22,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
+  late InMemoryIdentitySecretStore secretStore;
   const chatKey = 'chat_auth_required';
   final myPubkey = bip340.getPublicKey(_key(1));
   final peer = bip340.getPublicKey(_key(2));
@@ -48,7 +50,9 @@ void main() {
     await Hive.box<Contact>('contacts').clear();
     final settings = Hive.box('settings');
     await settings.clear();
-    await settings.put('my_privkey', _key(1));
+    secretStore = InMemoryIdentitySecretStore();
+    AppSettings.instance.setIdentitySecretStoreForTest(secretStore);
+    await secretStore.write(privkey: _key(1), mnemonic: '');
     await settings.put('my_pubkey', myPubkey);
 
     AppSettings.instance.myPrivkey = _key(1);

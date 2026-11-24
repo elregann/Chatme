@@ -13,6 +13,7 @@ import '../core/utils/shortcut_helper.dart';
 import '../core/utils/debug_logger.dart';
 import '../core/utils/key_utils.dart';
 import '../models/contact.dart';
+import 'identity_secret_store.dart';
 import 'server_lists.dart';
 
 class AppSettings {
@@ -22,9 +23,23 @@ class AppSettings {
 
   static AppSettings get instance => _instance;
 
+  IdentitySecretStore _identitySecretStore = SecureIdentitySecretStore();
+
+  @visibleForTesting
+  void setIdentitySecretStoreForTest(IdentitySecretStore store) {
+    _identitySecretStore = store;
+    // ignore: invalid_use_of_visible_for_testing_member
+    SecureIdentitySecretStore.setDebugOverrideForTest(store);
+  }
+
   /// True only after WelcomePage has created or restored an identity.
   /// Signed-out devices have an empty keypair and must not connect or sync.
   bool get hasIdentity => myPubkey.isNotEmpty && myPrivkey.isNotEmpty;
+
+  /// Set when secure secret storage could not be read. In that state we must
+  /// not create/import an identity because an existing secret may be present but
+  /// unreadable, and overwriting it would lock the user out.
+  bool identitySecretsUnavailable = false;
 
   bool isNip05Verified = false;
   String myPubkey = '';
@@ -73,12 +88,20 @@ class AppSettings {
 
       // Load persisted values
       myPubkey = settingsBox.get('my_pubkey', defaultValue: '');
-      myPrivkey = settingsBox.get('my_privkey', defaultValue: '');
-      myMnemonic = settingsBox.get('my_mnemonic', defaultValue: '');
+      final legacyPrivkey =
+          settingsBox.get('my_privkey', defaultValue: '') as String;
+      final legacyMnemonic =
+          settingsBox.get('my_mnemonic', defaultValue: '') as String;
+      await _loadIdentitySecrets(
+        settingsBox,
+        legacyPrivkey: legacyPrivkey,
+        legacyMnemonic: legacyMnemonic,
+      );
       myNip05 = settingsBox.get('my_nip05', defaultValue: '');
       myPhotoPath = settingsBox.get('my_photo_path', defaultValue: '');
       myPhotoUrl = settingsBox.get('my_photo_url', defaultValue: '');
-      isNip05Verified = settingsBox.get('is_nip05_verified', defaultValue: false);
+      isNip05Verified =
+          settingsBox.get('is_nip05_verified', defaultValue: false);
       myAbout = settingsBox.get('my_about', defaultValue: '');
 
       // No identity is created here. A signed-out device stays signed out
@@ -100,8 +123,9 @@ class AppSettings {
 
       blossomServers = BlossomLists.fromStored(settingsBox.get('blossom_servers'));
 
-      final pubkeyLabel =
-          myPubkey.isEmpty ? 'none' : '${myPubkey.substring(0, 16)}...';
+      final pubkeyLabel = myPubkey.isEmpty
+          ? 'none'
+          : '${myPubkey.substring(0, myPubkey.length < 16 ? myPubkey.length : 16)}...';
       DebugLogger.log('[Settings] Loaded. Pubkey: $pubkeyLabel', type: 'SETUP');
     } catch (e) {
       DebugLogger.log('[Settings] Load failed | $e', type: 'ERROR');
@@ -194,28 +218,40 @@ class AppSettings {
   /// to restore the same pubkey with the words they just wrote down.
   /// The caller owns the sync gate and relay connection.
   Future<void> createIdentity(String mnemonic) async {
+    _ensureIdentitySecretsAvailable();
     final privateKey = ChatMeVault.deriveNostrPrivateKey(mnemonic);
     final publicKey = bip340.getPublicKey(privateKey);
 
-    myMnemonic = mnemonic;
-    myPrivkey = privateKey;
-    myPubkey = publicKey;
-    myNip05 = '';
-    myAbout = '';
-    myPhotoPath = '';
-    myPhotoUrl = '';
-    isNip05Verified = false;
+    final previousPrivkey = await _identitySecretStore.readPrivkey();
+    final previousMnemonic = await _identitySecretStore.readMnemonic();
+    await _identitySecretStore.write(
+      privkey: privateKey,
+      mnemonic: mnemonic,
+    );
 
-    await Hive.box('settings').putAll({
-      'my_mnemonic': mnemonic,
-      'my_privkey': privateKey,
-      'my_pubkey': publicKey,
-      'my_nip05': '',
-      'is_nip05_verified': false,
-      'my_about': '',
-      'my_photo_url': '',
-      'my_photo_path': '',
-    });
+    try {
+      myMnemonic = mnemonic;
+      myPrivkey = privateKey;
+      myPubkey = publicKey;
+      myNip05 = '';
+      myAbout = '';
+      myPhotoPath = '';
+      myPhotoUrl = '';
+      isNip05Verified = false;
+
+      await Hive.box('settings').putAll({
+        'my_pubkey': publicKey,
+        'my_nip05': '',
+        'is_nip05_verified': false,
+        'my_about': '',
+        'my_photo_url': '',
+        'my_photo_path': '',
+      });
+      await _removeLegacyIdentitySecrets(Hive.box('settings'), compact: true);
+    } catch (e) {
+      await _restoreIdentitySecrets(previousPrivkey, previousMnemonic);
+      rethrow;
+    }
 
     DebugLogger.log(
       '[Settings] New identity created: ${publicKey.substring(0, 16)}...',
@@ -224,6 +260,7 @@ class AppSettings {
   }
 
   Future<void> importAccount(String input) async {
+    _ensureIdentitySecretsAvailable();
     try {
       final settingsBox = Hive.box('settings');
       final cleaned = input.trim().split(RegExp(r'\s+')).join(' ');
@@ -257,28 +294,38 @@ class AppSettings {
       // Keep every fallback in local variables until the write succeeds. A
       // failure above must not leave the in-memory key on a different account
       // than the key persisted on disk.
-      await settingsBox.putAll({
-        'my_pubkey': pubkey,
-        'my_privkey': privkey,
-        'my_mnemonic': mnemonic,
-        'my_nip05': nip05,
-        'is_nip05_verified': nip05Verified,
-        'my_about': '',
-        'my_photo_url': '',
-        'my_photo_path': '',
-      });
+      final previousPrivkey = await _identitySecretStore.readPrivkey();
+      final previousMnemonic = await _identitySecretStore.readMnemonic();
+      await _identitySecretStore.write(
+        privkey: privkey,
+        mnemonic: mnemonic,
+      );
+      try {
+        await settingsBox.putAll({
+          'my_pubkey': pubkey,
+          'my_nip05': nip05,
+          'is_nip05_verified': nip05Verified,
+          'my_about': '',
+          'my_photo_url': '',
+          'my_photo_path': '',
+        });
+        await _removeLegacyIdentitySecrets(settingsBox, compact: true);
 
-      myPubkey = pubkey;
-      myPrivkey = privkey;
-      myMnemonic = mnemonic;
-      myNip05 = nip05;
-      isNip05Verified = nip05Verified;
-      // Reset identity-specific state so a different account doesn't inherit
-      // the previous account's photo. It is re-populated once the relay
-      // delivers the account's kind-0 event.
-      myAbout = '';
-      myPhotoUrl = '';
-      myPhotoPath = '';
+        myPubkey = pubkey;
+        myPrivkey = privkey;
+        myMnemonic = mnemonic;
+        myNip05 = nip05;
+        isNip05Verified = nip05Verified;
+        // Reset identity-specific state so a different account doesn't inherit
+        // the previous account's photo. It is re-populated once the relay
+        // delivers the account's kind-0 event.
+        myAbout = '';
+        myPhotoUrl = '';
+        myPhotoPath = '';
+      } catch (e) {
+        await _restoreIdentitySecrets(previousPrivkey, previousMnemonic);
+        rethrow;
+      }
 
       // The restored account may already have a contact row from an older
       // session. Its handle comes from the directory, never from a kind 0.
@@ -535,6 +582,149 @@ Backup Date: ${DateTime.now().toString()}
   /// from kind-0 profiles published by older app versions while the user's
   /// global ID was disconnected (e.g. "npub1..." stubs). Only `globalId` is
   /// cleared — the local `name` is user-authored and is never touched.
+  Future<void> _loadIdentitySecrets(
+    Box settingsBox, {
+    required String legacyPrivkey,
+    required String legacyMnemonic,
+  }) async {
+    identitySecretsUnavailable = false;
+    try {
+      final securePrivkey = await _identitySecretStore.readPrivkey();
+      final secureMnemonic = await _identitySecretStore.readMnemonic();
+      final resolvedPrivkey = securePrivkey ?? '';
+      final resolvedMnemonic = secureMnemonic ?? '';
+      if (resolvedPrivkey.isNotEmpty) {
+        myPrivkey = resolvedPrivkey;
+        myMnemonic = resolvedMnemonic;
+        await _removeLegacyIdentitySecrets(settingsBox, compact: true);
+        return;
+      }
+
+      if (legacyPrivkey.isNotEmpty) {
+        await _identitySecretStore.write(
+          privkey: legacyPrivkey,
+          mnemonic: legacyMnemonic,
+        );
+        final verifiedPrivkey = await _identitySecretStore.readPrivkey();
+        final verifiedMnemonic = await _identitySecretStore.readMnemonic();
+        if (verifiedPrivkey != legacyPrivkey ||
+            verifiedMnemonic != legacyMnemonic) {
+          throw StateError('secure identity readback mismatch');
+        }
+        myPrivkey = legacyPrivkey;
+        myMnemonic = legacyMnemonic;
+        await _removeLegacyIdentitySecrets(settingsBox, compact: true);
+        return;
+      }
+
+      myPrivkey = '';
+      myMnemonic = '';
+      await _removeLegacyIdentitySecrets(settingsBox);
+    } catch (e) {
+      DebugLogger.log(
+        '[Settings] Secure identity load failed | $e',
+        type: 'ERROR',
+      );
+      if (legacyPrivkey.isNotEmpty) {
+        // Migration failed before we could prove secure storage is safe.
+        // Keep the legacy Hive secret readable; do not delete it.
+        myPrivkey = legacyPrivkey;
+        myMnemonic = legacyMnemonic;
+        return;
+      }
+      // No legacy secret exists. A read failure must not be treated as
+      // "signed out", otherwise create/import could overwrite an unreadable
+      // existing secret.
+      myPrivkey = '';
+      myMnemonic = '';
+      identitySecretsUnavailable = true;
+    }
+  }
+
+  Future<void> _removeLegacyIdentitySecrets(
+    Box settingsBox, {
+    bool compact = false,
+  }) async {
+    final hadLegacy = settingsBox.containsKey('my_privkey') ||
+        settingsBox.containsKey('my_mnemonic');
+    if (!hadLegacy) return;
+    await settingsBox.delete('my_privkey');
+    await settingsBox.delete('my_mnemonic');
+    if (compact) {
+      try {
+        await settingsBox.compact();
+      } catch (e) {
+        DebugLogger.log(
+          '[Settings] Settings compaction failed after secret migration | $e',
+          type: 'ERROR',
+        );
+      }
+    }
+  }
+
+  void _ensureIdentitySecretsAvailable() {
+    if (!identitySecretsUnavailable) return;
+    throw StateError(
+      'Identity secrets are unavailable. Restart the app before creating or restoring an account.',
+    );
+  }
+
+  Future<void> _restoreIdentitySecrets(
+    String? previousPrivkey,
+    String? previousMnemonic,
+  ) async {
+    if (previousPrivkey == null || previousMnemonic == null) return;
+    try {
+      await _identitySecretStore.write(
+        privkey: previousPrivkey,
+        mnemonic: previousMnemonic,
+      );
+    } catch (e) {
+      DebugLogger.log(
+        '[Settings] Identity secret rollback failed | $e',
+        type: 'ERROR',
+      );
+    }
+  }
+
+  Future<void> clearIdentitySecrets() async {
+    Object? failure;
+    try {
+      await _identitySecretStore.clear();
+      final remainingPrivkey = await _identitySecretStore.readPrivkey();
+      final remainingMnemonic = await _identitySecretStore.readMnemonic();
+      if ((remainingPrivkey != null && remainingPrivkey.isNotEmpty) ||
+          (remainingMnemonic != null && remainingMnemonic.isNotEmpty)) {
+        throw StateError('secure identity secrets still present after clear');
+      }
+    } catch (e) {
+      failure ??= e;
+      DebugLogger.log(
+        '[Settings] Clear identity secrets failed | $e',
+        type: 'ERROR',
+      );
+    }
+    try {
+      if (Hive.isBoxOpen('settings')) {
+        await _removeLegacyIdentitySecrets(Hive.box('settings'), compact: true);
+      }
+    } catch (e) {
+      failure ??= e;
+      DebugLogger.log(
+        '[Settings] Clear legacy identity secrets failed | $e',
+        type: 'ERROR',
+      );
+    }
+    if (failure != null) {
+      throw StateError('identity secrets could not be fully cleared');
+    }
+  }
+
+  @visibleForTesting
+  Future<void> clearIdentitySecretsForTest() async {
+    await clearIdentitySecrets();
+  }
+
   static Future<void> _cleanupPlaceholderGlobalIds() async {
     final settingsBox = Hive.box('settings');
     const migrationKey = 'contact_global_id_placeholder_cleanup';

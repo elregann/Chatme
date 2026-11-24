@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../crypto/nip17.dart';
+import '../../services/identity_secret_store.dart';
 
 class BackgroundCallSignal {
   static const List<String> _relays = [
@@ -21,7 +22,7 @@ class BackgroundCallSignal {
     try {
       await Hive.initFlutter();
       final settingsBox = await Hive.openBox('settings');
-      final myPrivkey = settingsBox.get('my_privkey', defaultValue: '') as String;
+      final myPrivkey = await SecureIdentitySecretStore.readPrivkeySafe();
       final myPubkey = settingsBox.get('my_pubkey', defaultValue: '') as String;
       if (myPrivkey.isEmpty || myPubkey.isEmpty) return;
       await settingsBox.put(

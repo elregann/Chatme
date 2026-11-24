@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:chatme/services/app_settings.dart';
+import 'package:chatme/services/identity_secret_store.dart';
 import 'package:chatme/ui/profile/recovery_phrase.dart';
 import 'package:chatme/widgets/recovery_phrase_words.dart';
 import 'package:flutter/material.dart';
@@ -25,8 +27,17 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
+  late InMemoryIdentitySecretStore secretStore;
+
   setUp(() async {
-    await Hive.box('settings').put('my_mnemonic', mnemonic);
+    secretStore = InMemoryIdentitySecretStore();
+    AppSettings.instance.setIdentitySecretStoreForTest(secretStore);
+    await Hive.box('settings').clear();
+    await secretStore.write(
+      privkey: '1111111111111111111111111111111111111111111111111111111111111111',
+      mnemonic: mnemonic,
+    );
+    AppSettings.instance.myMnemonic = mnemonic;
   });
 
   testWidgets('revealed words use the shared recovery grid', (tester) async {

@@ -1,9 +1,9 @@
-import 'package:hive/hive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:remixicon/remixicon.dart';
 import '../../core/theme/chatme_buttons.dart';
 import '../../core/theme/chatme_colors.dart';
+import '../../services/app_settings.dart';
 import '../../widgets/chatme_notice.dart';
 import '../../widgets/recovery_phrase_words.dart';
 
@@ -25,9 +25,7 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
     const textSecondary = ChatmeColors.textSecondary;
     const textPrimary = ChatmeColors.textPrimary;
 
-    final settingsBox = Hive.box('settings');
-    final String displayMnemonic =
-        settingsBox.get('my_mnemonic', defaultValue: '');
+    final String displayMnemonic = AppSettings.instance.myMnemonic;
     final bool hasMnemonic = displayMnemonic.isNotEmpty;
     final List<String> words = hasMnemonic ? displayMnemonic.split(' ') : [];
 

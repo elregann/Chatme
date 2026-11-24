@@ -18,6 +18,8 @@ import 'package:chatme/core/utils/sync_gate.dart';
 import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/models/contact.dart';
 import 'package:chatme/notification_handler.dart';
+import 'package:chatme/services/app_settings.dart';
+import 'package:chatme/services/identity_secret_store.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -87,6 +89,7 @@ void main() {
     late Directory temp;
     late ReceivePort port;
     late List<Map> forwarded;
+    late InMemoryIdentitySecretStore secretStore;
 
     setUp(() async {
       port = ReceivePort();
@@ -110,7 +113,12 @@ void main() {
         Hive.registerAdapter(ChatMessageAdapter());
       }
       final settings = await Hive.openBox('settings');
-      await settings.put('my_privkey', _key(1));
+      secretStore = InMemoryIdentitySecretStore();
+      AppSettings.instance.setIdentitySecretStoreForTest(secretStore);
+      await secretStore.write(
+        privkey: _key(1),
+        mnemonic: '',
+      );
       await settings.put('my_pubkey', bip340.getPublicKey(_key(1)));
       // markRead writes the r_ marker before checking this flag, so receipts
       // stay offline and we can observe the marker without opening relays.
