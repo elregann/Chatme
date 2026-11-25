@@ -2,9 +2,10 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_trimmer/video_trimmer.dart';
 
@@ -23,6 +24,7 @@ class StoryPrepareResult {
   final int? durationSeconds;
   final int? trimStartMs;
   final int? trimEndMs;
+  final String caption;
 
   const StoryPrepareResult({
     required this.file,
@@ -32,17 +34,20 @@ class StoryPrepareResult {
     this.durationSeconds,
     this.trimStartMs,
     this.trimEndMs,
+    this.caption = '',
   });
 
   factory StoryPrepareResult.fromPreparedImage({
     required PreparedImage prepared,
     required File file,
+    String caption = '',
   }) {
     return StoryPrepareResult(
       file: file,
       mimeType: 'image/jpeg',
       width: prepared.width,
       height: prepared.height,
+      caption: caption.trim(),
     );
   }
 
@@ -52,6 +57,7 @@ class StoryPrepareResult {
     Size? videoSize,
     int? trimStartMs,
     int? trimEndMs,
+    String caption = '',
   }) {
     final seconds = duration.inMilliseconds > 0
         ? duration.inMilliseconds ~/ 1000
@@ -64,6 +70,7 @@ class StoryPrepareResult {
       durationSeconds: seconds,
       trimStartMs: trimStartMs,
       trimEndMs: trimEndMs,
+      caption: caption.trim(),
     );
   }
 }
@@ -76,6 +83,24 @@ String _mimeFromPath(String path) {
   if (lower.endsWith('.mov')) return 'video/quicktime';
   if (lower.endsWith('.webm')) return 'video/webm';
   return 'video/mp4';
+}
+
+// Same trick as room chat: keep the caret without raising the keyboard until
+// the user explicitly taps the field.
+class _CaptionFocusNode extends FocusNode {
+  bool _allowKeyboardOnNextFocus = false;
+
+  void allowKeyboardOnNextFocus() {
+    _allowKeyboardOnNextFocus = true;
+  }
+
+  @override
+  bool consumeKeyboardToken() {
+    final consumed = super.consumeKeyboardToken();
+    final allowed = _allowKeyboardOnNextFocus;
+    _allowKeyboardOnNextFocus = false;
+    return consumed && allowed;
+  }
 }
 
 class StoryPreparePage extends StatefulWidget {
@@ -130,6 +155,8 @@ class StoryPreparePage extends StatefulWidget {
 class _StoryPreparePageState extends State<StoryPreparePage> {
   final Trimmer _trimmer = Trimmer();
   final ValueNotifier<Duration> _playhead = ValueNotifier(Duration.zero);
+  final TextEditingController _captionController = TextEditingController();
+  final _CaptionFocusNode _captionFocusNode = _CaptionFocusNode();
   final List<File> _tempFiles = <File>[];
 
   VideoPlayerController? _listenedController;
@@ -155,6 +182,13 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
   void initState() {
     super.initState();
     _sourceFile = File(widget.mediaPath);
+    // A valid selection keeps EditableText from calling requestKeyboard()
+    // while repairing an invalid one on the first quiet focus.
+    _captionController.selection = const TextSelection.collapsed(offset: 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _captionFocusNode.requestFocus();
+    });
     if (widget.isVideo) {
       _videoPath = widget.mediaPath;
       _loadVideo();
@@ -168,6 +202,8 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
   @override
   void dispose() {
     _unbindController();
+    _captionFocusNode.dispose();
+    _captionController.dispose();
     _playhead.dispose();
     _trimmer.dispose();
     super.dispose();
@@ -381,6 +417,7 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
 
   Future<void> _next() async {
     if (_nextBusy) return;
+    final caption = _captionController.text.trim();
     _nextBusy = true;
     setState(() {});
     try {
@@ -398,6 +435,7 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
         Navigator.of(context).pop(StoryPrepareResult.fromPreparedImage(
           prepared: prepared,
           file: file,
+          caption: caption,
         ));
         return;
       }
@@ -420,6 +458,7 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
         videoSize: _controller?.value.size ?? widget.knownVideoSize,
         trimStartMs: needsTrim ? _startValue.round() : null,
         trimEndMs: needsTrim ? _endValue.round() : null,
+        caption: caption,
       ));
     } catch (_) {
       if (!mounted) return;
@@ -510,29 +549,109 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
                   ),
                   if (widget.isVideo) _buildTrimStrip(),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Semantics(
-                        button: true,
-                        label: 'Next',
-                        child: GestureDetector(
-                          onTap: _nextBusy ? null : _next,
+                    padding: const EdgeInsets.fromLTRB(
+                      12,
+                      kIsWeb ? 20 : 6,
+                      12,
+                      kIsWeb ? 20 : 6,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
                           child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: ChatmeColors.accentPrimary,
+                            constraints: const BoxConstraints(
+                              minHeight: 48,
+                              maxHeight: 180,
                             ),
-                            child: const Icon(
-                              Icons.chevron_right_rounded,
-                              color: ChatmeColors.backgroundPrimary,
-                              size: 30,
+                            decoration: BoxDecoration(
+                              color: ChatmeColors.surfaceRaised,
+                              borderRadius: BorderRadius.circular(26),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(30),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  constraints: const BoxConstraints(
+                                    minHeight: 48,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: TextField(
+                                    controller: _captionController,
+                                    focusNode: _captionFocusNode,
+                                    enabled: !_nextBusy,
+                                    onTap: () {
+                                      if (!_captionFocusNode.hasFocus) {
+                                        _captionFocusNode
+                                            .allowKeyboardOnNextFocus();
+                                      }
+                                    },
+                                    maxLength: 200,
+                                    maxLengthEnforcement:
+                                        MaxLengthEnforcement.enforced,
+                                    minLines: 1,
+                                    maxLines: 3,
+                                    textCapitalization:
+                                        TextCapitalization.sentences,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      height: 1.25,
+                                      color: ChatmeColors.textPrimary,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Add a caption...',
+                                      hintStyle: TextStyle(
+                                        fontSize: 16,
+                                        height: 1.25,
+                                        color: ChatmeColors.textSubtle,
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 8,
+                                      ),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      counterText: '',
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Semantics(
+                          button: true,
+                          label: 'Next',
+                          child: GestureDetector(
+                            onTap: _nextBusy ? null : _next,
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: ChatmeColors.accentPrimary,
+                              ),
+                              child: const Icon(
+                                Icons.chevron_right_rounded,
+                                color: ChatmeColors.backgroundPrimary,
+                                size: 30,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

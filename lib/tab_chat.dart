@@ -759,6 +759,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         width: prepared.width,
         height: prepared.height,
         durationSeconds: prepared.durationSeconds,
+        caption: prepared.caption,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

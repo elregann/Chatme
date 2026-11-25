@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:chatme/services/image_prepare.dart';
 import 'package:chatme/story/story_prepare_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget _routeHost({
@@ -50,6 +50,17 @@ void main() {
       expect(result.height, 8);
       expect(result.durationSeconds, isNull);
       expect(result.trimStartMs, isNull);
+      expect(result.caption, isEmpty);
+    });
+
+    test('prepared image carries a trimmed caption', () {
+      final result = StoryPrepareResult.fromPreparedImage(
+        prepared: PreparedImage(Uint8List.fromList([1, 2]), 12, 8),
+        file: File('${Directory.systemTemp.path}/story.jpg'),
+        caption: '  first light  ',
+      );
+
+      expect(result.caption, 'first light');
     });
 
     test('video keeps its duration, size and mime from the path', () {
@@ -64,6 +75,17 @@ void main() {
       expect(result.width, 640);
       expect(result.height, 360);
       expect(result.trimStartMs, isNull);
+      expect(result.caption, isEmpty);
+    });
+
+    test('video carries a trimmed caption', () {
+      final result = StoryPrepareResult.fromVideo(
+        path: '/cache/story.mp4',
+        duration: const Duration(seconds: 12),
+        caption: '  sunset  ',
+      );
+
+      expect(result.caption, 'sunset');
     });
 
     test('video result carries the selected trim range and cut duration', () {
@@ -127,7 +149,77 @@ void main() {
     });
 
     testWidgets(
-        'video mode shows only back, trim strip and the round next button',
+        'caption capsule matches the room chat layout and keeps the caret ready',
+        (tester) async {
+      await tester.pumpWidget(_routeHost(builder: (_) => photoPage()));
+      await tester.tap(find.text('open'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.decoration?.hintText, 'Add a caption...');
+      expect(tester.testTextInput.isVisible, isFalse);
+      expect(field.minLines, 1);
+      expect(field.maxLines, 3);
+      expect(field.decoration?.contentPadding,
+          const EdgeInsets.symmetric(horizontal: 6, vertical: 8));
+      expect(field.maxLength, 200);
+      expect(field.maxLengthEnforcement, MaxLengthEnforcement.enforced);
+      expect(field.focusNode, isNotNull);
+      expect(field.focusNode!.hasFocus, isTrue);
+      expect(field.controller?.selection.isValid, isTrue);
+      expect(field.onTap, isNotNull);
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      final capsule = find.byWidgetPredicate(
+        (widget) =>
+            widget is Container &&
+            widget.constraints ==
+                const BoxConstraints(minHeight: 48, maxHeight: 180),
+      );
+      expect(capsule, findsOneWidget);
+      expect(tester.getSize(capsule).height, 48);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Container &&
+              widget.constraints == const BoxConstraints(minHeight: 48),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Padding &&
+              widget.padding == const EdgeInsets.symmetric(horizontal: 8),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SizedBox &&
+              widget.width == 8 &&
+              widget.height == null,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Padding &&
+              widget.padding == const EdgeInsets.fromLTRB(12, 6, 12, 6),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.emoji_emotions_outlined), findsNothing);
+      expect(find.byIcon(Icons.attach_file), findsNothing);
+    });
+
+    testWidgets('video mode shows only back, trim strip and the round next button',
         (tester) async {
       await tester.pumpWidget(_routeHost(builder: (_) => videoPage()));
       await tester.tap(find.text('open'));
@@ -197,6 +289,49 @@ void main() {
       expect(result!.file.path, '/picked/clip.mp4');
       expect(result.durationSeconds, 12);
       expect(result.trimStartMs, isNull);
+    });
+
+    testWidgets('typed caption is returned with the prepared photo',
+        (tester) async {
+      StoryPrepareResult? returned;
+
+      await tester.pumpWidget(_routeHost(
+        builder: (_) => photoPage(
+          preparer: (bytes, {int maxSide = 1600, int quality = 85}) async =>
+              PreparedImage(bytes, 4, 3),
+          writer: (_) async =>
+              File('${Directory.systemTemp.path}/story_caption_test.jpg'),
+        ),
+        onResult: (result) => returned = result as StoryPrepareResult?,
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '  morning  ');
+      await tester.tap(find.byIcon(Icons.chevron_right_rounded));
+      await tester.pumpAndSettle();
+
+      expect(returned, isNotNull);
+      expect(returned!.caption, 'morning');
+    });
+
+    testWidgets('typed caption is returned with the prepared video',
+        (tester) async {
+      StoryPrepareResult? returned;
+
+      await tester.pumpWidget(_routeHost(
+        builder: (_) => videoPage(),
+        onResult: (result) => returned = result as StoryPrepareResult?,
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '  evening  ');
+      await tester.tap(find.byIcon(Icons.chevron_right_rounded));
+      await tester.pumpAndSettle();
+
+      expect(returned, isNotNull);
+      expect(returned!.caption, 'evening');
     });
   });
 }
