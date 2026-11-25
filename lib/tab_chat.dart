@@ -13,10 +13,10 @@ import 'call_manager.dart';
 import 'package:flutter/services.dart';
 import 'services/app_settings.dart';
 import 'story/story_manager.dart';
+import 'story/story_prepare_page.dart';
 import 'story/story_strip.dart';
 import 'story/story_viewer_page.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'models/call_log.dart';
@@ -74,6 +74,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
   final ScrollController _chatScrollController = ScrollController();
   String _searchQuery = "";
   bool _isMarkingAllRead = false;
+  bool _isPreparingStory = false;
+  bool _isPostingStory = false;
   bool _storyStripRevealed = false;
   double? _storyPullStartY;
   double _storyPullDistance = 0;
@@ -291,6 +293,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ),
           ),
           actions: [
+            if (_isPostingStory)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    color: ChatmeColors.accentPrimary,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
             ValueListenableBuilder<Box<CallLog>>(
               valueListenable: Hive.box<CallLog>('call_logs').listenable(),
               builder: (context, logs, _) {
@@ -713,17 +727,38 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   Future<void> _addStory() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickMedia();
-    if (picked == null) return;
-    final file = File(picked.path);
-    final mimeType = _mimeFromPath(picked.path);
-    if (!mounted) return;
+    if (_isPreparingStory || _isPostingStory) return;
+    _isPreparingStory = true;
+
+    StoryPrepareResult? prepared;
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickMedia();
+      if (picked == null || !mounted) return;
+
+      prepared = await Navigator.of(context).push<StoryPrepareResult>(
+        MaterialPageRoute(
+          builder: (_) => StoryPreparePage(
+            mediaPath: picked.path,
+            isVideo:
+                StoryPreparePage.isVideoMedia(picked.path, picked.mimeType),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) _isPreparingStory = false;
+    }
+    if (prepared == null || !mounted || _isPostingStory) return;
+
+    setState(() => _isPostingStory = true);
     try {
       await StoryManager.instance.createStory(
         relay: widget.relayManager,
-        file: file,
-        mimeType: mimeType,
+        file: prepared.file,
+        mimeType: prepared.mimeType,
+        width: prepared.width,
+        height: prepared.height,
+        durationSeconds: prepared.durationSeconds,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -734,6 +769,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Story failed: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isPostingStory = false);
+      }
     }
   }
 
@@ -746,21 +785,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
         ),
       ),
     );
-  }
-
-  String _mimeFromPath(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.gif')) return 'image/gif';
-    if (lower.endsWith('.mp4')) return 'video/mp4';
-    if (lower.endsWith('.mov')) return 'video/quicktime';
-    if (lower.endsWith('.webm')) return 'video/webm';
-    return lower.contains('.mp4') ||
-            lower.contains('.mov') ||
-            lower.contains('.webm')
-        ? 'video/mp4'
-        : 'image/jpeg';
   }
 
   Widget _buildEmptyState() {
