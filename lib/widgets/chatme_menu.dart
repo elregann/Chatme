@@ -38,6 +38,12 @@ class ChatmeMenuButton<T> extends StatelessWidget {
   final List<ChatmeMenuEntry<T>> entries;
   final ValueChanged<T> onSelected;
 
+  /// Called when the popup opens, before any entry is chosen.
+  final VoidCallback? onOpened;
+
+  /// Called when the popup is dismissed without choosing an entry.
+  final VoidCallback? onCanceled;
+
   /// Menu background. Follows the theme when null.
   final Color? color;
 
@@ -58,6 +64,8 @@ class ChatmeMenuButton<T> extends StatelessWidget {
     required this.icon,
     required this.entries,
     required this.onSelected,
+    this.onOpened,
+    this.onCanceled,
     this.color,
     this.textColor,
     this.splashRadius = 22,
@@ -83,7 +91,9 @@ class ChatmeMenuButton<T> extends StatelessWidget {
       elevation: 4,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ChatmeMenu.radius)),
+      onOpened: onOpened,
       onSelected: onSelected,
+      onCanceled: onCanceled,
       itemBuilder: (_) => [
         for (final entry in entries)
           PopupMenuItem<T>(

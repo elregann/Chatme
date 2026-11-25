@@ -8,12 +8,31 @@ import 'package:video_player/video_player.dart';
 import '../core/utils/time_utils.dart';
 import '../models/contact.dart';
 import '../relay_manager.dart';
+import '../room_chat.dart';
 import '../services/app_settings.dart';
 import '../widgets/chatme_menu.dart';
 import '../widgets/user_avatar.dart';
 import 'story_item.dart';
 import 'story_manager.dart';
 import 'story_timing.dart';
+
+/// Opens the author's room chat in place of the story route. Replacing the
+/// route means going back lands on the chats page, not back on the story.
+void openStoryAuthorChat(
+  BuildContext context, {
+  required String authorPubkey,
+  required String displayName,
+  required RelayManager relayManager,
+  Widget Function(Contact contact, RelayManager relayManager)? buildChatPage,
+}) {
+  final contact = Hive.box<Contact>('contacts').get(authorPubkey) ??
+      Contact(pubkey: authorPubkey, name: displayName);
+  final chatPage = buildChatPage ??
+      (contact, relay) => ChatDetailScreen(contact: contact, relayManager: relay);
+  Navigator.of(context).pushReplacement(
+    MaterialPageRoute(builder: (_) => chatPage(contact, relayManager)),
+  );
+}
 
 class StoryViewerPage extends StatefulWidget {
   final RelayManager relayManager;
@@ -386,6 +405,14 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
                       StoryMoreMenu(
                         canDelete: isMine,
                         onDelete: _deleteCurrentStory,
+                        onMessage: () => openStoryAuthorChat(
+                          context,
+                          authorPubkey: story.authorPubkey,
+                          displayName: displayName,
+                          relayManager: widget.relayManager,
+                        ),
+                        onMenuOpened: _pausePlayback,
+                        onMenuDismissed: _resumePlayback,
                       ),
                     ],
                   ),
@@ -425,31 +452,47 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
   }
 }
 
-/// The existing three-dot button on the story header. Only my own story gets
-/// a delete entry; somebody else's story has no menu at all.
+/// The three-dot button on the story header. My own story offers silent
+/// delete; somebody else's story offers a message to its author. Opening the
+/// menu holds the story, dismissing it lets the story run again.
 class StoryMoreMenu extends StatelessWidget {
   final bool canDelete;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
+  final VoidCallback? onMessage;
+  final VoidCallback? onMenuOpened;
+  final VoidCallback? onMenuDismissed;
 
   const StoryMoreMenu({
     super.key,
     required this.canDelete,
-    required this.onDelete,
+    this.onDelete,
+    this.onMessage,
+    this.onMenuOpened,
+    this.onMenuDismissed,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!canDelete) return const SizedBox.shrink();
+    final entries = canDelete
+        ? const [
+            ChatmeMenuEntry<int>(value: 0, label: 'Delete story'),
+          ]
+        : const [
+            ChatmeMenuEntry<int>(value: 0, label: 'Message'),
+          ];
     return ChatmeMenuButton<int>(
       icon: const Icon(Icons.more_vert, color: Colors.white),
-      entries: const [
-        ChatmeMenuEntry<int>(
-          value: 0,
-          icon: Icons.delete_outline_rounded,
-          label: 'Delete story',
-        ),
-      ],
-      onSelected: (_) => onDelete(),
+      entries: entries,
+      onOpened: onMenuOpened,
+      onCanceled: onMenuDismissed,
+      onSelected: (_) {
+        onMenuDismissed?.call();
+        if (canDelete) {
+          onDelete?.call();
+        } else {
+          onMessage?.call();
+        }
+      },
     );
   }
 }

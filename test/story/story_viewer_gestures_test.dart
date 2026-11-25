@@ -190,13 +190,16 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pumpAndSettle();
       expect(find.text('Delete story'), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
 
       await tester.tap(find.text('Delete story'));
       await tester.pumpAndSettle();
       expect(deletes, 1);
     });
 
-    testWidgets('another person story has no delete menu', (tester) async {
+    testWidgets('another person story offers Message and pauses while the menu is open', (tester) async {
+      final events = <String>[];
+      var messages = 0;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -205,6 +208,9 @@ void main() {
                 StoryMoreMenu(
                   canDelete: false,
                   onDelete: () => fail('delete must not be offered'),
+                  onMessage: () => messages++,
+                  onMenuOpened: () => events.add('pause'),
+                  onMenuDismissed: () => events.add('resume'),
                 ),
               ],
             ),
@@ -212,7 +218,47 @@ void main() {
         ),
       );
 
-      expect(find.byIcon(Icons.more_vert), findsNothing);
+      expect(find.byIcon(Icons.more_vert), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text('Message'), findsOneWidget);
+      expect(find.text('Delete story'), findsNothing);
+      expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsNothing);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
+      expect(events, ['pause']);
+
+      await tester.tap(find.text('Message'));
+      await tester.pumpAndSettle();
+      expect(messages, 1);
+      expect(events, ['pause', 'resume']);
+    });
+
+    testWidgets('dismissing the menu without a choice resumes playback', (tester) async {
+      final events = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(
+              actions: [
+                StoryMoreMenu(
+                  canDelete: true,
+                  onDelete: () => fail('delete was not chosen'),
+                  onMenuOpened: () => events.add('pause'),
+                  onMenuDismissed: () => events.add('resume'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(events, ['pause']);
+
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+      expect(events, ['pause', 'resume']);
     });
   });
 }

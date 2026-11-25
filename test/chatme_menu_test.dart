@@ -121,4 +121,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(node.hasFocus, isTrue);
   });
+
+  testWidgets('reports opening and cancellation of the menu', (tester) async {
+    final events = <String>[];
+    await tester.pumpWidget(host(ChatmeMenuButton<int>(
+      icon: const Icon(Icons.more_vert),
+      entries: entries,
+      onSelected: (_) {},
+      onOpened: () => events.add('opened'),
+      onCanceled: () => events.add('canceled'),
+    )));
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    expect(events, ['opened']);
+
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
+    expect(events, ['opened', 'canceled']);
+  });
+
+  testWidgets('selecting an entry does not report a cancellation', (tester) async {
+    final events = <String>[];
+    await tester.pumpWidget(host(ChatmeMenuButton<int>(
+      icon: const Icon(Icons.more_vert),
+      entries: entries,
+      onSelected: (_) => events.add('selected'),
+      onOpened: () => events.add('opened'),
+      onCanceled: () => events.add('canceled'),
+    )));
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gallery'));
+    await tester.pumpAndSettle();
+    expect(events, ['opened', 'selected']);
+  });
 }
