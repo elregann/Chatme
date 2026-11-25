@@ -267,11 +267,20 @@ class StoryManager {
     return item;
   }
 
+  /// A story is for saved Chatme contacts only. Unsaved rows are chat history
+  /// placeholders for anyone who once messaged us, including strangers.
+  bool _isStoryContact(String pubkey) {
+    if (pubkey.isEmpty) return false;
+    if (pubkey == AppSettings.instance.myPubkey) return true;
+    final contact = Hive.box<Contact>('contacts').get(pubkey);
+    return contact != null && contact.isSaved;
+  }
+
   List<String> _storyRecipients() {
     final myPubkey = AppSettings.instance.myPubkey;
     final contacts = Hive.box<Contact>('contacts')
         .values
-        .where((c) => c.pubkey.isNotEmpty && c.pubkey != myPubkey)
+        .where((c) => c.pubkey.isNotEmpty && c.pubkey != myPubkey && c.isSaved)
         .map((c) => c.pubkey)
         .toSet()
         .toList();
@@ -337,9 +346,7 @@ class StoryManager {
       content: content,
     );
     if (story == null) return false;
-    final myPubkey = AppSettings.instance.myPubkey;
-    final isKnownContact = Hive.box<Contact>('contacts').containsKey(senderPubkey);
-    if (senderPubkey != myPubkey && !isKnownContact) {
+    if (!_isStoryContact(senderPubkey)) {
       DebugLogger.log('[Story] Ignored story from non-contact | $senderPubkey');
       return true;
     }
@@ -368,9 +375,7 @@ class StoryManager {
     required String storyId,
     required String authorPubkey,
   }) async {
-    final myPubkey = AppSettings.instance.myPubkey;
-    final isKnownContact = Hive.box<Contact>('contacts').containsKey(authorPubkey);
-    if (authorPubkey != myPubkey && !isKnownContact) return true;
+    if (!_isStoryContact(authorPubkey)) return true;
     if (store.isTombstoned(storyId, authorPubkey)) return true;
 
     final existing = store.getById(storyId);
@@ -399,12 +404,14 @@ class StoryManager {
     notify();
   }
 
-  Future<String?> ensureLocalMedia(StoryItem story) async {
+  Future<String?> ensureLocalMedia(StoryItem story, {http.Client? client}) async {
+    // Old Hive rows may predate id validation. Never let one become a path.
+    if (!StoryEvent.isValidStoryId(story.id)) return null;
     if (story.localPath.isNotEmpty && await File(story.localPath).exists()) {
       return story.localPath;
     }
     try {
-      final bytes = await BlossomService.download(story.mediaUrl);
+      final bytes = await BlossomService.download(story.mediaUrl, client: client);
       final decrypted = FileTransferService.decryptBytes(
         bytes,
         FileMessage(

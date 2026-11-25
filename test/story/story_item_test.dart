@@ -1,3 +1,4 @@
+import 'package:chatme/core/crypto/nip17_file.dart';
 import 'package:chatme/story/story_event.dart';
 import 'package:chatme/story/story_item.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,22 +91,73 @@ void main() {
     });
   });
 
-  group('StoryEvent retract tags', () {
+  group('StoryEvent ids', () {
+    const validId =
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+    test('accepts only canonical 64 lowercase hex ids', () {
+      expect(StoryEvent.isValidStoryId(validId), isTrue);
+      expect(StoryEvent.isValidStoryId(validId.toUpperCase()), isFalse);
+      expect(StoryEvent.isValidStoryId('../../evil'), isFalse);
+      expect(StoryEvent.isValidStoryId('abc'), isFalse);
+      expect(StoryEvent.isValidStoryId(''), isFalse);
+    });
+
+    test('fromRumor rejects an id that could escape the stories folder', () {
+      final file = FileMessage(
+        url: 'https://files.example/blob.enc',
+        mimeType: 'image/jpeg',
+        key: '00' * 32,
+        nonce: '00' * 12,
+        hash: 'ab' * 32,
+      );
+      final tags = StoryEvent.buildTags(
+        receiverPubkey: 'peer',
+        file: file,
+        expiresAtMs: 5000000,
+      );
+
+      final bad = StoryEvent.fromRumor(
+        rumorId: '../../evil',
+        authorPubkey: 'author',
+        createdAtMs: 1000,
+        tags: tags,
+        content: file.url,
+      );
+      expect(bad, isNull);
+
+      final good = StoryEvent.fromRumor(
+        rumorId: validId,
+        authorPubkey: 'author',
+        createdAtMs: 1000,
+        tags: tags,
+        content: file.url,
+      );
+      expect(good, isNotNull);
+      expect(good!.id, validId);
+    });
+
     test('delete tags carry the story id and a short expiry', () {
       final tags = StoryEvent.buildDeleteTags(
         receiverPubkey: 'peer',
-        storyId: 'story123',
+        storyId: validId,
         expiresAtMs: 5000000,
       );
 
       expect(tags[0], ['p', 'peer']);
-      expect(tags[1], ['story_delete', 'story123']);
+      expect(tags[1], ['story_delete', validId]);
       expect(tags[2], ['expiration', '5000']);
-      expect(StoryEvent.deleteIdFromTags(tags), 'story123');
+      expect(StoryEvent.deleteIdFromTags(tags), validId);
       expect(
         StoryEvent.deleteIdFromTags([
           ['story', '1'],
           ['p', 'peer'],
+        ]),
+        isNull,
+      );
+      expect(
+        StoryEvent.deleteIdFromTags([
+          ['story_delete', '../../evil'],
         ]),
         isNull,
       );

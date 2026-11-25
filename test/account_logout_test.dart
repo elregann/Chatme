@@ -160,6 +160,7 @@ void main() {
         lastMessage: 'hi',
         lastChatTime: 100,
         unreadCount: 1,
+        isSaved: true,
       ),
     );
     await Hive.box<ChatMessage>('chat_msgs').put(
@@ -325,6 +326,14 @@ void main() {
         '0000000000000000000000000000000000000000000000000000000000000001';
     const peerPrivkey =
         '0000000000000000000000000000000000000000000000000000000000000002';
+    const spamPrivkey =
+        '0000000000000000000000000000000000000000000000000000000000000004';
+    const mineStoryId =
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const peerStoryId =
+        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const goneStoryId =
+        'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
 
     Future<void> useValidIdentity() async {
       final pubkey = bip340.getPublicKey(accountPrivkey);
@@ -337,14 +346,14 @@ void main() {
       await Hive.box<Contact>('contacts').clear();
       await Hive.box<Contact>('contacts').put(
         peerPubkey,
-        Contact(pubkey: peerPubkey, name: 'Peer'),
+        Contact(pubkey: peerPubkey, name: 'Peer', isSaved: true),
       );
       AppSettings.instance.myPubkey = pubkey;
       await AppSettings.instance.load();
     }
 
     StoryItem story({required bool mine, int? expiresAt}) => StoryItem(
-          id: mine ? 'mine_story' : 'peer_story',
+          id: mine ? mineStoryId : peerStoryId,
           authorPubkey: mine ? AppSettings.instance.myPubkey : 'peer',
           createdAt: 100,
           expiresAt: expiresAt ??
@@ -587,6 +596,113 @@ void main() {
       expect(StoryManager.instance.activeStories().map((s) => s.id), contains(item.id));
     });
 
+    test('unsaved contacts do not receive retracts', () async {
+      await useValidIdentity();
+      final spamPubkey = bip340.getPublicKey(spamPrivkey);
+      await Hive.box<Contact>('contacts').put(
+        spamPubkey,
+        Contact(pubkey: spamPubkey, name: 'Spam'),
+      );
+      final relay = _FakeRelay();
+      final client = MockClient((_) async => http.Response('', 204));
+      final item = story(mine: true);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+
+      await StoryManager.instance.deleteStory(
+        item,
+        client: client,
+        relay: relay,
+      );
+
+      expect(relay.published, hasLength(2));
+    });
+
+    test('story from an unsaved contact is ignored', () async {
+      final spamPubkey = bip340.getPublicKey(spamPrivkey);
+      await Hive.box<Contact>('contacts').put(
+        spamPubkey,
+        Contact(pubkey: spamPubkey, name: 'Spam'),
+      );
+      final file = FileMessage(
+        url: 'https://files.example/spam.enc',
+        mimeType: 'image/jpeg',
+        key: '00' * 32,
+        nonce: '00' * 12,
+        hash: blobHash,
+      );
+      final tags = StoryEvent.buildTags(
+        receiverPubkey: AppSettings.instance.myPubkey,
+        file: file,
+        expiresAtMs: DateTime.now().millisecondsSinceEpoch + 60000,
+      );
+
+      await StoryManager.instance.handleIncomingRumor(
+        rumorId: peerStoryId,
+        senderPubkey: spamPubkey,
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+        tags: tags,
+        content: file.url,
+      );
+
+      expect(Hive.box<Map>('stories').containsKey(peerStoryId), isFalse);
+    });
+
+    test('retract from an unsaved contact does not tombstone the story', () async {
+      final spamPubkey = bip340.getPublicKey(spamPrivkey);
+      await Hive.box<Contact>('contacts').put(
+        spamPubkey,
+        Contact(pubkey: spamPubkey, name: 'Spam'),
+      );
+      final item = story(mine: false).copyWith(authorPubkey: spamPubkey);
+      await Hive.box<Map>('stories').put(item.id, item.toMap());
+      final tags = StoryEvent.buildDeleteTags(
+        receiverPubkey: AppSettings.instance.myPubkey,
+        storyId: item.id,
+        expiresAtMs: DateTime.now().millisecondsSinceEpoch + 60000,
+      );
+
+      await StoryManager.instance.handleIncomingRumor(
+        rumorId: peerStoryId,
+        senderPubkey: spamPubkey,
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+        tags: tags,
+        content: item.id,
+      );
+
+      expect(Hive.box<Map>('stories').containsKey(item.id), isTrue);
+      expect(StoryStore().isTombstoned(item.id, spamPubkey), isFalse);
+    });
+
+    test('legacy invalid story id is never written as a media filename', () async {
+      final downloaded = Completer<bool>();
+      final client = MockClient((_) async {
+        if (!downloaded.isCompleted) downloaded.complete(true);
+        return http.Response('ignored', 200);
+      });
+      final bad = story(mine: false).copyWith(id: '../../escape', localPath: '');
+
+      final path = await StoryManager.instance.ensureLocalMedia(
+        bad,
+        client: client,
+      );
+
+      expect(path, isNull);
+      expect(downloaded.isCompleted, isFalse);
+    });
+
+    test('valid story id still downloads media', () async {
+      final downloaded = Completer<bool>();
+      final client = MockClient((_) async {
+        if (!downloaded.isCompleted) downloaded.complete(true);
+        return http.Response('ignored', 200);
+      });
+      final item = story(mine: false).copyWith(localPath: '');
+
+      await StoryManager.instance.ensureLocalMedia(item, client: client);
+
+      expect(downloaded.isCompleted, isTrue);
+    });
+
     test('logout retracts own stories before disconnecting', () async {
       await useValidIdentity();
       final relay = _FakeRelay();
@@ -603,15 +719,15 @@ void main() {
     test('expired tombstones are pruned with the stories', () async {
       final store = StoryStore();
       await store.putTombstone(
-        'gone_story',
+        goneStoryId,
         'peer',
         DateTime.now().millisecondsSinceEpoch - 1000,
       );
 
-      expect(store.isTombstoned('gone_story', 'peer'), isFalse);
+      expect(store.isTombstoned(goneStoryId, 'peer'), isFalse);
       await store.purgeExpired();
       expect(
-        Hive.box<Map>('stories').containsKey(StoryStore.tombstoneKey('gone_story')),
+        Hive.box<Map>('stories').containsKey(StoryStore.tombstoneKey(goneStoryId)),
         isFalse,
       );
     });

@@ -6,6 +6,12 @@ class StoryEvent {
   /// the routing kind used by the existing inbox so no chat path changes.
   static const String deleteTag = 'story_delete';
 
+  /// Story ids become local filenames, so only canonical event ids are safe.
+  /// A seal signature proves who wrote a rumor, not that its chosen id is safe.
+  static final RegExp _storyIdPattern = RegExp(r'^[0-9a-f]{64}$');
+
+  static bool isValidStoryId(String id) => _storyIdPattern.hasMatch(id);
+
   static List<List<String>> buildDeleteTags({
     required String receiverPubkey,
     required String storyId,
@@ -20,7 +26,9 @@ class StoryEvent {
 
   static String? deleteIdFromTags(List<List<String>> tags) {
     for (final tag in tags) {
-      if (tag.length > 1 && tag[0] == deleteTag && tag[1].isNotEmpty) {
+      if (tag.length > 1 &&
+          tag[0] == deleteTag &&
+          isValidStoryId(tag[1])) {
         return tag[1];
       }
     }
@@ -53,6 +61,8 @@ class StoryEvent {
     required String content,
     String localPath = '',
   }) {
+    if (!isValidStoryId(rumorId)) return null;
+
     String? getTag(String name) {
       for (final tag in tags) {
         if (tag.length > 1 && tag[0] == name) return tag[1];
