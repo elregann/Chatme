@@ -1,6 +1,26 @@
+import 'dart:math' as math;
+
+import 'package:chatme/story/story_item.dart';
+import 'package:chatme/story/story_strip.dart';
 import 'package:chatme/story/story_viewer_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+StoryItem _story(String id, int createdAt, {required bool viewedByMe}) {
+  return StoryItem(
+    id: id,
+    authorPubkey: 'peer',
+    createdAt: createdAt,
+    expiresAt: createdAt + 86400000,
+    mediaUrl: 'https://example.com/$id',
+    mimeType: 'image/jpeg',
+    encryptionKey: 'k',
+    encryptionNonce: 'n',
+    fileHash: 'f$id',
+    originalHash: 'o$id',
+    viewedBy: viewedByMe ? const {'me': 1} : const {},
+  );
+}
 
 Widget _host({
   required VoidCallback onHoldStart,
@@ -165,6 +185,108 @@ void main() {
       expect(events, ['pause', 'resume']);
       expect(next, 0);
       expect(previous, 0);
+    });
+  });
+
+  group('StoryRingStatus', () {
+    test('own stories stay gray no matter how many are unviewed', () {
+      final status = StoryRingStatus.fromStories(
+        pubkey: 'me',
+        stories: [
+          _story('1', 10, viewedByMe: false),
+          _story('2', 20, viewedByMe: true),
+          _story('3', 30, viewedByMe: false),
+        ],
+        isMine: true,
+      );
+
+      expect(status.hasStory, isTrue);
+      expect(status.segments.length, 3);
+      expect(status.segments, [false, false, false]);
+      expect(status.hasUnviewed, isFalse);
+    });
+
+    test('other stories mark unseen segments and keep seen ones gray', () {
+      final status = StoryRingStatus.fromStories(
+        pubkey: 'me',
+        stories: [
+          _story('1', 10, viewedByMe: true),
+          _story('2', 20, viewedByMe: false),
+          _story('3', 30, viewedByMe: true),
+          _story('4', 40, viewedByMe: false),
+        ],
+        isMine: false,
+      );
+
+      expect(status.hasStory, isTrue);
+      expect(status.segments, [false, true, false, true]);
+      expect(status.hasUnviewed, isTrue);
+    });
+
+    test('all viewed stories keep a gray segmented ring', () {
+      final status = StoryRingStatus.fromStories(
+        pubkey: 'me',
+        stories: [
+          _story('1', 10, viewedByMe: true),
+          _story('2', 20, viewedByMe: true),
+        ],
+        isMine: false,
+      );
+
+      expect(status.hasStory, isTrue);
+      expect(status.segments, [false, false]);
+      expect(status.hasUnviewed, isFalse);
+    });
+
+    test('segments are evenly sized and gaps are symmetric', () {
+      const size = Size.square(60);
+      for (final count in [2, 3, 4, 5]) {
+        final painter = StoryRingPainter(
+          segments: List<bool>.filled(count, true),
+        );
+        final sweeps = List<double>.generate(
+          count,
+          (i) => painter.sweepFor(i, size: size),
+        );
+        final gaps = painter.gapsFor(size: size);
+
+        for (var i = 1; i < count; i++) {
+          expect(sweeps[i], closeTo(sweeps[0], 0.0001));
+          expect(gaps[i], closeTo(gaps[0], 0.0001));
+        }
+        expect(gaps[0], greaterThan(0));
+
+        final total = sweeps.fold<double>(0, (a, b) => a + b) +
+            gaps.fold<double>(0, (a, b) => a + b);
+        expect(total, closeTo(math.pi * 2, 0.0001));
+
+        for (var i = 0; i < count; i++) {
+          final end = painter.startFor(i, size: size) + sweeps[i];
+          final nextStart = painter.startFor((i + 1) % count, size: size);
+          var gap = nextStart - end;
+          while (gap < 0) {
+            gap += math.pi * 2;
+          }
+          while (gap >= math.pi * 2) {
+            gap -= math.pi * 2;
+          }
+          expect(gap, closeTo(gaps[0], 0.0001));
+        }
+      }
+    });
+
+    test('unviewed segments use the full-circle gradient slice', () {
+      const painter = StoryRingPainter(segments: [true, false, true]);
+      const size = Size.square(60);
+
+      expect(StoryRingPainter.strokeWidth, 2.5);
+      expect(painter.colorFor(false, 0, size: size), isNull);
+      expect(painter.colorFor(true, 0, size: size), isNotNull);
+      expect(painter.colorFor(true, 2, size: size), isNotNull);
+      expect(
+        painter.colorFor(true, 0, size: size),
+        isNot(painter.colorFor(true, 2, size: size)),
+      );
     });
   });
 
