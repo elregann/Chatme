@@ -1288,7 +1288,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
           ChatmeMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: headerTextColor),
-            offset: const Offset(0, 40),
             entries: [
               ChatmeMenuEntry(
                 value: 'save_rename',
