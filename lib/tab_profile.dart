@@ -18,6 +18,7 @@ import 'ui/profile/global_id.dart';
 import 'ui/profile/relay_status.dart';
 import 'ui/profile/file_servers.dart';
 import 'ui/profile/key_converter.dart';
+import 'ui/profile/privacy_policy_page.dart';
 import 'ui/qr/qr_code_page.dart';
 import 'widgets/profile_bio.dart';
 import 'ui/chat_image_crop_page.dart';
@@ -485,62 +486,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showPrivacyDialog(BuildContext context, Color bgColor,
-      Color textPrimary, Color textSecondary) {
+  void _openPrivacyPolicy(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: bgColor,
-          appBar: AppBar(
-            backgroundColor: bgColor,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            centerTitle: true,
-            title: Text(
-              'Privacy Policy',
-              style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 16,
-                  color: textPrimary),
-            ),
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_rounded,
-                  color: textPrimary, size: 18),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Chatme is a decentralized communication tool built on the Nostr protocol, where privacy is inherent because we operate without central servers. Every message is locally secured with end-to-end encryption using your Private Key, ensuring that you alone own your data. However, this absolute sovereignty means account recovery is impossible if your keys are lost. While our ecosystem promotes transparency through open-source relays, please be aware that metadata such as your IP address may remain visible to the specific relay providers you connect to.\n\n'
-                  'To safeguard your conversations, Chatme implements an encryption framework based on the NIP-17 and NIP-44 standards. Every direct message is wrapped in a three layer privacy scheme: an unsigned Rumor, an encrypted and signed Seal, and a Gift Wrap signed by a single use ephemeral key. This ensures that relay operators cannot determine who is talking to whom. The inner payload is secured with NIP-44 v2, which uses ChaCha20 for symmetric encryption, HMAC-SHA256 for message authentication, and HKDF-SHA256 for key derivation on top of the secp256k1 ECDH shared secret. Message timestamps are also randomised within a two day window to prevent timing correlation attacks. By cryptographically binding the identities of the sender and receiver to each encrypted packet, we ensure absolute message privacy and prevent unauthorized manipulation.\n\n'
-                  'Voice calls in Chatme are protected at two independent layers. Call signaling, which negotiates the connection between peers, is transmitted using the same NIP-17 and NIP-44 framework that secures your messages: every offer, answer, and connection candidate is wrapped in a three layer privacy scheme, so relay operators cannot observe who is calling whom or inspect the negotiation details. The audio stream itself is protected by WebRTC\'s built in DTLS-SRTP encryption, establishing a direct peer to peer secure channel that never passes through any relay. Together, these two layers ensure that both the setup phase and the conversation contents remain private end to end.\n\n'
-                  'As a user, you are responsible for the safety of your Private Key. We do not store, collect, or have any access to your personal data, messages, or keys. By using Chatme, you acknowledge that your data security rests entirely in your hands through the cryptographic power of the Nostr network.\n\n'
-                  'To enhance global discoverability, Chatme maintains a public search index where you can voluntarily link a username to your Public Key. This registry acts solely as a directory to help others find you and does not grant us any access to your private communications or encrypted data. Your sovereignty remains intact as this index is mathematically decoupled from your message content, ensuring that even with a public handle, your privacy remains unbreachable.\n\n'
-                  'Should you prefer not to use our global discovery system, you may still use Chatme freely by adding contacts manually. In this case, your username and Public Key will not be indexed, ensuring your identity remains invisible to the public search according to your chosen level of privacy.',
-                  style: TextStyle(
-                      fontSize: 14, height: 1.6, color: textSecondary),
-                  textAlign: TextAlign.left,
-                ),
-                const SizedBox(height: 32),
-                Divider(color: textSecondary.withAlpha(51)),
-                const SizedBox(height: 16),
-                Text(
-                  'End of Privacy Policy',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w300,
-                      color: textSecondary),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()),
     );
   }
 
@@ -988,8 +937,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 color: textPrimary)),
                         trailing: const Icon(Icons.chevron_right_rounded,
                             color: textSecondary),
-                        onTap: () => _showPrivacyDialog(
-                            context, bgColor, textPrimary, textSecondary),
+                        onTap: () => _openPrivacyPolicy(context),
                       ),
                       const Divider(
                           height: 0.5,
