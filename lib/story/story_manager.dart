@@ -393,15 +393,43 @@ class StoryManager {
     return true;
   }
 
-  Future<void> markViewed(StoryItem story) async {
+  Future<void> markViewed(StoryItem story, {RelayManager? relay}) async {
     final myPubkey = AppSettings.instance.myPubkey;
     if (myPubkey.isEmpty) return;
-    await store.markViewed(
-      story.id,
-      myPubkey,
-      DateTime.now().millisecondsSinceEpoch,
-    );
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final alreadyViewed = story.viewedBy.containsKey(myPubkey);
+    if (!alreadyViewed) {
+      await store.markViewed(story.id, myPubkey, nowMs);
+      notify();
+    }
+    if (relay == null) return;
+    if (story.authorPubkey.isEmpty || story.authorPubkey == myPubkey) return;
+    try {
+      await relay.sendStoryViewReceipt(
+        storyId: story.id,
+        authorPubkey: story.authorPubkey,
+      );
+    } catch (e) {
+      DebugLogger.log('[Story] View receipt send failed | $e', type: 'WARN');
+    }
+  }
+
+  Future<bool> handleIncomingViewReceipt({
+    required String senderPubkey,
+    required String storyId,
+    required int viewedAtMs,
+  }) async {
+    final myPubkey = AppSettings.instance.myPubkey;
+    if (myPubkey.isEmpty || senderPubkey.isEmpty) return false;
+    if (senderPubkey == myPubkey) return false;
+    if (!StoryEvent.isValidStoryId(storyId)) return false;
+    final story = store.getById(storyId);
+    if (story == null) return false;
+    if (story.authorPubkey != myPubkey) return false;
+    if (story.viewedBy.containsKey(senderPubkey)) return false;
+    await store.markViewed(storyId, senderPubkey, viewedAtMs);
     notify();
+    return true;
   }
 
   Future<String?> ensureLocalMedia(StoryItem story, {http.Client? client}) async {

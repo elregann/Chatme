@@ -32,6 +32,7 @@ import 'services/profile_meta_store.dart';
 import 'models/chat_message.dart';
 import 'models/contact.dart';
 import 'services/server_lists.dart';
+import 'story/story_event.dart';
 import 'story/story_manager.dart';
 
 class RelayManager {
@@ -1340,6 +1341,24 @@ class RelayManager {
         return true;
       }
 
+      // Story view receipt (Chatme custom kind)
+      if (nip17Result != null &&
+          nip17Result.rumorKind == Nip17.kindStoryViewReceipt) {
+        try {
+          final storyId = StoryEvent.storyViewIdFromTags(nip17Result.rumorTags);
+          if (storyId == null) return true;
+          final handled = await StoryManager.instance.handleIncomingViewReceipt(
+            senderPubkey: actualSenderPubkey,
+            storyId: storyId,
+            viewedAtMs: nip17Result.timestamp,
+          );
+          if (handled) onMessageReceived?.call();
+        } catch (e) {
+          DebugLogger.log('[Story] View receipt failed | $e', type: 'ERROR');
+        }
+        return true;
+      }
+
       // File message (NIP-17 kind 15), shown as a voice note or a file
       Map<String, String> fileMap = const {};
       if (nip17Result != null && nip17Result.rumorKind == Nip17.kindFile) {
@@ -2127,6 +2146,39 @@ class RelayManager {
       }
     } catch (e) {
       DebugLogger.log('[Receipt] Send failed | $e', type: 'ERROR');
+    }
+  }
+
+  Future<void> sendStoryViewReceipt({
+    required String storyId,
+    required String authorPubkey,
+  }) async {
+    try {
+      final myPrivkey = AppSettings.instance.myPrivkey;
+      final myPubkey = AppSettings.instance.myPubkey;
+      if (myPubkey.isEmpty || myPrivkey.isEmpty) return;
+      if (authorPubkey.isEmpty || authorPubkey == myPubkey) return;
+      if (!StoryEvent.isValidStoryId(storyId)) return;
+
+      final wrapped = await Nip17.wrap(
+        plaintext: 'viewed',
+        senderPrivkey: myPrivkey,
+        senderPubkey: myPubkey,
+        receiverPubkey: authorPubkey,
+        kind: Nip17.kindStoryViewReceipt,
+        customTags: StoryEvent.buildViewReceiptTags(
+          receiverPubkey: authorPubkey,
+          storyId: storyId,
+        ),
+      );
+
+      for (final entry in _connections.entries) {
+        if (_connectionStatus[entry.key] == true) {
+          entry.value.sink.add(jsonEncode(["EVENT", wrapped.giftWrap]));
+        }
+      }
+    } catch (e) {
+      DebugLogger.log('[Story] View receipt send failed | $e', type: 'ERROR');
     }
   }
 

@@ -47,12 +47,14 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - In the contact profile, the Media tab is a grid of every picture and video of the conversation. It opens a swipeable gallery where a video starts playing as soon as its page is on screen.
 
 ### Stories (prototype)
-> **Prototype:** Nostr has no standard story kind yet. Chatme uses its own internal rumor kind (`3331`), so stories only appear in other Chatme apps and the format may change in a later release.
+> **Prototype:** Nostr has no standard story kind yet. Chatme uses its own internal rumor kinds (`3331`, `3332`), so stories and story view receipts only appear in other Chatme apps and the format may change in a later release.
 
 - Share a picture or video that disappears after 24 hours. Stories go only to saved Chatme contacts, plus a copy to your own account.
 - Media is encrypted on the device with a fresh AES-GCM key and uploaded to a Blossom server; the key travels inside the NIP-17 gift wrap.
 - In the viewer, **hold** the media to pause and **release** to resume from the same point. A **short tap** on the left half goes to the previous story and on the right half to the next one; a swipe left or right does the same. Photos stay for five seconds, videos use their own duration, and neither loops when it advances by itself.
 - The header shows the author's name and upload time, a back button and an overflow button with no menu. Your own story is labelled **Your story**.
+- Your own story shows an **N views** pill. Tapping it opens a simple viewers panel with the **Viewed by N** count and the list of contacts who viewed it; tapping outside closes the panel.
+- When someone views your story, their Chatme app sends a best-effort NIP-17 view receipt (kind `3332`) to you, so the viewers list can update when the receipt arrives.
 - Logging out wipes the story cache and local media, so another account cannot see the previous account's stories.
 
 ### Contacts
@@ -102,7 +104,7 @@ Status: Yes means fully supported, Partial means only part of the NIP is impleme
 | [04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted direct messages (legacy) | Partial | Receive only (kind `4`), so older conversations stay readable. New messages never use it. |
 | [05](https://github.com/nostr-protocol/nips/blob/master/05.md) | DNS-based identifiers | Partial | The `nip05` field is published in the profile. The `username@chatme` handle is verified through Chatme's own backend, not a `.well-known/nostr.json` lookup. |
 | [06](https://github.com/nostr-protocol/nips/blob/master/06.md) | Key derivation from mnemonic seed phrase | Yes | 12 word BIP-39 phrase, derived with BIP-32 at `m/44'/1237'/0'/0/0`. The same phrase gives the same account in other NIP-06 clients. |
-| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Partial | Rumor (kind `14`), file message (kind `15`, used for voice notes, pictures and videos), seal (kind `13`), gift wrap (kind `1059`). Publishes your Inbox relays as the DM relay list (kind `10050`), and again whenever you change them, so other clients such as Amethyst can reach Chatme. It does not read the recipient's kind `10050` yet, so messages go to the relays Chatme is connected to. Stories use a Chatme-only rumor kind (`3331`) as a prototype, not a standard NIP-17 kind. |
+| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private direct messages | Partial | Rumor (kind `14`), file message (kind `15`, used for voice notes, pictures and videos), seal (kind `13`), gift wrap (kind `1059`). Publishes your Inbox relays as the DM relay list (kind `10050`), and again whenever you change them, so other clients such as Amethyst can reach Chatme. It does not read the recipient's kind `10050` yet, so messages go to the relays Chatme is connected to. Stories and story view receipts use Chatme-only rumor kinds (`3331`, `3332`) as a prototype, not standard NIP-17 kinds. |
 | [19](https://github.com/nostr-protocol/nips/blob/master/19.md) | bech32 encoded entities | Partial | `npub` and `nsec` (view, export, convert, add contact), plus `nprofile` for contact QR codes and when adding a contact. Other entities such as `nevent` and `naddr` are not handled. |
 | [21](https://github.com/nostr-protocol/nips/blob/master/21.md) | `nostr:` URI scheme | Partial | Contact QR codes hold a `nostr:nprofile` link, and `nostr:npub` and `nostr:nprofile` are accepted when adding a contact. Secret keys are refused. Other entities are not handled. |
 | [24](https://github.com/nostr-protocol/nips/blob/master/24.md) | Extra metadata fields | Partial | The `display_name` field is read from kind `0` search results and used as a label when `name` is empty. Contacts and Me use `name`; other extra fields such as `website`, `banner`, `bot` and `birthday` are not displayed. |
@@ -140,8 +142,9 @@ Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
 | `3329` | Read receipt (custom) | Inside gift wrap | Chatme specific. Marks a message as read. |
 | `3330` | Call signal (custom) | Inside gift wrap | Chatme specific. WebRTC offer, answer, ICE candidate, ICE restart offer and hang up. |
 | `3331` | Story post or retract (custom, prototype) | Inside gift wrap | Chatme specific. A picture or video for contacts only with an `expiration` hint, or a retract carrying a `story_delete` tag with the story id. Unsigned rumor. |
+| `3332` | Story view receipt (custom, prototype) | Inside gift wrap | Chatme specific. Sent to the story author when a contact views a story, so the author can show a viewers list. Unsigned rumor. |
 
-Kinds `3329`, `3330` and `3331` are Chatme's own conventions and are not part of any NIP. Other clients ignore them, and a call, read receipt or story only works between two Chatme users. Kind `3331` is a prototype: Nostr has no standard story kind yet, so Chatme keeps this format internal and it may change in a later release. A story retract is the same kind with a `story_delete` tag instead of a file. Voice notes add one extra tag, `duration` (in seconds), to the standard kind `15` tags. A video adds an `alg` tag with the value `aes-gcm-chunked`, which is Chatme's own chunked layout, so other clients cannot open it. Other clients ignore the extra tags.
+Kinds `3329`, `3330`, `3331` and `3332` are Chatme's own conventions and are not part of any NIP. Other clients ignore them, and a call, read receipt, story or story view receipt only works between two Chatme users. Kinds `3331` and `3332` are prototypes: Nostr has no standard story kind yet, so Chatme keeps this format internal and it may change in a later release. A story retract is the same kind as `3331` with a `story_delete` tag instead of a file. Voice notes add one extra tag, `duration` (in seconds), to the standard kind `15` tags. A video adds an `alg` tag with the value `aes-gcm-chunked`, which is Chatme's own chunked layout, so other clients cannot open it. Other clients ignore the extra tags.
 
 ---
 

@@ -35,6 +35,25 @@ class StoryEvent {
     return null;
   }
 
+  static List<List<String>> buildViewReceiptTags({
+    required String receiverPubkey,
+    required String storyId,
+  }) {
+    return [
+      ['p', receiverPubkey],
+      ['e', storyId],
+    ];
+  }
+
+  static String? storyViewIdFromTags(List<List<String>> tags) {
+    for (final tag in tags) {
+      if (tag.length > 1 && tag[0] == 'e' && isValidStoryId(tag[1])) {
+        return tag[1];
+      }
+    }
+    return null;
+  }
+
   static List<List<String>> buildTags({
     required String receiverPubkey,
     required FileMessage file,

@@ -26,6 +26,7 @@ class Nip17 {
   static const int kindReadReceipt = 3329;
   static const int kindCallSignal = 3330;
   static const int kindStoryPost = 3331;
+  static const int kindStoryViewReceipt = 3332;
   // NIP-17 DM relay list: the relays where a user receives gift wraps.
   static const int kindDmRelayList = 10050;
 
@@ -196,7 +197,8 @@ class Nip17 {
           rumorKind != kindReaction &&
           rumorKind != kindReadReceipt &&
           rumorKind != kindCallSignal &&
-          rumorKind != kindStoryPost) {
+          rumorKind != kindStoryPost &&
+          rumorKind != kindStoryViewReceipt) {
         throw Exception(
           'Innermost event kind ${rumor['kind']} is not a supported Rumor',
         );

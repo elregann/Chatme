@@ -73,7 +73,9 @@ class PrivacyPolicyContent {
             'file server in plaintext.',
         'Stories are a Chatme prototype. They are encrypted, sent to your '
             'saved Chatme contacts and your own account, and hidden locally '
-            'after 24 hours.',
+            'after 24 hours. When someone views your story, their app may send '
+            'a best-effort encrypted view receipt to you so you can see who '
+            'viewed it.',
       ],
       bullets: [
         'File servers can see encrypted files, size, upload time, and your '

@@ -15,6 +15,7 @@ import '../widgets/user_avatar.dart';
 import 'story_item.dart';
 import 'story_manager.dart';
 import 'story_timing.dart';
+import 'story_viewers_panel.dart';
 
 /// Opens the author's room chat in place of the story route. Replacing the
 /// route means going back lands on the chats page, not back on the story.
@@ -58,6 +59,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
   StoryPlayback? _playback;
   bool _loadingMedia = false;
   String? _mediaPath;
+  bool _viewersOpen = false;
 
   List<StoryItem> get _stories =>
       StoryManager.instance.activeStories(authorPubkey: _authorPubkey);
@@ -183,7 +185,10 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
       _mediaPath = story.localPath.isNotEmpty ? story.localPath : null;
     });
 
-    await StoryManager.instance.markViewed(story);
+    await StoryManager.instance.markViewed(
+      story,
+      relay: widget.relayManager,
+    );
     if (!mounted || generation != _loadGeneration) return;
     final path = await StoryManager.instance.ensureLocalMedia(story);
     if (!mounted || generation != _loadGeneration) return;
@@ -270,6 +275,16 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
     final contact = Hive.box<Contact>('contacts').get(pubkey);
     if (contact == null) return AppSettings.formatDisplayName(pubkey);
     return AppSettings.getContactDisplayName(contact);
+  }
+
+  List<StoryViewerEntry> _viewerEntries(StoryItem story) {
+    final viewers = story.viewedBy.entries
+        .where((e) => e.key != story.authorPubkey)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return viewers
+        .map((e) => StoryViewerEntry(pubkey: e.key, name: _displayName(e.key)))
+        .toList();
   }
 
   Widget _buildProgressBars(int count, int current, double progress) {
@@ -434,15 +449,54 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
                 ],
               ),
             ),
-            if (story.caption.isNotEmpty)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 24,
-                child: Text(
-                  story.caption,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
-                  textAlign: TextAlign.center,
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 24,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (story.caption.isNotEmpty && !_viewersOpen)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: isMine ? 12 : 0),
+                      child: Text(
+                        story.caption,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  if (isMine) const SizedBox(height: 48),
+                ],
+              ),
+            ),
+            if (isMine)
+              Positioned.fill(
+                child: StoryViewersPanel(
+                  viewCount: story.viewedBy.keys
+                      .where((k) => k != story.authorPubkey)
+                      .length,
+                  viewers: _viewerEntries(story),
+                  onDelete: _deleteCurrentStory,
+                  onMessageViewer: (pubkey) => openStoryAuthorChat(
+                    context,
+                    authorPubkey: pubkey,
+                    displayName: _displayName(pubkey),
+                    relayManager: widget.relayManager,
+                  ),
+                  onExpandedChanged: (expanded) {
+                    setState(() => _viewersOpen = expanded);
+                    if (expanded) {
+                      _pausePlayback();
+                    } else {
+                      _resumePlayback();
+                    }
+                  },
+                  avatarBuilder: (pubkey, name) => UserAvatar(
+                    pubkey: pubkey,
+                    name: name,
+                    radius: 16,
+                    relayManager: widget.relayManager,
+                  ),
                 ),
               ),
           ],
