@@ -170,6 +170,7 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
   bool _playCommandInFlight = false;
   bool _isSeeking = false;
   bool _nextBusy = false;
+  bool _closing = false;
 
   VideoPlayerController? get _controller => _trimmer.videoPlayerController;
 
@@ -485,9 +486,12 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
     _tempFiles.clear();
   }
 
-  Future<void> _back() async {
-    await _cleanupTempFiles();
-    if (mounted) Navigator.of(context).pop();
+  void _back() {
+    if (_closing) return;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    _closing = true;
+    Navigator.of(context).maybePop();
   }
 
   static String _format(Duration duration) {
@@ -502,7 +506,10 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop && result == null) _cleanupTempFiles();
+        if (didPop) {
+          _closing = true;
+          if (result == null) unawaited(_cleanupTempFiles());
+        }
       },
       child: Scaffold(
         backgroundColor: ChatmeColors.backgroundPrimary,

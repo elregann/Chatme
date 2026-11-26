@@ -14,6 +14,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'services/link_preview_service.dart';
 import 'widgets/user_avatar.dart';
+import 'widgets/root_back_guard.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'models/call_log.dart';
@@ -1014,13 +1015,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return ValueListenableBuilder<CallState>(
       valueListenable: CallManager.instance.callStateNotifier,
       builder: (context, callState, child) {
-        return PopScope(
-          canPop: callState == CallState.idle,
-          onPopInvokedWithResult: (didPop, result) {
-            if (!didPop) {
-              const MethodChannel('com.chatme.app/task')
-                  .invokeMethod('moveToBack');
-            }
+        return RootBackGuard(
+          allowExit: callState == CallState.idle,
+          onMoveToBack: () {
+            const MethodChannel('com.chatme.app/task')
+                .invokeMethod('moveToBack');
           },
           child: child!,
         );

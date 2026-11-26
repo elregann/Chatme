@@ -60,6 +60,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
   bool _loadingMedia = false;
   String? _mediaPath;
   bool _viewersOpen = false;
+  bool _closing = false;
 
   List<StoryItem> get _stories =>
       StoryManager.instance.activeStories(authorPubkey: _authorPubkey);
@@ -91,6 +92,21 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
     _imageTimer = null;
     _playback = null;
     _progress.value = 0;
+  }
+
+  void _stopPlaybackForClose() {
+    _loadGeneration++;
+    _stopProgress();
+    _disposeVideo();
+  }
+
+  void _closeViewer() {
+    if (!mounted || _closing) return;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    _closing = true;
+    _stopPlaybackForClose();
+    Navigator.of(context).maybePop();
   }
 
   void _onVideoTick() {
@@ -172,7 +188,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
     final generation = ++_loadGeneration;
     final stories = _stories;
     if (stories.isEmpty) {
-      if (mounted) Navigator.of(context).maybePop();
+      _closeViewer();
       return;
     }
     if (_index >= stories.length) _index = stories.length - 1;
@@ -237,15 +253,13 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
   }
 
   void _next() {
+    if (_closing) return;
     final stories = _stories;
     if (_index < stories.length - 1) {
       setState(() => _index++);
       _loadCurrent();
     } else {
-      _loadGeneration++;
-      _stopProgress();
-      _disposeVideo();
-      Navigator.of(context).maybePop();
+      _closeViewer();
     }
   }
 
@@ -323,7 +337,15 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
       alwaysUse24Hour: MediaQuery.alwaysUse24HourFormatOf(context),
     );
 
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          _closing = true;
+          _stopPlaybackForClose();
+        }
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Stack(
@@ -374,7 +396,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
                         color: Colors.white,
                         size: 18,
                       ),
-                      onPressed: () => Navigator.of(context).maybePop(),
+                      onPressed: _closeViewer,
                     ),
                     titleSpacing: 0,
                     title: Row(
@@ -502,6 +524,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
           ],
         ),
       ),
+    ),
     );
   }
 }
@@ -603,6 +626,7 @@ class _StoryViewerGesturesState extends State<StoryViewerGestures> {
 
   Timer? _holdTimer;
   bool _didHold = false;
+  bool _cancelled = false;
 
   @override
   void dispose() {
@@ -611,20 +635,22 @@ class _StoryViewerGesturesState extends State<StoryViewerGestures> {
   }
 
   void _onDown() {
+    _cancelled = false;
     _didHold = false;
     _holdTimer?.cancel();
     _holdTimer = Timer(_holdDelay, () => _didHold = true);
     widget.onHoldStart();
   }
 
-  void _onUp() {
+  void _onUp({bool cancelled = false}) {
+    if (cancelled) _cancelled = true;
     _holdTimer?.cancel();
     _holdTimer = null;
     widget.onHoldEnd();
   }
 
   void _onTapUp(TapUpDetails details) {
-    if (_didHold) return;
+    if (_cancelled || _didHold) return;
     final width = context.size?.width ?? 0;
     if (details.localPosition.dx < width / 2) {
       widget.onPrevious();
@@ -639,11 +665,12 @@ class _StoryViewerGesturesState extends State<StoryViewerGestures> {
       behavior: HitTestBehavior.opaque,
       onPointerDown: (_) => _onDown(),
       onPointerUp: (_) => _onUp(),
-      onPointerCancel: (_) => _onUp(),
+      onPointerCancel: (_) => _onUp(cancelled: true),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapUp: _onTapUp,
         onHorizontalDragEnd: (details) {
+          if (_cancelled) return;
           final velocity = details.primaryVelocity ?? 0;
           if (velocity <= -250) {
             widget.onNext();
