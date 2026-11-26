@@ -10,6 +10,7 @@ import '../widgets/user_avatar.dart';
 import '../relay_manager.dart';
 import 'story_item.dart';
 import 'story_manager.dart';
+import 'story_store.dart';
 
 class StoryRingStatus {
   final bool hasStory;
@@ -61,9 +62,16 @@ class StoryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: StoryManager.instance.revision,
-      builder: (context, _, __) {
+    // View receipts and local view marks are persisted directly to the Hive
+    // box. Listening only to the manual revision counter can leave a ring
+    // stale until the page happens to rebuild, so follow the stored data too.
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        StoryManager.instance.revision,
+        if (Hive.isBoxOpen(StoryStore.boxName))
+          Hive.box<Map>(StoryStore.boxName).listenable(),
+      ]),
+      builder: (context, _) {
         final myPubkey = AppSettings.instance.myPubkey;
         final myStories =
             StoryManager.instance.activeStories(authorPubkey: myPubkey);
