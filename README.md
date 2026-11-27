@@ -47,7 +47,7 @@ Chatme is an instant messaging app where your identity is a cryptographic key yo
 - In the contact profile, the Media tab is a grid of every picture and video of the conversation. It opens a swipeable gallery where a video starts playing as soon as its page is on screen.
 
 ### Stories (prototype)
-> **Prototype:** Nostr has no standard story kind yet. Chatme uses its own internal rumor kinds (`3331`, `3332`), so stories and story view receipts only appear in other Chatme apps and the format may change in a later release.
+> **Prototype:** Nostr has no standard story kind yet. Chatme uses its own internal rumor kinds (`3331`, `3332`), so stories and story view receipts only appear in other Chatme apps and the format may change in a later release. See the [story post and retract format](docs/kinds/3331.md) and the [story view receipt format](docs/kinds/3332.md).
 
 - Share a picture or video that disappears after 24 hours. Stories go only to saved Chatme contacts, plus a copy to your own account.
 - Media is encrypted on the device with a fresh AES-GCM key and uploaded to a Blossom server; the key travels inside the NIP-17 gift wrap.
@@ -139,12 +139,12 @@ Not implemented yet: NIP-65 relay list metadata and NIP-09 event deletion.
 | `22242` | Client authentication | Sent to relay | Answer to a relay `AUTH` challenge. |
 | `24242` | Blossom authorization | Sent to file server | Authorizes one upload. Signed with a throwaway key. |
 | `27235` | HTTP auth | Sent to HTTP server | Authorizes photo uploads and Global ID requests. |
-| `3329` | Read receipt (custom) | Inside gift wrap | Chatme specific. Marks a message as read. |
-| `3330` | Call signal (custom) | Inside gift wrap | Chatme specific. WebRTC offer, answer, ICE candidate, ICE restart offer and hang up. |
-| `3331` | Story post or retract (custom, prototype) | Inside gift wrap | Chatme specific. A picture or video for contacts only with an `expiration` hint, or a retract carrying a `story_delete` tag with the story id. Unsigned rumor. |
-| `3332` | Story view receipt (custom, prototype) | Inside gift wrap | Chatme specific. Sent to the story author when a contact views a story, so the author can show a viewers list. Unsigned rumor. |
+| [`3329`](docs/kinds/3329.md) | Read receipt (custom) | Inside gift wrap | Chatme specific. Marks a message as read. |
+| [`3330`](docs/kinds/3330.md) | Call signal (custom) | Inside gift wrap | Chatme specific. WebRTC offer, ringing, answer, ICE candidate, ICE restart offer and hang up. |
+| [`3331`](docs/kinds/3331.md) | Story post or retract (custom, prototype) | Inside gift wrap | Chatme specific. A picture or video for contacts only with an `expiration` hint, or a retract carrying a `story_delete` tag with the story id. Unsigned rumor. |
+| [`3332`](docs/kinds/3332.md) | Story view receipt (custom, prototype) | Inside gift wrap | Chatme specific. Sent to the story author when a contact views a story, so the author can show a viewers list. Unsigned rumor. |
 
-Kinds `3329`, `3330`, `3331` and `3332` are Chatme's own conventions and are not part of any NIP. Other clients ignore them, and a call, read receipt, story or story view receipt only works between two Chatme users. Kinds `3331` and `3332` are prototypes: Nostr has no standard story kind yet, so Chatme keeps this format internal and it may change in a later release. A story retract is the same kind as `3331` with a `story_delete` tag instead of a file. Voice notes add one extra tag, `duration` (in seconds), to the standard kind `15` tags. A video adds an `alg` tag with the value `aes-gcm-chunked`, which is Chatme's own chunked layout, so other clients cannot open it. Other clients ignore the extra tags.
+Kinds `3329`, `3330`, `3331` and `3332` are Chatme's own conventions and are not part of any NIP. Other clients ignore them, and a call, read receipt, story or story view receipt only works between two Chatme users. Kinds `3331` and `3332` are prototypes: Nostr has no standard story kind yet, so Chatme keeps this format internal and it may change in a later release. The [custom kind documentation](docs/kinds/README.md) explains what is based on NIP-17, NIP-44 and NIP-59, and what is only a Chatme convention. A story retract is the same kind as `3331` with a `story_delete` tag instead of a file. Voice notes add one extra tag, `duration` (in seconds), to the kind `15` tags. A video adds `encryption-algorithm` with the value `aes-gcm-chunked` (Chatme's local file map calls that field `alg`), so other clients cannot open it. Other clients ignore the extra tags.
 
 ---
 
