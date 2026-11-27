@@ -12,13 +12,13 @@
 ![Protocol: Nostr](https://img.shields.io/badge/protocol-Nostr-8E44AD.svg)
 [![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/elregann/badge.svg)](https://hub.xerj.org/contributors/elregann)
 [![Wiki: DeepWiki](https://img.shields.io/badge/wiki-DeepWiki-2EA6A0.svg)](https://deepwiki.com/elregann/Chatme)
-![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)
+![Status: release](https://img.shields.io/badge/status-release-brightgreen.svg)
 
 </div>
 
 Chatme is an instant messaging app where your identity is a cryptographic key you own: no phone number, no email, and no central server holding your account. Messages and call signaling travel through Nostr relays, encrypted on your device before they leave it.
 
-> **Status:** beta. Android is the primary target. A web build runs in Chrome for testing, but voice notes and QR scanning need Android.
+> **Status:** release. Android is the primary target. A web build runs in Chrome for testing, but voice notes and QR scanning need Android.
 
 ---
 
