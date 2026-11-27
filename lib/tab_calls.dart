@@ -150,7 +150,7 @@ class _CallsScreenState extends State<CallsScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.phone,
+                              Icons.phone_outlined,
                               size: 64,
                               color: ChatmeColors.textSubtle,
                             ),
@@ -262,7 +262,8 @@ class _CallsScreenState extends State<CallsScreen> {
         ],
       ),
       trailing: IconButton(
-        icon: const Icon(Icons.phone, color: ChatmeColors.statusPositive),
+        icon: const Icon(Icons.phone_outlined,
+            color: ChatmeColors.textPrimary),
         onPressed: () => _callPeer(context, log.peerPubkey, displayName),
       ),
       onLongPress: () => _deleteLog(log, displayName),

@@ -967,6 +967,8 @@ class _ChatMeAppState extends State<ChatMeApp> with WidgetsBindingObserver {
         indicatorColor: ChatmeColors.navIndicator,
         elevation: 0,
         shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        overlayColor: WidgetStatePropertyAll<Color?>(Colors.transparent),
       ),
       cardColor: ChatmeColors.surfaceRaised,
       dividerColor: ChatmeColors.dividerSubtle,
