@@ -12,6 +12,7 @@ import 'models/call_log.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
 import 'services/async_toggle.dart';
+import 'services/call_speaker_router.dart';
 import 'services/network_manager.dart';
 import 'relay_manager.dart';
 import 'call.dart';
@@ -183,6 +184,11 @@ class CallManager {
   bool _isMuted = false;
   final AsyncToggle _speaker = AsyncToggle();
 
+  late final CallSpeakerRouter _speakerRouter = CallSpeakerRouter(
+    viaWebRtc: (on) => rtc.Helper.setSpeakerphoneOn(on),
+    viaNative: (on) => _setNativeSpeakerphone(on),
+  );
+
   /// Completes when ICE gathering finishes (or after a timeout).
   /// Used by vanilla-ICE mode: instead of trickling candidates over
   /// individual signals, we wait for gathering to complete and let the
@@ -314,7 +320,7 @@ class CallManager {
       activePeerPubkey = null;
       activePeerColor = null;
       _speaker.reset(false);
-      _setNativeSpeakerphone(false);
+      unawaited(_speakerRouter.resetAfterCall());
 
       // Reset the "was connected" flag so the next incoming call
       // starts from a clean slate. Without this reset, a call that
@@ -479,8 +485,7 @@ class CallManager {
 
       if (!kIsWeb && _localStream!.getAudioTracks().isNotEmpty) {
         try {
-          _localStream!.getAudioTracks()[0].enableSpeakerphone(false);
-          await _setNativeSpeakerphone(false);
+          await _speakerRouter.setDuringCall(false);
         } catch (e) {
           debugPrint('[Call] Cannot set speakerphone | $e');
         }
@@ -519,7 +524,7 @@ class CallManager {
     if (_localStream == null || _localStream!.getAudioTracks().isEmpty) return;
     final changed = await _speaker.toggle((on) async {
       if (!kIsWeb) {
-        await _setNativeSpeakerphone(on);
+        await _speakerRouter.setDuringCall(on);
       } else {
         debugPrint('[Call] Web speaker mode: $on');
       }
