@@ -17,6 +17,7 @@ import 'relay_manager.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
 import 'services/chat_reply.dart';
+import 'services/chatme_toast.dart';
 import 'models/contact.dart';
 import 'models/chat_message.dart';
 import 'notification_handler.dart';
@@ -759,9 +760,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   void _showHint(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+    ChatmeToast.show(text);
   }
 
   Future<void> _startRecording() async {

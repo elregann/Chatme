@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../models/chat_message.dart';
 import '../../services/chat_reply.dart';
+import '../../services/chatme_toast.dart';
 import '../../services/gallery_save.dart';
 import '../../services/media_history.dart';
 import '../../widgets/chatme_menu.dart';
@@ -77,7 +78,6 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
   }
 
   Future<void> _save() async {
-    final messenger = ScaffoldMessenger.of(context);
     final video = _isVideoPage(_index);
     String text;
     try {
@@ -92,9 +92,7 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
     } catch (_) {
       text = video ? 'Could not save the video' : 'Could not save the photo';
     }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+    ChatmeToast.show(text);
   }
 
   void _setZoomed(bool zoomed) {

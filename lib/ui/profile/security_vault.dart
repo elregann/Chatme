@@ -106,13 +106,6 @@ class _BackupKeysPageState extends State<BackupKeysPage> {
                       onTap: () {
                         Clipboard.setData(ClipboardData(text: widget.pubkey));
                         HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Public key copied'),
-                            duration: Duration(seconds: 1),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -229,14 +222,6 @@ class _BackupKeysPageState extends State<BackupKeysPage> {
                             Clipboard.setData(
                                 ClipboardData(text: widget.privkey));
                             HapticFeedback.lightImpact();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content:
-                                    Text('Private key copied, keep it safe'),
-                                duration: Duration(seconds: 2),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -269,13 +254,6 @@ class _BackupKeysPageState extends State<BackupKeysPage> {
               onTap: () {
                 Clipboard.setData(ClipboardData(text: widget.exportKeys()));
                 HapticFeedback.mediumImpact();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('All keys exported to clipboard'),
-                    duration: Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
               },
               child: Container(
                 width: double.infinity,

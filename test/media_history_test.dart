@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chatme/models/chat_message.dart';
+import 'package:chatme/services/chatme_toast.dart';
 import 'package:chatme/services/gallery_save.dart';
 import 'package:chatme/services/media_history.dart';
 import 'package:chatme/ui/media/image_viewer.dart';
@@ -161,6 +162,12 @@ void main() {
 
     testWidgets('the menu saves the picture on screen to the gallery', (tester) async {
       final saved = <String>[];
+      final toasts = <String>[];
+      ChatmeToast.useSender((message) async {
+        toasts.add(message);
+        return true;
+      });
+      addTearDown(() => ChatmeToast.useSender(null));
       await tester.pumpWidget(host(ImageViewerPage(
         paths: const ['/x/1.jpg', '/x/2.jpg'],
         initialIndex: 1,
@@ -174,10 +181,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(saved, ['/x/2.jpg']);
-      expect(find.text('Saved to the Chatme album'), findsOneWidget);
+      expect(toasts, ['Saved to the Chatme album']);
     });
 
     testWidgets('a failed save shows its reason', (tester) async {
+      final toasts = <String>[];
+      ChatmeToast.useSender((message) async {
+        toasts.add(message);
+        return true;
+      });
+      addTearDown(() => ChatmeToast.useSender(null));
       await tester.pumpWidget(host(ImageViewerPage(
         paths: const ['/x/1.jpg'],
         saveToGallery: (_) async => throw const GallerySaveException('Allow photo access to save'),
@@ -189,7 +202,7 @@ void main() {
       await tester.tap(find.text('Save to Gallery'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Allow photo access to save'), findsOneWidget);
+      expect(toasts, ['Allow photo access to save']);
     });
 
     testWidgets('the menu replies to the picture on screen', (tester) async {

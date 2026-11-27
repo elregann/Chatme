@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../relay_manager.dart';
 import '../../services/app_settings.dart';
+import '../../services/chatme_toast.dart';
 import '../../services/server_lists.dart';
 import '../../widgets/editable_server_list.dart';
 
@@ -23,10 +24,7 @@ class RelayStatusPage extends StatelessWidget {
   void _remove(BuildContext context, RelayGroup group, String url) async {
     final edit = await relayManager.removeRelay(group, url);
     if (!context.mounted || edit.ok) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-          content: Text(changeMessage(edit.change, fileServer: false))));
+    ChatmeToast.show(changeMessage(edit.change, fileServer: false));
   }
 
   Future<void> _reset(BuildContext context) async {

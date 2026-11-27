@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../core/utils/duration_utils.dart';
 import '../../models/chat_message.dart';
 import '../../services/chat_reply.dart';
+import '../../services/chatme_toast.dart';
 import '../../services/gallery_save.dart';
 import '../../widgets/chatme_menu.dart';
 
@@ -273,8 +274,7 @@ class VideoViewerPage extends StatelessWidget {
     return GallerySaver.save(path, video: true);
   }
 
-  Future<void> _save(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
+  Future<void> _save() async {
     String text;
     try {
       await saveToGallery(path);
@@ -284,11 +284,7 @@ class VideoViewerPage extends StatelessWidget {
     } catch (_) {
       text = 'Could not save the video';
     }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
-      );
+    ChatmeToast.show(text);
   }
 
   void _reply() {
@@ -325,7 +321,7 @@ class VideoViewerPage extends StatelessWidget {
               if (canReply)
                 const ChatmeMenuEntry(value: 1, icon: Icons.reply, label: 'Reply'),
             ],
-            onSelected: (value) => value == 0 ? _save(context) : _reply(),
+            onSelected: (value) => value == 0 ? _save() : _reply(),
           ),
         ],
       ),

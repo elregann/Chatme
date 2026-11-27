@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/browser_input.dart';
 import '../../core/utils/debug_logger.dart';
+import '../../services/chatme_toast.dart';
 import '../../data/discovery_apps.dart';
 import '../../widgets/chatme_menu.dart';
 
@@ -177,19 +178,12 @@ class _WebAppBrowserState extends State<WebAppBrowser> {
     final uri = Uri.tryParse(_currentUrl.value) ?? Uri.parse(widget.initialUrl);
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the browser')),
-      );
+      ChatmeToast.show('Could not open the browser');
     }
   }
 
   Future<void> _copyLink() async {
     await Clipboard.setData(ClipboardData(text: _currentUrl.value));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copied')),
-      );
-    }
   }
 
   Future<void> _handleBack() async {

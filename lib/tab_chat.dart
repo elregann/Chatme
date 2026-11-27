@@ -12,6 +12,7 @@ import 'call_overlay.dart';
 import 'call_manager.dart';
 import 'package:flutter/services.dart';
 import 'services/app_settings.dart';
+import 'services/chatme_toast.dart';
 import 'story/story_manager.dart';
 import 'story/story_prepare_page.dart';
 import 'story/story_strip.dart';
@@ -762,14 +763,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
         caption: prepared.caption,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Story posted')),
-      );
+      ChatmeToast.show('Story posted');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Story failed: $e')),
-      );
+      ChatmeToast.show('Story failed: $e');
     } finally {
       if (mounted) {
         setState(() => _isPostingStory = false);

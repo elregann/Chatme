@@ -166,13 +166,6 @@ class _RecoveryPhrasePageState extends State<RecoveryPhrasePage> {
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: displayMnemonic));
                   HapticFeedback.mediumImpact();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Recovery phrase copied, keep it safe'),
-                      duration: Duration(seconds: 2),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
                 },
                 child: Container(
                   width: double.infinity,

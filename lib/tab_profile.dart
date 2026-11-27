@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'services/account_logout.dart';
 import 'services/app_settings.dart';
+import 'services/chatme_toast.dart';
 import 'services/link_preview_service.dart';
 import 'core/utils/key_utils.dart';
 import 'ui/profile/security_vault.dart';
@@ -480,9 +481,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       debugPrint('[Profile] Logout failed | $e');
       if (!mounted) return;
       setState(() => _isLoggingOut = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not sign out: $e')),
-      );
+      ChatmeToast.show('Could not sign out: $e');
     }
   }
 

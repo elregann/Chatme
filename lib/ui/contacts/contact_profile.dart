@@ -170,7 +170,6 @@ class ContactProfilePage extends StatelessWidget {
                     _CopyChip(
                       label: _shorten(nprofile),
                       value: nprofile,
-                      message: 'nprofile copied',
                       cardColor: cardColor,
                       borderColor: borderColor,
                       textColor: textSecondary,
@@ -179,7 +178,6 @@ class ContactProfilePage extends StatelessWidget {
                     _CopyChip(
                       label: KeyUtils.formatDisplayName(current.pubkey),
                       value: KeyUtils.toNpub(current.pubkey),
-                      message: 'npub copied',
                       cardColor: cardColor,
                       borderColor: borderColor,
                       textColor: textSecondary,
@@ -256,7 +254,6 @@ String _shorten(String value) {
 class _CopyChip extends StatelessWidget {
   final String label;
   final String value;
-  final String message;
   final Color cardColor;
   final Color borderColor;
   final Color textColor;
@@ -264,7 +261,6 @@ class _CopyChip extends StatelessWidget {
   const _CopyChip({
     required this.label,
     required this.value,
-    required this.message,
     required this.cardColor,
     required this.borderColor,
     required this.textColor,
@@ -276,17 +272,6 @@ class _CopyChip extends StatelessWidget {
       onTap: () {
         Clipboard.setData(ClipboardData(text: value));
         HapticFeedback.lightImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              message,
-              style: const TextStyle(color: ChatmeColors.textPrimary),
-            ),
-            backgroundColor: ChatmeColors.statusPositive,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

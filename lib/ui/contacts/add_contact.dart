@@ -12,6 +12,7 @@ import '../../core/utils/debug_logger.dart';
 import '../../core/utils/key_utils.dart';
 import '../../core/utils/shortcut_helper.dart';
 import '../../services/app_settings.dart';
+import '../../services/chatme_toast.dart';
 import '../../widgets/chatme_notice.dart';
 
 class AddContactPage extends StatefulWidget {
@@ -228,7 +229,6 @@ class _AddContactPageState extends State<AddContactPage> {
                     ? null
                     : () async {
                         final navigator = Navigator.of(context);
-                        final messenger = ScaffoldMessenger.of(context);
 
                         setState(() => _submitted = true);
                         await Future.microtask(() {});
@@ -273,17 +273,7 @@ class _AddContactPageState extends State<AddContactPage> {
                           navigator.pop(true);
                         } catch (e) {
                           DebugLogger.log('❌ Error: $e', type: 'ERROR');
-                          messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Failed to add contact',
-                                style:
-                                    TextStyle(color: ChatmeColors.textPrimary),
-                              ),
-                              backgroundColor: ChatmeColors.statusDanger,
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
+                          ChatmeToast.show('Failed to add contact');
                         } finally {
                           if (mounted) setState(() => _isLoading = false);
                         }

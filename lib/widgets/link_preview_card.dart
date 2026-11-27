@@ -3,6 +3,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/chatme_toast.dart';
 import '../services/link_preview_service.dart';
 
 class LinkPreviewCard extends StatefulWidget {
@@ -45,9 +46,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
     if (uri == null) return;
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open link')),
-      );
+      ChatmeToast.show('Could not open link');
     }
   }
 

@@ -226,13 +226,6 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                           onTap: () {
                             Clipboard.setData(ClipboardData(text: _npubResult));
                             HapticFeedback.lightImpact();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Copied!'),
-                                duration: Duration(seconds: 1),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -396,13 +389,6 @@ class _KeyConverterPageState extends State<KeyConverterPage> {
                           onTap: () {
                             Clipboard.setData(ClipboardData(text: _nsecResult));
                             HapticFeedback.lightImpact();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Copied!'),
-                                duration: Duration(seconds: 1),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(

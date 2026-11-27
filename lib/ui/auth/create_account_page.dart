@@ -5,6 +5,7 @@ import '../../core/crypto/key_generator.dart';
 import '../../core/theme/chatme_buttons.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../services/app_settings.dart';
+import '../../services/chatme_toast.dart';
 import '../../widgets/chatme_notice.dart';
 import '../../widgets/recovery_phrase_words.dart';
 
@@ -43,13 +44,6 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
 
   Future<void> _copyPhrase() async {
     await Clipboard.setData(ClipboardData(text: _mnemonic));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Recovery phrase copied'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   Future<void> _continue() async {
@@ -60,13 +54,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
       if (mounted) widget.onAuthenticated();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not create account: $e'),
-            backgroundColor: ChatmeColors.statusDanger,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ChatmeToast.show('Could not create account: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

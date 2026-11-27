@@ -14,6 +14,7 @@ import 'core/theme/chatme_colors.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/utils/key_utils.dart';
 import 'services/app_settings.dart';
+import 'services/chatme_toast.dart';
 import 'services/profile_meta_store.dart';
 import 'services/profile_search_service.dart';
 import 'ui/contacts/add_contact.dart';
@@ -181,16 +182,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       HapticFeedback.mediumImpact();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '$name added to contacts',
-              style: const TextStyle(color: ChatmeColors.textPrimary),
-            ),
-            backgroundColor: ChatmeColors.statusPositive,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ChatmeToast.show('$name added to contacts');
         _searchController.clear();
         setState(() => _searchQuery = "");
       }

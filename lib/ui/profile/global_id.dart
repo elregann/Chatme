@@ -6,6 +6,7 @@ import '../../core/theme/chatme_buttons.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../core/utils/bio_text.dart';
 import '../../services/app_settings.dart';
+import '../../services/chatme_toast.dart';
 import '../../services/directory_service.dart';
 import '../../relay_manager.dart';
 import '../../widgets/chatme_notice.dart';
@@ -217,16 +218,11 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
                           .toLowerCase()
                           .replaceAll(RegExp(r'[^a-z0-9_]'), '');
                       if (input.length < 3) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text(
-                                  'Username must be at least 3 characters'),
-                              behavior: SnackBarBehavior.floating),
-                        );
+                        ChatmeToast.show(
+                            'Username must be at least 3 characters');
                         return;
                       }
 
-                      final messenger = ScaffoldMessenger.of(context);
                       setState(() => _isLoading = true);
 
                       final result = await DirectoryService.claim(input);
@@ -243,31 +239,11 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
                         } catch (_) {}
                         if (!mounted) return;
                         setState(() {});
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '$input@chatme claimed',
-                              style: const TextStyle(
-                                  color: ChatmeColors.textPrimary),
-                            ),
-                            backgroundColor: ChatmeColors.statusPositive,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        ChatmeToast.show('$input@chatme claimed');
                       } else {
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              result == DirectoryResult.taken
-                                  ? 'Username already taken'
-                                  : 'Could not reach the server, try again',
-                              style: const TextStyle(
-                                  color: ChatmeColors.textPrimary),
-                            ),
-                            backgroundColor: ChatmeColors.statusDanger,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        ChatmeToast.show(result == DirectoryResult.taken
+                            ? 'Username already taken'
+                            : 'Could not reach the server, try again');
                       }
                     },
               child: Container(
@@ -483,29 +459,11 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
         _isSavingBio = false;
         _showRemoveBio = _computeShowRemoveBio();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Bio saved',
-            style: TextStyle(color: ChatmeColors.textPrimary),
-          ),
-          backgroundColor: ChatmeColors.statusPositive,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ChatmeToast.show('Bio saved');
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSavingBio = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not save the bio: $e',
-            style: const TextStyle(color: ChatmeColors.textPrimary),
-          ),
-          backgroundColor: ChatmeColors.statusDanger,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ChatmeToast.show('Could not save the bio: $e');
     }
   }
 
@@ -573,29 +531,11 @@ class _GlobalIdPageState extends State<GlobalIdPage> {
           _controller.clear();
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Global ID disconnected',
-              style: TextStyle(color: ChatmeColors.textPrimary),
-            ),
-            backgroundColor: ChatmeColors.statusPositive,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ChatmeToast.show('Global ID disconnected');
       } catch (e) {
         if (!mounted) return;
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to disconnect: $e',
-              style: const TextStyle(color: ChatmeColors.textPrimary),
-            ),
-            backgroundColor: ChatmeColors.statusDanger,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ChatmeToast.show('Failed to disconnect: $e');
       }
     }
   }

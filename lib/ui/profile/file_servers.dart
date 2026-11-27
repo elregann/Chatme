@@ -4,6 +4,7 @@ import '../../widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/chatme_colors.dart';
 import '../../services/app_settings.dart';
+import '../../services/chatme_toast.dart';
 import '../../services/blossom_servers.dart';
 import '../../services/server_lists.dart';
 import '../../widgets/editable_server_list.dart';
@@ -32,10 +33,7 @@ class _FileServersPageState extends State<FileServersPage> {
   void _remove(BuildContext context, String url) async {
     final edit = await BlossomServers.remove(url);
     if (!context.mounted || edit.ok) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-          content: Text(changeMessage(edit.change, fileServer: true))));
+    ChatmeToast.show(changeMessage(edit.change, fileServer: true));
   }
 
   Future<void> _reset(BuildContext context) async {

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
 import '../core/theme/chatme_colors.dart';
+import '../services/chatme_toast.dart';
 import 'crop_geometry.dart';
 
 const double _cropMarkStroke = 2.0;
@@ -82,9 +83,7 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
       });
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open image: $error')),
-      );
+      ChatmeToast.show('Could not open image: $error');
       Navigator.of(context).pop();
     }
   }
@@ -108,9 +107,7 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
       });
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not rotate image: $error')),
-        );
+        ChatmeToast.show('Could not rotate image: $error');
       }
     } finally {
       if (mounted) setState(() => _isRotating = false);
@@ -134,9 +131,7 @@ class _ChatImageCropPageState extends State<ChatImageCropPage> {
       case CropFailure(:final cause):
         if (!mounted) return;
         setState(() => _isCropping = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not crop image: $cause')),
-        );
+        ChatmeToast.show('Could not crop image: $cause');
         return;
     }
   }

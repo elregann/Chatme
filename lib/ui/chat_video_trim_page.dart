@@ -10,6 +10,7 @@ import '../core/utils/debug_logger.dart';
 import '../core/utils/trim_playback_clock.dart';
 import '../core/utils/trim_playback_geometry.dart';
 import '../core/utils/trim_playback_guard.dart';
+import '../services/chatme_toast.dart';
 
 class ChatVideoTrimPage extends StatefulWidget {
   final String videoPath;
@@ -91,9 +92,7 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
     } catch (e) {
       DebugLogger.log('[Video] Trim load failed | $e', type: 'ERROR');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the video')),
-      );
+      ChatmeToast.show('Could not open the video');
       Navigator.of(context).pop();
     }
   }
@@ -227,9 +226,7 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
           if (!mounted) return;
           setState(() => _isSaving = false);
           if (outputPath == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not trim the video')),
-            );
+            ChatmeToast.show('Could not trim the video');
             return;
           }
           Navigator.of(context).pop(outputPath);
@@ -239,9 +236,7 @@ class _ChatVideoTrimPageState extends State<ChatVideoTrimPage> {
       DebugLogger.log('[Video] Trim save failed | $e', type: 'ERROR');
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not trim the video')),
-      );
+      ChatmeToast.show('Could not trim the video');
     }
   }
 

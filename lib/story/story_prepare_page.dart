@@ -11,6 +11,7 @@ import 'package:video_trimmer/video_trimmer.dart';
 
 import '../core/theme/chatme_colors.dart';
 import '../core/utils/trim_playback_geometry.dart';
+import '../services/chatme_toast.dart';
 import '../services/image_prepare.dart';
 import '../ui/chat_image_crop_page.dart';
 
@@ -287,9 +288,7 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
       setState(() => _imageBytes = bytes);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the photo')),
-      );
+      ChatmeToast.show('Could not open the photo');
       Navigator.of(context).pop();
     }
   }
@@ -328,9 +327,7 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
     } catch (_) {
       _unbindController();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the video')),
-      );
+      ChatmeToast.show('Could not open the video');
       Navigator.of(context).pop();
     }
   }
@@ -463,9 +460,7 @@ class _StoryPreparePageState extends State<StoryPreparePage> {
       ));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not prepare the story')),
-      );
+      ChatmeToast.show('Could not prepare the story');
     } finally {
       if (mounted) {
         setState(() => _nextBusy = false);
