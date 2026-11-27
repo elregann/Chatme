@@ -400,8 +400,10 @@ class StoryManager {
     final alreadyViewed = story.viewedBy.containsKey(myPubkey);
     if (!alreadyViewed) {
       await store.markViewed(story.id, myPubkey, nowMs);
-      notify();
     }
+    // A repeat view has no box change to notify listeners, so bump the
+    // revision anyway or the ring can stay stale until an unrelated rebuild.
+    notify();
     if (relay == null) return;
     if (story.authorPubkey.isEmpty || story.authorPubkey == myPubkey) return;
     try {
@@ -456,9 +458,13 @@ class StoryManager {
       final ext = _extFromMime(story.mimeType);
       final file = File('${dir.path}${Platform.pathSeparator}${story.id}$ext');
       await file.writeAsBytes(decrypted, flush: true);
-      final updated = story.copyWith(localPath: file.path);
-      await store.put(updated);
-      notify();
+      // The caller holds a snapshot from before markViewed ran. Re-read the
+      // stored row so caching the path cannot revert a freshly recorded view.
+      final current = store.getById(story.id);
+      if (current != null) {
+        await store.put(current.copyWith(localPath: file.path));
+        notify();
+      }
       return file.path;
     } catch (e) {
       DebugLogger.log('[Story] Download/decrypt failed | $e', type: 'WARN');

@@ -116,4 +116,26 @@ void main() {
     expect(_ringSegments(tester), [false],
         reason: 'a persisted view must turn the ring gray immediately');
   });
+
+  testWidgets('reopening an already viewed story still refreshes the ring',
+      (tester) async {
+    await tester.pumpWidget(_host());
+    await tester.pump();
+    expect(_ringSegments(tester), [true], reason: 'ring starts unviewed');
+
+    await tester.runAsync(() => StoryManager.instance.markViewed(story));
+    await tester.pump();
+    expect(_ringSegments(tester), [false]);
+
+    final viewedStory =
+        StoryManager.instance.activeStories(authorPubkey: _peer).single;
+    final revision = StoryManager.instance.revision.value;
+    await tester.runAsync(
+        () => StoryManager.instance.markViewed(viewedStory));
+    await tester.pump();
+
+    expect(StoryManager.instance.revision.value, greaterThan(revision),
+        reason: 'a viewed story must notify listeners when opened again');
+    expect(_ringSegments(tester), [false]);
+  });
 }
