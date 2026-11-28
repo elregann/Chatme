@@ -12,12 +12,11 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.StatFs
 import android.provider.Settings
-import androidx.work.*
+import androidx.work.WorkManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -252,22 +251,10 @@ class MainActivity: FlutterActivity() {
         // Restyles the active-call notification with Android's CallStyle on 12+.
         OngoingCallStyleChannel.register(flutterEngine, applicationContext)
 
-        scheduleNostrWorker()
-    }
-
-    private fun scheduleNostrWorker() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val workRequest = PeriodicWorkRequestBuilder<NostrWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
-            "nostr_reconnect",
-            ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
+        // The legacy reconnect worker used to start MainActivity, which brought
+        // Chatme to the foreground without a user tap. Cancel any instance left
+        // over from an older install; reconnect now happens on normal resume.
+        WorkManager.getInstance(applicationContext)
+            .cancelUniqueWork("nostr_reconnect")
     }
 }

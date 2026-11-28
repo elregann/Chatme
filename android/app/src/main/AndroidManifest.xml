@@ -98,14 +98,6 @@
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name="com.pribadi.chatme.NostrReconnectReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.pribadi.chatme.RECONNECT" />
-            </intent-filter>
-        </receiver>
-
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
