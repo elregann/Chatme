@@ -97,4 +97,25 @@ void main() {
     );
     expect(native, isEmpty);
   });
+
+  test('rapid speaker requests are all applied in tap order', () async {
+    final calls = <bool>[];
+    final gate = Completer<void>();
+    final router = CallSpeakerRouter(
+      viaWebRtc: (on) async {
+        if (on) await gate.future;
+        calls.add(on);
+      },
+      viaNative: (_) async => throw StateError('unused'),
+      isWeb: () => false,
+    );
+
+    final first = router.setDuringCall(true);
+    final second = router.setDuringCall(false);
+    final third = router.setDuringCall(true);
+    gate.complete();
+    await Future.wait([first, second, third]);
+
+    expect(calls, [true, false, true]);
+  });
 }

@@ -11,7 +11,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'models/call_log.dart';
 import 'chat_manager.dart';
 import 'services/app_settings.dart';
-import 'services/async_toggle.dart';
 import 'services/call_speaker_router.dart';
 import 'services/network_manager.dart';
 import 'relay_manager.dart';
@@ -182,7 +181,11 @@ class CallManager {
   bool _isDisposing = false;
 
   bool _isMuted = false;
-  final AsyncToggle _speaker = AsyncToggle();
+  // _speakerOn is the last route WebRTC accepted; _speakerRequested follows
+  // the latest tap so rapid taps alternate instead of being dropped.
+  bool _speakerOn = false;
+  bool _speakerRequested = false;
+  int _speakerRequestId = 0;
 
   late final CallSpeakerRouter _speakerRouter = CallSpeakerRouter(
     viaWebRtc: (on) => rtc.Helper.setSpeakerphoneOn(on),
@@ -210,7 +213,7 @@ class CallManager {
 
   // Public getters
   bool get isMuted => _isMuted;
-  bool get isSpeakerOn => _speaker.value;
+  bool get isSpeakerOn => _speakerRequested;
   rtc.RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
   List<CallEvent> get callLog => List.unmodifiable(_callLog);
   CallState get callState => _sharedCallState;
@@ -319,7 +322,9 @@ class CallManager {
       activePeerName = null;
       activePeerPubkey = null;
       activePeerColor = null;
-      _speaker.reset(false);
+      _speakerOn = false;
+      _speakerRequested = false;
+      _speakerRequestId++;
       unawaited(_speakerRouter.resetAfterCall());
 
       // Reset the "was connected" flag so the next incoming call
@@ -481,7 +486,9 @@ class CallManager {
       await Future.delayed(const Duration(milliseconds: 50));
 
       _isMuted = false;
-      _speaker.reset(false);
+      _speakerOn = false;
+      _speakerRequested = false;
+      _speakerRequestId++;
 
       if (!kIsWeb && _localStream!.getAudioTracks().isNotEmpty) {
         try {
@@ -522,17 +529,26 @@ class CallManager {
 
   Future<void> toggleSpeaker() async {
     if (_localStream == null || _localStream!.getAudioTracks().isEmpty) return;
-    final changed = await _speaker.toggle((on) async {
-      if (!kIsWeb) {
-        await _speakerRouter.setDuringCall(on);
-      } else {
-        debugPrint('[Call] Web speaker mode: $on');
+
+    final requestId = ++_speakerRequestId;
+    final next = !_speakerRequested;
+    _speakerRequested = next;
+
+    if (kIsWeb) {
+      _speakerOn = next;
+      debugPrint('[Call] Web speaker mode: $next');
+      return;
+    }
+
+    try {
+      await _speakerRouter.setDuringCall(next);
+      _speakerOn = next;
+      _logCallEvent('speaker_toggled', {'isSpeakerOn': next});
+    } catch (e) {
+      debugPrint('[Call] Toggle speaker failed | $e');
+      if (requestId == _speakerRequestId) {
+        _speakerRequested = _speakerOn;
       }
-    });
-    if (changed) {
-      _logCallEvent('speaker_toggled', {'isSpeakerOn': _speaker.value});
-    } else if (!_speaker.busy) {
-      debugPrint('[Call] Toggle speaker failed');
     }
   }
 
