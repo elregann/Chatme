@@ -178,7 +178,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       duration: const Duration(milliseconds: 180),
     );
     WidgetsBinding.instance.addObserver(this);
-    NotificationHandler.clearNotification(widget.contact.pubkey);
+    NotificationHandler.clearNotification(
+      widget.contact.pubkey,
+      publishSummary: false,
+    );
     widget.relayManager.currentlyChattingWith = widget.contact.pubkey;
     NotificationHandler.activeChatPubkey = widget.contact.pubkey;
     widget.relayManager.onMessageReceived = () async {
@@ -291,7 +294,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      NotificationHandler.clearNotification(widget.contact.pubkey);
+      NotificationHandler.clearNotification(
+        widget.contact.pubkey,
+        publishSummary: false,
+      );
     }
     if (_isRecording &&
         (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {

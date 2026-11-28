@@ -1,7 +1,10 @@
 import 'dart:io';
 
 import 'package:chatme/chat_manager.dart';
+import 'package:chatme/chat_notification_handler.dart';
 import 'package:chatme/core/theme/chatme_colors.dart';
+import 'package:chatme/core/utils/bg_inbox.dart';
+import 'package:chatme/core/utils/notification_entry.dart';
 import 'package:chatme/models/call_log.dart';
 import 'package:chatme/models/chat_message.dart';
 import 'package:chatme/models/contact.dart';
@@ -12,6 +15,9 @@ import 'package:chatme/widgets/chatme_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 // ignore: depend_on_referenced_packages
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'
+    show AndroidFlutterLocalNotificationsPlugin, AndroidNotificationDetails;
+// ignore: depend_on_referenced_packages
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:hive/hive.dart';
 
@@ -19,9 +25,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
+  late _RecordingNotifications notifications;
 
   setUpAll(() async {
-    FlutterLocalNotificationsPlatform.instance = _SilentNotifications();
+    notifications = _RecordingNotifications();
+    FlutterLocalNotificationsPlatform.instance = notifications;
     tempDir = await Directory.systemTemp.createTemp('chatme_mark_all_test');
     Hive.init(tempDir.path);
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ContactAdapter());
@@ -37,11 +45,15 @@ void main() {
   });
 
   tearDownAll(() async {
+    BgInbox.baseDirectoryOverride = null;
     await Hive.close();
     await tempDir.delete(recursive: true);
   });
 
   setUp(() async {
+    BgInbox.baseDirectoryOverride = tempDir;
+    notifications.shownIds.clear();
+    notifications.cancelledIds.clear();
     AppSettings.instance.myPubkey = 'me';
     await Hive.box<Contact>('contacts').clear();
     await Hive.box<CallLog>('call_logs').clear();
@@ -126,9 +138,61 @@ void main() {
       expect(msg?.status, 'read');
     }
   });
+
+  test('clearing unread count does not republish the group summary', () async {
+    await Hive.box<Contact>('contacts').put(
+      'carol',
+      Contact(
+        pubkey: 'carol',
+        name: 'CAROL',
+        lastMessage: 'hi',
+        lastChatTime: 10,
+        unreadCount: 1,
+      ),
+    );
+    await BgInbox.addToStack(
+      'alice',
+      '1',
+      const NotificationEntry(sender: 'Alice', message: 'one', timeMs: 30),
+    );
+    await BgInbox.addToStack(
+      'bob',
+      '2',
+      const NotificationEntry(sender: 'Bob', message: 'two', timeMs: 20),
+    );
+    await BgInbox.addToStack(
+      'carol',
+      '3',
+      const NotificationEntry(sender: 'Carol', message: 'three', timeMs: 10),
+    );
+
+    await ChatManager.instance.clearUnreadCount('carol');
+
+    expect(notifications.shownIds, isEmpty);
+    expect(
+      notifications.cancelledIds,
+      contains(ChatNotificationHandler.notificationId('carol')),
+    );
+  });
 }
 
-class _SilentNotifications extends FlutterLocalNotificationsPlatform {
+class _RecordingNotifications extends AndroidFlutterLocalNotificationsPlugin {
+  final List<int> shownIds = <int>[];
+  final List<int> cancelledIds = <int>[];
+
   @override
-  Future<void> cancel(int id) async {}
+  Future<void> show(
+    int id,
+    String? title,
+    String? body, {
+    AndroidNotificationDetails? notificationDetails,
+    String? payload,
+  }) async {
+    shownIds.add(id);
+  }
+
+  @override
+  Future<void> cancel(int id, {String? tag}) async {
+    cancelledIds.add(id);
+  }
 }

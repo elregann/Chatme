@@ -897,7 +897,13 @@ class ChatManager {
           contact.unreadCount = 0;
           await contactsBox.put(peerPubkey, contact);
         }
-        NotificationHandler.clearNotification(peerPubkey);
+        // Clearing an unread count must not publish the group summary again.
+        // The explicit notification action already refreshed it, and opening a
+        // room only removes that one conversation notification.
+        await NotificationHandler.clearNotification(
+          peerPubkey,
+          publishSummary: false,
+        );
       } catch (_) {}
     });
   }

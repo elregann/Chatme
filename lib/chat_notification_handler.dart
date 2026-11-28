@@ -475,7 +475,14 @@ class ChatNotificationHandler {
   /// above it, so the title is the newest line instead of a second "ChatMe".
   /// It is silent and updated in place: the conversation notifications remain
   /// the only ones that alert.
-  static Future<void> showSummaryIfNeeded(FlutterLocalNotificationsPlugin plugin) async {
+  ///
+  /// When [publishSummary] is false, stale summaries are still removed but an
+  /// existing grouped summary is left untouched. Room entry uses this so the
+  /// header is not shown again as if a new message had arrived.
+  static Future<void> showSummaryIfNeeded(
+    FlutterLocalNotificationsPlugin plugin, {
+    bool publishSummary = true,
+  }) async {
     final List<NotificationEntry> latest;
     try {
       latest = await BgInbox.latestPerConversation();
@@ -493,6 +500,10 @@ class ChatNotificationHandler {
       }
       return;
     }
+
+    // Room entry only clears a conversation. It must not bring the grouped
+    // header back as if a new notification had arrived.
+    if (!publishSummary) return;
 
     final preview = NotificationSummary.previewFor(latest);
     if (preview == null) return;
@@ -528,11 +539,18 @@ class ChatNotificationHandler {
   }
 
   /// Dismiss notification for a specific contact.
-  static Future<void> clearNotification(String senderPubkey, FlutterLocalNotificationsPlugin plugin) async {
+  ///
+  /// Set [publishSummary] to false when the user is only opening a room, so the
+  /// grouped summary is not published again after its child is cancelled.
+  static Future<void> clearNotification(
+    String senderPubkey,
+    FlutterLocalNotificationsPlugin plugin, {
+    bool publishSummary = true,
+  }) async {
     final int notifId = notificationId(senderPubkey);
     await plugin.cancel(notifId);
     await _clearStack(senderPubkey);
-    await showSummaryIfNeeded(plugin);
+    await showSummaryIfNeeded(plugin, publishSummary: publishSummary);
   }
 
   /// Dismiss all chat notifications.

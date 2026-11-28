@@ -285,8 +285,18 @@ class NotificationHandler {
   }
 
   /// Dismisses the notification of a specific contact.
-  static Future<void> clearNotification(String senderPubkey) async {
-    await chat_notif.ChatNotificationHandler.clearNotification(senderPubkey, _plugin);
+  ///
+  /// Room entry passes [publishSummary] as false so the grouped summary is not
+  /// published again while the user is already reading a conversation.
+  static Future<void> clearNotification(
+    String senderPubkey, {
+    bool publishSummary = true,
+  }) async {
+    await chat_notif.ChatNotificationHandler.clearNotification(
+      senderPubkey,
+      _plugin,
+      publishSummary: publishSummary,
+    );
   }
 
   /// Dismisses all chat notifications.

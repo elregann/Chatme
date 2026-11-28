@@ -129,4 +129,62 @@ void main() {
     expect(plugin.shown, isEmpty);
     expect(plugin.cancelled, [ChatNotificationHandler.summaryNotificationId]);
   });
+
+  test(
+    'clearing a conversation from room entry does not republish the group summary',
+    () async {
+      await BgInbox.addToStack('a', '1', entry('Alice', 'one', timeMs: 30));
+      await BgInbox.addToStack('b', '2', entry('Bob', 'two', timeMs: 20));
+      await BgInbox.addToStack('c', '3', entry('Carol', 'three', timeMs: 10));
+
+      await ChatNotificationHandler.clearNotification(
+        'c',
+        plugin,
+        publishSummary: false,
+      );
+
+      expect(plugin.shown, isEmpty);
+      expect(
+        plugin.cancelled,
+        [ChatNotificationHandler.notificationId('c')],
+      );
+    },
+  );
+
+  test(
+    'clearing the last remaining conversation still cancels the summary without republishing',
+    () async {
+      await BgInbox.addToStack('a', '1', entry('Alice', 'one', timeMs: 30));
+      await BgInbox.addToStack('b', '2', entry('Bob', 'two', timeMs: 20));
+
+      await ChatNotificationHandler.clearNotification(
+        'b',
+        plugin,
+        publishSummary: false,
+      );
+
+      expect(plugin.shown, isEmpty);
+      expect(
+        plugin.cancelled,
+        [
+          ChatNotificationHandler.notificationId('b'),
+          ChatNotificationHandler.summaryNotificationId,
+        ],
+      );
+    },
+  );
+
+  test('clearing a conversation outside room entry still refreshes the summary',
+      () async {
+    await BgInbox.addToStack('a', '1', entry('Alice', 'one', timeMs: 30));
+    await BgInbox.addToStack('b', '2', entry('Bob', 'two', timeMs: 20));
+    await BgInbox.addToStack('c', '3', entry('Carol', 'three', timeMs: 10));
+
+    await ChatNotificationHandler.clearNotification('c', plugin);
+
+    expect(plugin.shown.single.id, ChatNotificationHandler.summaryNotificationId);
+    expect(plugin.shown.single.title, 'Alice  one');
+    expect(plugin.shown.single.body, 'Bob  two');
+    expect(plugin.cancelled, [ChatNotificationHandler.notificationId('c')]);
+  });
 }
